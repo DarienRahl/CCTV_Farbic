@@ -139,7 +139,8 @@ Zdarzenia strumienia:
 ## Rozwój
 
 - Nowe wydanie: podbij `version` w `gradle.properties`, dodaj opis w `docs/release-notes/v<wersja>.md`
-  i wypchnij tag `v<wersja>`. Workflow `release` zbuduje mod i opublikuje release z jarem.
+  i wypchnij tag `v<wersja>` albo uruchom ręcznie workflow `release` w zakładce Actions.
+  Workflow zbuduje mod, utworzy tag i opublikuje release z jarem.
 
 - Pliki strony są w `src/main/resources/web/` (zwykły JS, bez bundlera i bibliotek).
 - Po uruchomieniu serwera z `-Dcctv.webDir=/ścieżka/do/src/main/resources/web` zmiany w plikach

@@ -1,10 +1,15 @@
-# Publishes a GitHub release when a version tag (v1.2.3) is pushed:
-# builds the mod and attaches the jar. Notes come from docs/release-notes/<tag>.md.
+# Publishes a GitHub release with the mod jar attached.
+#
+# Either push a version tag (v1.2.3) or run this workflow manually
+# ("Run workflow" in the Actions tab): then the tag v<version> is taken from
+# gradle.properties and created on the selected commit. Release notes come
+# from docs/release-notes/<tag>.md when that file exists.
 
 name: release
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -22,13 +27,19 @@ jobs:
         with:
           java-version: '25'
           distribution: 'microsoft'
-      - name: check that the tag matches the mod version
+      - name: determine tag
         run: |
           VERSION=$(grep '^version=' gradle.properties | cut -d= -f2)
-          if [ "v$VERSION" != "$GITHUB_REF_NAME" ]; then
-            echo "Tag $GITHUB_REF_NAME does not match version=$VERSION in gradle.properties"
-            exit 1
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            TAG="$GITHUB_REF_NAME"
+            if [ "$TAG" != "v$VERSION" ]; then
+              echo "Tag $TAG does not match version=$VERSION in gradle.properties"
+              exit 1
+            fi
+          else
+            TAG="v$VERSION"
           fi
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
       - name: build
         run: |
           chmod +x ./gradlew
@@ -37,7 +48,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          NOTES="docs/release-notes/$GITHUB_REF_NAME.md"
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            echo "Release $TAG already exists - bump version in gradle.properties first."
+            exit 1
+          fi
+          NOTES="docs/release-notes/$TAG.md"
           if [ -f "$NOTES" ]; then NOTES_ARG=(--notes-file "$NOTES"); else NOTES_ARG=(--generate-notes); fi
-          gh release create "$GITHUB_REF_NAME" build/libs/cctv-fabric-*[0-9].jar \
-            --title "CCTV $GITHUB_REF_NAME (Minecraft 26.3)" "${NOTES_ARG[@]}"
+          gh release create "$TAG" build/libs/cctv-fabric-*[0-9].jar \
+            --target "$GITHUB_SHA" \
+            --title "CCTV $TAG (Minecraft 26.3)" "${NOTES_ARG[@]}"
