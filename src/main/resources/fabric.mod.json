@@ -1,0 +1,29 @@
+{
+	"schemaVersion": 1,
+	"id": "cctv",
+	"version": "${version}",
+	"name": "CCTV",
+	"description": "Server-side CCTV cameras: place a camera with /cctv and watch it live in a web browser. Players do not need the mod.",
+	"authors": [
+		"DarienRahl"
+	],
+	"contact": {
+		"sources": "https://github.com/DarienRahl/CCTV_Farbic"
+	},
+	"license": "MIT",
+	"environment": "*",
+	"entrypoints": {
+		"main": [
+			"io.github.darienrahl.cctv.CctvMod"
+		]
+	},
+	"mixins": [
+		"cctv.mixins.json"
+	],
+	"depends": {
+		"fabricloader": ">=0.19.5",
+		"minecraft": "~26.3",
+		"java": ">=25",
+		"fabric-api": "*"
+	}
+}
