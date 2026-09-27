@@ -199,6 +199,28 @@ void main() {
 	outColor = vec4(mix(color, uFogColor, fog), 1.0);
 }`;
 
+const SHADOW_VS = `#version 300 es
+const vec2 C[4] = vec2[4](vec2(-1.0, -1.0), vec2(1.0, -1.0), vec2(1.0, 1.0), vec2(-1.0, 1.0));
+uniform mat4 uViewProj;
+uniform vec3 uCenter;
+uniform float uRadius;
+out vec2 vCorner;
+void main() {
+	vCorner = C[gl_VertexID];
+	gl_Position = uViewProj * vec4(uCenter + vec3(vCorner.x, 0.0, vCorner.y) * uRadius, 1.0);
+}`;
+
+const SHADOW_FS = `#version 300 es
+precision highp float;
+in vec2 vCorner;
+uniform float uAlpha;
+out vec4 outColor;
+void main() {
+	float d = length(vCorner);
+	if (d > 1.0) discard;
+	outColor = vec4(0.0, 0.0, 0.0, uAlpha * (1.0 - smoothstep(0.45, 1.0, d)));
+}`;
+
 function compile(gl, type, source) {
 	const shader = gl.createShader(type);
 	gl.shaderSource(shader, source);
@@ -235,6 +257,8 @@ export class Renderer {
 		this.worldProgram = program(gl, WORLD_VS, WORLD_FS);
 		this.skyProgram = program(gl, SKY_VS, SKY_FS);
 		this.entityProgram = program(gl, ENTITY_VS, ENTITY_FS);
+		this.shadowProgram = program(gl, SHADOW_VS, SHADOW_FS);
+		this.shadowVao = gl.createVertexArray();
 		this.skyVao = gl.createVertexArray();
 		this.indexBuffer = gl.createBuffer();
 		this.indexQuads = 0;
@@ -314,6 +338,33 @@ export class Renderer {
 			gl.uniform1i(program.u.uAtlas, 0);
 		}
 		gl.activeTexture(gl.TEXTURE0);
+	}
+
+	/** Soft round entity shadows on the ground, like the game's entity shadow. */
+	drawShadows(viewProj, shadows) {
+		if (!shadows.length) return;
+		const gl = this.gl;
+		const p = this.shadowProgram;
+		gl.useProgram(p.program);
+		gl.uniformMatrix4fv(p.u.uViewProj, false, viewProj);
+		gl.enable(gl.BLEND);
+		gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+		gl.depthMask(false);
+		gl.disable(gl.CULL_FACE);
+		gl.enable(gl.POLYGON_OFFSET_FILL);
+		gl.polygonOffset(-2, -2);
+		gl.bindVertexArray(this.shadowVao);
+		for (const s of shadows) {
+			gl.uniform3fv(p.u.uCenter, s.center);
+			gl.uniform1f(p.u.uRadius, s.radius);
+			gl.uniform1f(p.u.uAlpha, s.alpha);
+			gl.drawArrays(gl.TRIANGLE_FAN, 0, 4);
+		}
+		gl.disable(gl.POLYGON_OFFSET_FILL);
+		gl.depthMask(true);
+		gl.disable(gl.BLEND);
+		gl.enable(gl.CULL_FACE);
+		gl.bindVertexArray(null);
 	}
 
 	deletePart(part) {

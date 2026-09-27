@@ -5,6 +5,7 @@ import java.util.Set;
 
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Pose;
 import net.minecraft.world.entity.item.ItemEntity;
@@ -33,6 +34,29 @@ final class EntityEncoder {
 			return false;
 		}
 		return !(entity instanceof Player player) || !player.isSpectator();
+	}
+
+	private static final EquipmentSlot[] ARMOR = {EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET};
+
+	/** Worn armor as item ids [head, chest, legs, feet] (null when empty), only if anything is worn. */
+	private static void writeArmor(Json json, LivingEntity living) {
+		String[] items = new String[ARMOR.length];
+		boolean any = false;
+		for (int i = 0; i < ARMOR.length; i++) {
+			ItemStack stack = living.getItemBySlot(ARMOR[i]);
+			if (!stack.isEmpty()) {
+				items[i] = BuiltInRegistries.ITEM.getKey(stack.getItem()).toString();
+				any = true;
+			}
+		}
+		if (!any) {
+			return;
+		}
+		json.name("armor").beginArray();
+		for (String item : items) {
+			json.value(item);
+		}
+		json.endArray();
 	}
 
 	static void write(Json json, Entity entity, String type) {
@@ -66,6 +90,7 @@ final class EntityEncoder {
 			if (!hand.isEmpty()) {
 				json.field("hand", BuiltInRegistries.ITEM.getKey(hand.getItem()).toString());
 			}
+			writeArmor(json, living);
 		}
 
 		if (entity instanceof Player player) {

@@ -6,7 +6,7 @@ import {
 	lerp, lerpAngle, wrapDegrees, transformPoint,
 } from './math.js';
 import { itemColor } from './blocks.js';
-import { MOB_MODELS, buildMobTemplate, animateMob, blockEntityModel } from './mobs.js';
+import { MOB_MODELS, buildMobTemplate, animateMob, blockEntityModel, armorPiece } from './mobs.js';
 
 const FLOATS = 11; // pos3 normal3 uv2 color3
 const DEG = Math.PI / 180;
@@ -621,7 +621,7 @@ export class EntityRenderer {
 		const type = e.type.startsWith('minecraft:') ? e.type.slice(10) : e.type;
 		if (e.type === 'minecraft:player') {
 			const skin = this.skin(e.uuid, e.name);
-			return { template: this.template(skin.slim ? 'player:slim' : 'player', () => playerModel(skin.slim)), texture: skin.texture, standing: 1.8 };
+			return { template: this.template(skin.slim ? 'player:slim' : 'player', () => playerModel(skin.slim)), texture: skin.texture, standing: 1.875 };
 		}
 
 		const mc = this.mcModelFor(e, type);
@@ -798,7 +798,9 @@ export class EntityRenderer {
 				};
 			}
 		}
-		return { template, texture: texture.texture, mc: def, overlay, mcScale: (def.scale || 1) * (e.baby ? 0.5 : 1) };
+		// Glowing eyes (spiders, endermen) are drawn again at full brightness, like the game's eyes layer.
+		const eyes = def.eyes ? this.entityTexture(def.eyes) : null;
+		return { template, texture: texture.texture, mc: def, overlay, eyes: eyes ? eyes.texture : null, mcScale: (def.scale || 1) * (e.baby ? 0.5 : 1) };
 	}
 
 	drawParts(template, m, rotations, e) {
@@ -844,6 +846,7 @@ export class EntityRenderer {
 		const time = now / 1000;
 		const origin = frame.origin;
 		let visible = 0;
+		const shadows = [];
 
 		for (const e of entities) {
 			if (e.invisible && !this.showInvisible) continue;
@@ -854,6 +857,24 @@ export class EntityRenderer {
 			const model = this.modelFor(e);
 			const template = model.template;
 			const s = this.animate(e, now);
+
+			// Shadow on the first solid block below (up to 2 blocks down), fading with height.
+			if (!e.invisible && e.type !== 'minecraft:experience_orb' && world) {
+				const fx = Math.floor(e.x), fz = Math.floor(e.z);
+				for (let y = Math.floor(e.y + 0.01); y >= Math.floor(e.y) - 2; y--) {
+					const id = world.getBlockId(fx, y - 1, fz);
+					const info = id >= 0 ? world.infos[id] : null;
+					if (info && info.fullCollision) {
+						const height = e.y - y;
+						const alpha = 0.55 * Math.max(0, 1 - height / 2.5);
+						if (alpha > 0.02) {
+							const radius = Math.min(1.2, Math.max(0.25, e.w * (e.type === 'minecraft:item' ? 0.6 : 0.75)));
+							shadows.push({ center: [ex, y - origin[1] + 0.002, ez], radius, alpha });
+						}
+						break;
+					}
+				}
+			}
 			const rotations = template.mc ? animateMob(template, e, s, time, model.mc) : this.pose(template, e, s, time);
 
 			// Minecraft models are drawn at their real size; generic ones are scaled to the hitbox height.
@@ -901,6 +922,18 @@ export class EntityRenderer {
 				gl.bindTexture(gl.TEXTURE_2D, model.overlay.texture);
 				this.drawParts(model.overlay.template, m, rotations, e);
 			}
+			if (e.armor && this.assets && template.family === 'humanoid') {
+				this.drawArmor(e, template, m, rotations);
+				gl.uniform3f(u.uTint, 1, 1, 1);
+			}
+			if (model.eyes) {
+				gl.bindTexture(gl.TEXTURE_2D, model.eyes);
+				gl.uniform2f(u.uLight, 15 / 16, 15 / 16);
+				gl.enable(gl.POLYGON_OFFSET_FILL);
+				gl.polygonOffset(-1, -1);
+				this.drawParts(template, m, rotations, e);
+				gl.disable(gl.POLYGON_OFFSET_FILL);
+			}
 
 			if (e.hand && template.family === 'humanoid' && (template.parts.rightArm || template.parts.right_arm)) {
 				this.drawHeldItem(m, template, rotations, e);
@@ -908,9 +941,34 @@ export class EntityRenderer {
 		}
 
 		this.drawBlockEntities(frame, world);
+		this.renderer.drawShadows(frame.viewProj, shadows);
 		gl.bindVertexArray(null);
 		this.visibleCount = visible;
 		this.cleanupStates(now);
+	}
+
+	/** Worn armor on players and humanoid mobs, with the real equipment textures. */
+	drawArmor(e, template, m, rotations) {
+		const gl = this.gl;
+		const u = this.renderer.entityProgram.u;
+		// The player template uses camelCase part names; armor templates use Minecraft's names.
+		const r = template.mc ? rotations : {
+			head: rotations.head, body: rotations.body,
+			right_arm: rotations.rightArm, left_arm: rotations.leftArm,
+			right_leg: rotations.rightLeg, left_leg: rotations.leftLeg,
+		};
+		for (const item of e.armor) {
+			const piece = item ? armorPiece(item) : null;
+			if (!piece) continue;
+			const texture = this.entityTexture(piece.textures);
+			if (!texture) continue;
+			const armor = this.template(piece.key, () => buildMobTemplate(piece.model(), texture.width, texture.height));
+			gl.bindTexture(gl.TEXTURE_2D, texture.texture);
+			gl.uniform1i(u.uUseTexture, 1);
+			const tint = piece.tint || [1, 1, 1];
+			gl.uniform3f(u.uTint, tint[0], tint[1], tint[2]);
+			this.drawParts(armor, m, r, e);
+		}
 	}
 
 	/** Chests and other block entities collected by the mesher. */

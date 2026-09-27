@@ -177,6 +177,13 @@ export class World {
 		}
 	}
 
+	/** Block state id at a world position, or -1 when unknown. */
+	getBlockId(x, y, z) {
+		const section = this.sections.get(World.key(x >> 4, y >> 4, z >> 4));
+		if (!section) return -1;
+		return section.states[((y & 15) << 8) | ((z & 15) << 4) | (x & 15)];
+	}
+
 	/** Light at a world position: [sky, block] (used for entities). */
 	lightAt(x, y, z) {
 		const section = this.sections.get(World.key(x >> 4, y >> 4, z >> 4));

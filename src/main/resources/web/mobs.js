@@ -97,6 +97,7 @@ export const MOB_MODELS = {
 	},
 	spider: {
 		textures: ['spider/spider'],
+		eyes: ['spider/spider_eyes', 'spider_eyes'],
 		model: () => ({
 			textureHeight: 32,
 			family: 'spider',
@@ -108,7 +109,7 @@ export const MOB_MODELS = {
 			],
 		}),
 	},
-	cave_spider: { textures: ['spider/cave_spider'], model: () => MOB_MODELS.spider.model(), scale: 0.7 },
+	cave_spider: { textures: ['spider/cave_spider'], eyes: ['spider/spider_eyes', 'spider_eyes'], model: () => MOB_MODELS.spider.model(), scale: 0.7 },
 	cow: {
 		textures: ['cow/cow_temperate', 'cow/temperate_cow', 'cow/cow'],
 		model: () => ({
@@ -175,6 +176,7 @@ export const MOB_MODELS = {
 	wandering_trader: { textures: ['wandering_trader'], model: () => ({ textureHeight: 64, family: 'villager', parts: villagerParts() }) },
 	enderman: {
 		textures: ['enderman/enderman'],
+		eyes: ['enderman/enderman_eyes'],
 		model: () => ({
 			textureHeight: 32,
 			family: 'humanoid',
@@ -219,6 +221,54 @@ export const MOB_MODELS = {
 		}),
 	},
 };
+
+// --- armor (HumanoidArmorModel: outer layer inflated by 1, leggings by 0.5) --
+
+const ARMOR_MATERIALS = { leather: 'leather', chainmail: 'chainmail', iron: 'iron', golden: 'gold', diamond: 'diamond', netherite: 'netherite', copper: 'copper' };
+
+/**
+ * @param item armor item id, e.g. minecraft:diamond_chestplate
+ * @returns {key, textures, model(), tint} or null
+ */
+export function armorPiece(item) {
+	const name = (item || '').replace('minecraft:', '');
+	if (name === 'turtle_helmet') {
+		return { key: 'armor:turtle_scute:helmet', textures: ['equipment/humanoid/turtle_scute'], model: () => armorModel('helmet'), tint: null };
+	}
+	const match = /^([a-z]+)_(helmet|chestplate|leggings|boots)$/.exec(name);
+	if (!match || !ARMOR_MATERIALS[match[1]]) return null;
+	const material = ARMOR_MATERIALS[match[1]];
+	const slot = match[2];
+	const folder = slot === 'leggings' ? 'equipment/humanoid_leggings/' : 'equipment/humanoid/';
+	return {
+		key: 'armor:' + material + ':' + slot,
+		textures: [folder + material],
+		model: () => armorModel(slot),
+		// Undyed leather armor colour.
+		tint: material === 'leather' ? [0xa0 / 255, 0x65 / 255, 0x40 / 255] : null,
+	};
+}
+
+function armorModel(slot) {
+	const outer = { inflate: 1 };
+	const inner = { inflate: 0.5 };
+	const parts = [];
+	if (slot === 'helmet') {
+		parts.push(part('head', [box(0, 0, -4, -8, -4, 8, 8, 8, outer)]));
+	} else if (slot === 'chestplate') {
+		parts.push(part('body', [box(16, 16, -4, 0, -2, 8, 12, 4, outer)]));
+		parts.push(part('right_arm', [box(40, 16, -3, -2, -2, 4, 12, 4, outer)], [-5, 2, 0]));
+		parts.push(part('left_arm', [box(40, 16, -1, -2, -2, 4, 12, 4, { ...outer, mirror: true })], [5, 2, 0]));
+	} else if (slot === 'leggings') {
+		parts.push(part('body', [box(16, 16, -4, 0, -2, 8, 12, 4, inner)]));
+		parts.push(part('right_leg', [box(0, 16, -2, 0, -2, 4, 12, 4, inner)], [-1.9, 12, 0]));
+		parts.push(part('left_leg', [box(0, 16, -2, 0, -2, 4, 12, 4, { ...inner, mirror: true })], [1.9, 12, 0]));
+	} else {
+		parts.push(part('right_leg', [box(0, 16, -2, 0, -2, 4, 12, 4, outer)], [-1.9, 12, 0]));
+		parts.push(part('left_leg', [box(0, 16, -2, 0, -2, 4, 12, 4, { ...outer, mirror: true })], [1.9, 12, 0]));
+	}
+	return { textureHeight: 32, family: 'humanoid', parts };
+}
 
 // --- block entities (drawn by the client with entity models) ---------------
 
