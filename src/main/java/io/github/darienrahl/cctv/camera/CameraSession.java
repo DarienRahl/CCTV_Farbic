@@ -213,7 +213,13 @@ final class CameraSession {
 			blockChanges.clear();
 			return ++idleTicks <= IDLE_DISPOSE_TICKS || !tryDispose();
 		}
-		idleTicks = 0;
+		if (idleTicks > 0) {
+			// Nobody watched for a while, so block changes were not tracked: read the area again
+			// (viewers only receive sections that were captured, so they never see stale data).
+			idleTicks = 0;
+			captureCursor = 0;
+			lightWatch.clear();
+		}
 
 		if (level == null) {
 			return true;
