@@ -1,0 +1,75 @@
+# Developer tool: prints signatures (javap) or decompiled sources (Vineflower) of
+# Minecraft classes into the job log. Useful when porting client behaviour to the
+# web viewer, because the viewer re-implements parts of the client renderer.
+# Run it from the Actions tab ("Run workflow").
+
+name: inspect-minecraft
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Minecraft version
+        default: '26.3'
+      list:
+        description: Regex; lists matching class files of the client jar
+        default: ''
+      javap:
+        description: Space separated class names for javap -p (client jar contains the common classes too)
+        default: ''
+      decompile:
+        description: Space separated class paths to decompile, e.g. net/minecraft/client/renderer/LightTexture (inner classes included)
+        default: ''
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: setup jdk
+        uses: actions/setup-java@v5
+        with:
+          java-version: '25'
+          distribution: 'microsoft'
+      - name: download jars
+        env:
+          MC_VERSION: ${{ inputs.version }}
+        run: |
+          python3 - <<'PY'
+          import json, os, urllib.request
+          version = os.environ["MC_VERSION"]
+          manifest = json.load(urllib.request.urlopen("https://piston-meta.mojang.com/mc/game/version_manifest_v2.json"))
+          url = next(v["url"] for v in manifest["versions"] if v["id"] == version)
+          downloads = json.load(urllib.request.urlopen(url))["downloads"]
+          urllib.request.urlretrieve(downloads["client"]["url"], "client.jar")
+          urllib.request.urlretrieve(downloads["server"]["url"], "server-bundle.jar")
+          PY
+          mkdir bundle && (cd bundle && unzip -q ../server-bundle.jar 'META-INF/versions/*')
+          cp bundle/META-INF/versions/*/*.jar server.jar
+          curl -sSfL -o vineflower.jar https://repo1.maven.org/maven2/org/vineflower/vineflower/1.11.1/vineflower-1.11.1.jar
+      - name: list classes
+        if: inputs.list != ''
+        env:
+          PATTERN: ${{ inputs.list }}
+        run: unzip -Z1 client.jar | grep -E "$PATTERN" | head -n 2000
+      - name: javap
+        if: inputs.javap != ''
+        env:
+          CLASSES: ${{ inputs.javap }}
+        run: |
+          for cls in $CLASSES; do
+            echo "=================== $cls"
+            javap -p -constants -cp client.jar:server.jar "$cls" || true
+          done
+      - name: decompile
+        if: inputs.decompile != ''
+        env:
+          CLASSES: ${{ inputs.decompile }}
+        run: |
+          mkdir -p classes out
+          for cls in $CLASSES; do
+            (cd classes && unzip -qo ../client.jar "$cls.class" "$cls\$*.class" || true)
+          done
+          java -jar vineflower.jar -dgs=1 -rsy=1 -log=WARN -e=client.jar classes out > /dev/null 2>&1 || true
+          find out -name '*.java' | sort | while read -r file; do
+            echo "=================== $file"
+            cat "$file"
+          done
