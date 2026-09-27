@@ -64,8 +64,8 @@ jobs:
       - name: viewer screenshot
         working-directory: .github/e2e
         run: |
-          npm install --no-save --no-package-lock playwright@1
-          npx playwright install --with-deps chromium
+          npm install --no-save --no-package-lock playwright@1 > /dev/null
+          npx playwright install --with-deps chromium > /dev/null 2>&1
           node screenshot.mjs
       - name: stop server
         if: always()

@@ -18,6 +18,10 @@ const info = await page.evaluate(() => ({
 }));
 console.log('viewer:', JSON.stringify(info));
 await page.screenshot({ path: 'viewer.png' });
+// A small JPEG copy goes into the log too, so the result can be inspected without downloading artifacts.
+const jpeg = await page.screenshot({ type: 'jpeg', quality: 60, clip: { x: 0, y: 0, width: 1280, height: 670 } });
+const b64 = jpeg.toString('base64');
+for (let i = 0; i < b64.length; i += 4000) console.log('SHOT:' + b64.slice(i, i + 4000));
 
 await page.goto('http://127.0.0.1:8100/');
 await page.waitForTimeout(2000);

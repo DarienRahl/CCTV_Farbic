@@ -5,6 +5,7 @@
 
 import { classify, KIND_NONE, KIND_CROSS, WATER_COLOR, LAVA_COLOR } from './blocks.js';
 import { MAT_OPAQUE, MAT_TRANSLUCENT, MAT_COLOR, DIR_VECTORS } from './assets.js';
+import { isBlockEntity } from './mobs.js';
 
 export const STRIDE = 24; // f32 x3 position | u16 x2 uv | u8 x4 rgb+unused | u8 sky, block, material, unused
 
@@ -104,7 +105,10 @@ export class World {
 	setAssets(assets) {
 		this.assets = assets;
 		for (const info of this.infos) {
-			if (info) info.baked = undefined;
+			if (info) {
+				info.baked = undefined;
+				info.blockEntity = undefined;
+			}
 		}
 		for (const key of this.sections.keys()) this.dirty.add(key);
 	}
@@ -317,6 +321,7 @@ export class World {
 		const oy = section.y * 16 - this.origin[1];
 		const oz = section.z * 16 - this.origin[2];
 		const wx0 = section.x * 16, wy0 = section.y * 16, wz0 = section.z * 16;
+		const blockEntities = [];
 
 		for (let y = 0; y < 16; y++) {
 			for (let z = 0; z < 16; z++) {
@@ -326,6 +331,14 @@ export class World {
 					if (id < 0) continue;
 					const info = infos[id];
 					if (info === undefined) continue;
+
+					if (this.assets && info.blockEntity === undefined) info.blockEntity = isBlockEntity(info.shortName);
+					if (this.assets && info.blockEntity) {
+						// Chests are drawn by the entity renderer with their real model and texture.
+						blockEntities.push({ x: wx0 + x, y: wy0 + y, z: wz0 + z, info });
+						if (info.water) this.emitFluid(info, p, ox + x, oy + y, oz + z, wx0 + x, wy0 + y, wz0 + z, translucent);
+						continue;
+					}
 
 					const model = info.kind !== KIND_NONE ? this.model(info) : null;
 					if (model) {
@@ -338,6 +351,7 @@ export class World {
 			}
 		}
 
+		section.blockEntities = blockEntities;
 		return { opaque: opaque.data(), translucent: translucent.data() };
 	}
 

@@ -6,7 +6,7 @@ import {
 	lerp, lerpAngle, wrapDegrees, transformPoint,
 } from './math.js';
 import { itemColor } from './blocks.js';
-import { MOB_MODELS, buildMobTemplate, animateMob } from './mobs.js';
+import { MOB_MODELS, buildMobTemplate, animateMob, blockEntityModel } from './mobs.js';
 
 const FLOATS = 11; // pos3 normal3 uv2 color3
 const DEG = Math.PI / 180;
@@ -907,9 +907,55 @@ export class EntityRenderer {
 			}
 		}
 
+		this.drawBlockEntities(frame, world);
 		gl.bindVertexArray(null);
 		this.visibleCount = visible;
 		this.cleanupStates(now);
+	}
+
+	/** Chests and other block entities collected by the mesher. */
+	drawBlockEntities(frame, world) {
+		if (!this.assets) return;
+		const gl = this.gl;
+		const u = this.renderer.entityProgram.u;
+		const origin = frame.origin;
+		gl.uniform1f(u.uHurt, 0);
+		gl.uniform3f(u.uTint, 1, 1, 1);
+		for (const section of world.sections.values()) {
+			if (!section.blockEntities || section.blockEntities.length === 0) continue;
+			for (const be of section.blockEntities) {
+				const def = blockEntityModel(be.info.shortName, be.info.props);
+				if (!def) continue;
+				const bx = be.x - origin[0], by = be.y - origin[1], bz = be.z - origin[2];
+				if (!frame.frustum(bx + 0.5, by + 0.5, bz + 0.5, 1.5)) continue;
+				const texture = this.entityTexture(def.textures);
+				let template, useTexture = true;
+				if (texture) {
+					template = this.template('be:' + def.key, () => buildMobTemplate(def.model(), texture.width, texture.height));
+					gl.bindTexture(gl.TEXTURE_2D, texture.texture);
+				} else {
+					template = this.template('be:box', () => hitbox(be.info.colors ? be.info.colors[2] : [0.6, 0.45, 0.25], 14 / 16, 14 / 16));
+					useTexture = false;
+				}
+				gl.uniform1i(u.uUseTexture, useTexture ? 1 : 0);
+				let m = translation(bx + 0.5, by + 0.5, bz + 0.5);
+				m = multiply(m, rotationY(-def.yRot * DEG));
+				m = multiply(m, translation(-0.5, -0.5, -0.5));
+				if (useTexture) {
+					// Model space is y-up (block entity models are not flipped like mobs).
+					m = multiply(m, scaling(1 / 16, 1 / 16, 1 / 16));
+					m = multiply(m, translation(0, 24, 0));
+					m = multiply(m, rotationX(Math.PI));
+				} else {
+					m = multiply(m, translation(0.5, 0, 0.5));
+					m = multiply(m, scaling(1 / 16, 1 / 16, 1 / 16));
+				}
+				const light = world.lightAt(be.x, be.y, be.z);
+				gl.uniform2f(u.uLight, light[1] / 16, light[0] / 16);
+				this.drawParts(template, m, {}, {});
+			}
+		}
+		gl.bindVertexArray(null);
 	}
 
 	drawHeldItem(m, template, rotations, e) {

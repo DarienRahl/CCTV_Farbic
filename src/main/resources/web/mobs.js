@@ -220,6 +220,49 @@ export const MOB_MODELS = {
 	},
 };
 
+// --- block entities (drawn by the client with entity models) ---------------
+
+/** ChestModel (y up, front towards +Z) for single chests and both halves of double chests. */
+function chestModel(kind) {
+	const width = kind === 'single' ? 14 : 15;
+	const x = kind === 'right' ? 1 : kind === 'left' ? 0 : 1;
+	const lockX = kind === 'single' ? 7 : kind === 'left' ? 0 : 15;
+	const lockW = kind === 'single' ? 2 : 1;
+	return {
+		textureHeight: 64,
+		family: 'block',
+		parts: [
+			part('bottom', [box(0, 19, x, 0, 1, width, 10, 14)]),
+			part('lid', [box(0, 0, x, 0, 0, width, 5, 14), box(0, 0, lockX, -2, 14, lockW, 4, 1)], [0, 9, 1]),
+		],
+	};
+}
+
+const CHEST_TEXTURES = {
+	chest: 'chest/normal',
+	trapped_chest: 'chest/trapped',
+	ender_chest: 'chest/ender',
+	copper_chest: 'chest/copper',
+	exposed_copper_chest: 'chest/copper_exposed',
+	weathered_copper_chest: 'chest/copper_weathered',
+	oxidized_copper_chest: 'chest/copper_oxidized',
+};
+
+/** Block entity model for a block (by short name + properties), or null. */
+export function blockEntityModel(shortName, props) {
+	const name = shortName.startsWith('waxed_') ? shortName.slice(6) : shortName;
+	const texture = CHEST_TEXTURES[name];
+	if (!texture) return null;
+	const kind = name === 'ender_chest' ? 'single' : (props.type || 'single');
+	const suffix = kind === 'single' ? '' : '_' + kind;
+	const facing = { south: 0, west: 90, north: 180, east: 270 }[props.facing || 'north'] ?? 180;
+	return { key: 'chest:' + kind, textures: [texture + suffix], model: () => chestModel(kind), yRot: facing };
+}
+
+export function isBlockEntity(shortName) {
+	return !!CHEST_TEXTURES[shortName.startsWith('waxed_') ? shortName.slice(6) : shortName];
+}
+
 // --- geometry -------------------------------------------------------------
 
 const FACES = [
