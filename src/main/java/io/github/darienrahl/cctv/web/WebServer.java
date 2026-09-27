@@ -1,5 +1,6 @@
 package io.github.darienrahl.cctv.web;
 
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -16,6 +17,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.regex.Pattern;
+import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 
 import com.sun.net.httpserver.Headers;
@@ -36,7 +38,10 @@ import io.github.darienrahl.cctv.assets.ClientAssets;
  * GET /api/cameras               camera list (JSON)
  * GET /api/cameras/{name}/stream live stream (Server-Sent Events)
  * GET /skin/{uuid}?name={player} player skin PNG
+ * GET /api/viewer                viewer defaults, custom sky boxes and shaders
+ * GET /custom/{skyboxes|shaders}/... custom files from config/cctv
  * GET /assets/bundle.json        block states, models and textures (from the client jar)
+ * GET /assets/models.json        entity model geometry (from the client jar)
  * GET /assets/entities.json      list of entity textures
  * GET /assets/entity/{path}.png  one entity texture
  * </pre>
@@ -47,6 +52,8 @@ public final class WebServer {
 	private static final String TOKEN_COOKIE = "cctv_token";
 
 	private final CctvConfig config;
+	/** config/cctv: custom sky boxes and post-processing shaders live here. */
+	private final Path dataDir;
 	private final CameraDirectory directory;
 	private final ClientAssets assets;
 	private final Logger logger;
@@ -57,8 +64,9 @@ public final class WebServer {
 	private HttpServer server;
 	private ExecutorService executor;
 
-	public WebServer(CctvConfig config, CameraDirectory directory, ClientAssets assets, Logger logger) {
+	public WebServer(CctvConfig config, Path dataDir, CameraDirectory directory, ClientAssets assets, Logger logger) {
 		this.config = config;
+		this.dataDir = dataDir;
 		this.directory = directory;
 		this.assets = assets;
 		this.logger = logger;
@@ -131,6 +139,12 @@ public final class WebServer {
 			serveResource(exchange, "index.html");
 		} else if (path.startsWith("/cam/")) {
 			serveResource(exchange, "viewer.html");
+		} else if (path.equals("/api/viewer")) {
+			exchange.getResponseHeaders().add("Access-Control-Allow-Origin", "*");
+			exchange.getResponseHeaders().add("Cache-Control", "no-store");
+			sendText(exchange, 200, "application/json; charset=utf-8", CustomContent.viewerJson(config, dataDir));
+		} else if (path.startsWith("/custom/")) {
+			custom(exchange, path.substring("/custom/".length()));
 		} else if (path.equals("/api/cameras")) {
 			exchange.getResponseHeaders().add("Access-Control-Allow-Origin", "*");
 			exchange.getResponseHeaders().add("Cache-Control", "no-store");
@@ -208,6 +222,17 @@ public final class WebServer {
 		sendBytes(exchange, 200, "image/png", skin.png());
 	}
 
+	/** Sky box images and post-processing shaders from config/cctv. */
+	private void custom(HttpExchange exchange, String path) throws IOException {
+		Path file = CustomContent.resolve(dataDir, path);
+		if (file == null) {
+			sendText(exchange, 404, "text/plain", "Not found");
+			return;
+		}
+		exchange.getResponseHeaders().add("Cache-Control", "no-cache");
+		sendBytes(exchange, 200, contentType(file.getFileName().toString()), Files.readAllBytes(file));
+	}
+
 	private void asset(HttpExchange exchange, String path) throws IOException {
 		Headers headers = exchange.getResponseHeaders();
 		headers.add("Access-Control-Allow-Origin", "*");
@@ -227,13 +252,21 @@ public final class WebServer {
 				exchange.sendResponseHeaders(304, -1);
 				return;
 			}
-			if (acceptsGzip(exchange)) {
-				headers.add("Content-Encoding", "gzip");
-				sendBytes(exchange, 200, "application/json", assets.bundle());
-			} else {
-				sendBytes(exchange, 200, "application/json",
-						new java.util.zip.GZIPInputStream(new java.io.ByteArrayInputStream(assets.bundle())).readAllBytes());
+			sendGzipped(exchange, "application/json", assets.bundle());
+		} else if (path.equals("models.json")) {
+			byte[] models = assets.entityModels();
+			if (models == null) {
+				headers.add("Cache-Control", "no-store");
+				sendText(exchange, assets.state() == ClientAssets.State.LOADING ? 503 : 404, "application/json", "{}");
+				return;
 			}
+			headers.add("ETag", assets.entityModelsEtag());
+			headers.add("Cache-Control", "no-cache");
+			if (assets.entityModelsEtag().equals(exchange.getRequestHeaders().getFirst("If-None-Match"))) {
+				exchange.sendResponseHeaders(304, -1);
+				return;
+			}
+			sendGzipped(exchange, "application/json", models);
 		} else if (path.equals("entities.json")) {
 			headers.add("Cache-Control", "no-cache");
 			sendText(exchange, 200, "application/json", assets.entityListJson());
@@ -247,6 +280,16 @@ public final class WebServer {
 			sendBytes(exchange, 200, "image/png", png);
 		} else {
 			sendText(exchange, 404, "text/plain", "Not found");
+		}
+	}
+
+	/** Sends pre-compressed data, unpacking it for the rare client without gzip support. */
+	private static void sendGzipped(HttpExchange exchange, String type, byte[] gzipped) throws IOException {
+		if (acceptsGzip(exchange)) {
+			exchange.getResponseHeaders().add("Content-Encoding", "gzip");
+			sendBytes(exchange, 200, type, gzipped);
+		} else {
+			sendBytes(exchange, 200, type, new GZIPInputStream(new ByteArrayInputStream(gzipped)).readAllBytes());
 		}
 	}
 
@@ -350,6 +393,10 @@ public final class WebServer {
 			case "js" -> "text/javascript; charset=utf-8";
 			case "css" -> "text/css; charset=utf-8";
 			case "png" -> "image/png";
+			case "jpg", "jpeg" -> "image/jpeg";
+			case "webp" -> "image/webp";
+			case "glsl" -> "text/plain; charset=utf-8";
+			case "json" -> "application/json; charset=utf-8";
 			case "svg" -> "image/svg+xml";
 			case "ico" -> "image/x-icon";
 			default -> "application/octet-stream";

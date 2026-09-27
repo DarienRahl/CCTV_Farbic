@@ -5,10 +5,13 @@ import java.util.List;
 import java.util.Map;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.tags.FluidTags;
+import net.minecraft.util.Mth;
 import net.minecraft.world.level.EmptyBlockGetter;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.RenderShape;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.phys.AABB;
@@ -29,6 +32,16 @@ final class BlockPalette {
 	static final int FLAG_NO_COLLISION = 16;
 	/** Collision shape is a full block: it darkens neighbours in smooth lighting (ambient occlusion). */
 	static final int FLAG_FULL_COLLISION = 32;
+	/** Light passes through (smooth lighting looks past it for the corner samples). */
+	static final int FLAG_LIGHT_PERMEABLE = 64;
+	/** Not drawn from a block model (air-like or drawn by a block entity renderer, e.g. chests). */
+	static final int FLAG_NO_MODEL = 128;
+	/** Always rendered at full brightness (e.g. magma block). */
+	static final int FLAG_EMISSIVE = 256;
+	/** Rain and snow stop on top of it (motion blocking height map). */
+	static final int FLAG_MOTION_BLOCKING = 512;
+
+	private static final BlockPos SEED_PROBE = new BlockPos(5, 70, 9);
 
 	private static final int MAX_BOXES = 24;
 
@@ -67,8 +80,20 @@ final class BlockPalette {
 			if (state.isSolidRender()) {
 				flags |= FLAG_OPAQUE;
 			}
+			if (state.isLightPermeable()) {
+				flags |= FLAG_LIGHT_PERMEABLE;
+			}
+			if (state.getRenderShape() != RenderShape.MODEL) {
+				flags |= FLAG_NO_MODEL;
+			}
+			if (state.emissiveRendering()) {
+				flags |= FLAG_EMISSIVE;
+			}
+			if (state.blocksMotion() || !state.getFluidState().isEmpty()) {
+				flags |= FLAG_MOTION_BLOCKING;
+			}
 		} catch (RuntimeException ignored) {
-			// Treat as not opaque.
+			// Keep what is known.
 		}
 
 		FluidState fluid = state.getFluidState();
@@ -102,6 +127,7 @@ final class BlockPalette {
 		if (light > 0) {
 			json.field("l", light);
 		}
+		writeRenderHints(json, state);
 
 		json.name("b").beginArray();
 		int count = 0;
@@ -116,6 +142,58 @@ final class BlockPalette {
 		}
 		json.endArray().endObject();
 		return json.toString();
+	}
+
+	/**
+	 * What the client's block renderer needs besides the model: shade brightness for ambient occlusion
+	 * ({@code sb}), the random model offset of plants ({@code o: [horizontal, vertical]}), which block
+	 * position seeds the random model variant ({@code sy: -1} for upper halves of doors and tall plants)
+	 * and on which sides identical neighbours hide each other ({@code k}, bit per direction).
+	 */
+	private static void writeRenderHints(Json json, BlockState state) {
+		try {
+			float shade = state.getShadeBrightness(EmptyBlockGetter.INSTANCE, BlockPos.ZERO);
+			if (shade != 1.0F) {
+				json.field("sb", shade, 3);
+			}
+		} catch (RuntimeException ignored) {
+			// Default 1.0.
+		}
+
+		try {
+			if (state.hasOffsetFunction()) {
+				Block block = state.getBlock();
+				boolean vertical = state.getOffset(BlockPos.ZERO).y != 0 || state.getOffset(new BlockPos(1, 0, 0)).y != 0
+						|| state.getOffset(new BlockPos(0, 0, 3)).y != 0;
+				json.name("o").beginArray().value(block.getMaxHorizontalOffset(), 4)
+						.value(vertical ? block.getMaxVerticalOffset() : 0, 4).endArray();
+			}
+		} catch (RuntimeException ignored) {
+			// No offset.
+		}
+
+		try {
+			long seed = state.getSeed(SEED_PROBE);
+			if (seed != Mth.getSeed(SEED_PROBE) && seed == Mth.getSeed(SEED_PROBE.below())) {
+				json.field("sy", -1);
+			}
+		} catch (RuntimeException ignored) {
+			// Default seed.
+		}
+
+		int skip = 0;
+		for (Direction direction : Direction.values()) {
+			try {
+				if (state.skipRendering(state, direction)) {
+					skip |= 1 << direction.get3DDataValue();
+				}
+			} catch (RuntimeException ignored) {
+				// Draw the face.
+			}
+		}
+		if (skip != 0) {
+			json.field("k", skip);
+		}
 	}
 
 	/** {@code Block{minecraft:oak_log}[axis=y]} → {@code axis=y}. */

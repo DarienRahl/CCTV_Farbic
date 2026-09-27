@@ -44,7 +44,7 @@ public final class CctvMod implements ModInitializer {
 					.map(container -> container.getMetadata().getVersion().getFriendlyString())
 					.orElse("unknown");
 			ClientAssets assets = new ClientAssets(dir.resolve("assets"), version, config.downloadClientAssets, LOGGER);
-			CameraManager started = new CameraManager(server, config, new CameraStore(dir.resolve("cameras.json"), LOGGER), assets, LOGGER);
+			CameraManager started = new CameraManager(server, dir, config, new CameraStore(dir.resolve("cameras.json"), LOGGER), assets, LOGGER);
 			started.start();
 			manager = started;
 		});

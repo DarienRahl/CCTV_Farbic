@@ -1,12 +1,18 @@
 package io.github.darienrahl.cctv.camera;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
@@ -26,6 +32,8 @@ import io.github.darienrahl.cctv.web.WebServer;
 /** Owns all cameras, their live sessions and the web server. */
 public final class CameraManager implements CameraDirectory {
 	private final MinecraftServer server;
+	/** config/cctv: config.json, cameras.json, assets, skyboxes and shaders. */
+	private final Path dataDir;
 	private final CctvConfig config;
 	private final CameraStore store;
 	private final Logger logger;
@@ -33,15 +41,25 @@ public final class CameraManager implements CameraDirectory {
 	private final Map<String, CameraSession> sessions = new ConcurrentHashMap<>();
 	private final BlockPalette palette = new BlockPalette();
 	private final ClientAssets assets;
+	/** Decodes sections and parses saved chunks off the server thread. */
+	private final ExecutorService workers;
 	private @Nullable WebServer web;
 	private long tick;
 
-	public CameraManager(MinecraftServer server, CctvConfig config, CameraStore store, ClientAssets assets, Logger logger) {
+	public CameraManager(MinecraftServer server, Path dataDir, CctvConfig config, CameraStore store, ClientAssets assets, Logger logger) {
 		this.server = server;
+		this.dataDir = dataDir;
 		this.config = config;
 		this.store = store;
 		this.assets = assets;
 		this.logger = logger;
+		AtomicInteger threads = new AtomicInteger();
+		this.workers = Executors.newFixedThreadPool(config.workerThreads, task -> {
+			Thread thread = new Thread(task, "cctv-worker-" + threads.incrementAndGet());
+			thread.setDaemon(true);
+			thread.setPriority(Thread.NORM_PRIORITY - 1);
+			return thread;
+		});
 	}
 
 	public CctvConfig config() {
@@ -53,19 +71,55 @@ public final class CameraManager implements CameraDirectory {
 	}
 
 	public void start() {
+		installExamples();
 		for (Camera camera : store.load()) {
 			cameras.put(camera.key(), camera);
 		}
 		logger.info("Loaded {} CCTV camera(s)", cameras.size());
 
 		assets.start();
-		WebServer webServer = new WebServer(config, this, assets, logger);
+		WebServer webServer = new WebServer(config, dataDir, this, assets, logger);
 		try {
 			webServer.start();
 			web = webServer;
 		} catch (IOException e) {
 			logger.error("Could not start the CCTV web server on {}:{} - is the port already in use? Change it in config/cctv/config.json",
 					config.bindAddress, config.port, e);
+		}
+	}
+
+	/** Creates config/cctv/shaders and config/cctv/skyboxes with examples the first time. */
+	private void installExamples() {
+		String[][] examples = {
+				{"shaders", "sepia.glsl"},
+				{"shaders", "security-camera.glsl"},
+				{"skyboxes", "README.txt"},
+		};
+		for (String[] example : examples) {
+			Path dir = dataDir.resolve(example[0]);
+			Path file = dir.resolve(example[1]);
+			if (Files.exists(file) || Files.exists(dir.resolve(".examples-installed"))) {
+				continue;
+			}
+			try (InputStream in = CameraManager.class.getResourceAsStream("/examples/" + example[0] + "/" + example[1])) {
+				if (in != null) {
+					Files.createDirectories(dir);
+					Files.copy(in, file);
+				}
+			} catch (IOException e) {
+				logger.debug("Could not write {}", file, e);
+			}
+		}
+		for (String dir : new String[]{"shaders", "skyboxes"}) {
+			try {
+				Files.createDirectories(dataDir.resolve(dir));
+				Path marker = dataDir.resolve(dir).resolve(".examples-installed");
+				if (!Files.exists(marker)) {
+					Files.writeString(marker, "Delete this file to get the example files back.\n");
+				}
+			} catch (IOException e) {
+				logger.debug("Could not create {}", dir, e);
+			}
 		}
 	}
 
@@ -79,6 +133,12 @@ public final class CameraManager implements CameraDirectory {
 			web = null;
 		}
 		assets.close();
+		workers.shutdownNow();
+	}
+
+	/** {@code /cctv reload}: re-reads the viewer settings from config.json. */
+	public void reloadViewerSettings() throws IOException {
+		config.reloadViewer(dataDir.resolve("config.json"), logger);
 	}
 
 	public boolean isWebRunning() {
@@ -186,7 +246,7 @@ public final class CameraManager implements CameraDirectory {
 				return Subscription.NOT_FOUND;
 			}
 
-			CameraSession session = sessions.computeIfAbsent(key, k -> new CameraSession(camera, config, palette));
+			CameraSession session = sessions.computeIfAbsent(key, k -> new CameraSession(camera, config, palette, workers));
 			if (session.viewerCount() >= config.maxViewersPerCamera) {
 				return Subscription.FULL;
 			}

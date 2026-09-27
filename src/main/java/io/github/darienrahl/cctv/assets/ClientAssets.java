@@ -32,6 +32,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 
 /**
@@ -65,6 +66,8 @@ public final class ClientAssets implements AutoCloseable {
 	private volatile byte[] bundle;
 	private volatile String etag = "";
 	private volatile String entityList = "[]";
+	private volatile byte @Nullable [] entityModels;
+	private volatile String entityModelsEtag = "";
 
 	public ClientAssets(Path dir, String version, boolean download, Logger logger) {
 		this.dir = dir;
@@ -98,6 +101,15 @@ public final class ClientAssets implements AutoCloseable {
 
 	public String entityListJson() {
 		return entityList;
+	}
+
+	/** Gzip-compressed entity model geometry (see {@link EntityModels}), or {@code null} when unavailable. */
+	public byte @Nullable [] entityModels() {
+		return entityModels;
+	}
+
+	public String entityModelsEtag() {
+		return entityModelsEtag;
 	}
 
 	/** @param path path below {@code textures/entity/} without extension, e.g. {@code cow/cow_temperate} */
@@ -164,20 +176,34 @@ public final class ClientAssets implements AutoCloseable {
 			}
 
 			long start = System.nanoTime();
-			byte[] json = buildBundle();
-			ByteArrayOutputStream compressed = new ByteArrayOutputStream(json.length / 2);
-			try (GZIPOutputStream gzip = new GZIPOutputStream(compressed)) {
-				gzip.write(json);
-			}
-			bundle = compressed.toByteArray();
-			etag = "\"" + HexFormat.of().formatHex(MessageDigest.getInstance("SHA-1").digest(bundle)).substring(0, 16) + "\"";
+			bundle = gzip(buildBundle());
+			etag = etagOf(bundle);
 			state = State.READY;
 			logger.info("CCTV: block assets ready ({} KB, {} ms)", bundle.length / 1024, (System.nanoTime() - start) / 1_000_000);
+
+			String models = EntityModels.extract(jar, logger);
+			if (models != null) {
+				byte[] gz = gzip(models.getBytes(StandardCharsets.UTF_8));
+				entityModelsEtag = etagOf(gz);
+				entityModels = gz;
+			}
 		} catch (Exception e) {
 			error = e.toString();
 			state = State.FAILED;
 			logger.error("CCTV: could not prepare block textures, the viewer falls back to plain colours", e);
 		}
+	}
+
+	private static byte[] gzip(byte[] data) throws IOException {
+		ByteArrayOutputStream compressed = new ByteArrayOutputStream(data.length / 2);
+		try (GZIPOutputStream gzip = new GZIPOutputStream(compressed)) {
+			gzip.write(data);
+		}
+		return compressed.toByteArray();
+	}
+
+	private static String etagOf(byte[] data) throws Exception {
+		return "\"" + HexFormat.of().formatHex(MessageDigest.getInstance("SHA-1").digest(data)).substring(0, 16) + "\"";
 	}
 
 	private Path findOrDownloadClientJar() throws Exception {

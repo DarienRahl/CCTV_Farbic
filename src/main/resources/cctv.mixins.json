@@ -3,6 +3,7 @@
 	"package": "io.github.darienrahl.cctv.mixin",
 	"compatibilityLevel": "JAVA_25",
 	"mixins": [
+		"ChunkMapAccessor",
 		"ServerLevelMixin"
 	],
 	"injectors": {

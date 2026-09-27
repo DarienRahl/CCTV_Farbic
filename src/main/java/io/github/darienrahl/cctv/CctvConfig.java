@@ -6,6 +6,8 @@ import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -31,14 +33,23 @@ public final class CctvConfig {
 	/** Vertical field of view for new cameras, in degrees. */
 	public double defaultFov = 70;
 	/** How far (in blocks) new cameras see. */
-	public int defaultRange = 64;
+	public int defaultRange = 96;
 	/** Upper limit for {@code /cctv range}. */
-	public int maxRange = 160;
+	public int maxRange = 512;
+	/**
+	 * Show terrain beyond the loaded chunks by reading the saved world (region files) - like the Bobby client mod,
+	 * but on the server. Chunks are never loaded for this; they show the state they were saved in.
+	 */
+	public boolean farTerrain = true;
+	/** Entities (players, mobs) are shown up to this distance from the camera. */
+	public int entityRange = 128;
 
 	/** Entity positions are sent every N ticks (1 = 20 times per second). */
 	public int entityUpdateTicks = 1;
-	/** How many 16x16x16 sections a camera may read from the world per tick while loading. */
-	public int sectionsPerTick = 48;
+	/** How many 16x16x16 sections a camera may copy from the world per tick while loading (decoding happens off the server thread). */
+	public int sectionsPerTick = 96;
+	/** Background threads that decode world data and read saved chunks (never the server thread). */
+	public int workerThreads = Math.max(1, Math.min(4, Runtime.getRuntime().availableProcessors() / 2));
 	/** A full re-scan of a watched camera's area is spread over this many seconds (safety net for missed block updates). */
 	public int rescanSeconds = 5;
 
@@ -60,8 +71,40 @@ public final class CctvConfig {
 	/** A viewer that falls this many messages behind is disconnected (it reconnects automatically). */
 	public int maxQueuedMessages = 20000;
 
+	/** How the viewer page looks for everybody who opens it. Reload with {@code /cctv reload}. */
+	public volatile ViewerDefaults viewer = new ViewerDefaults();
+
+	/** Version of this file's layout, used to update old defaults. */
+	public int configVersion;
+	private static final int CURRENT_VERSION = 2;
+
+	/** Default viewer settings. Every visitor can change them for themselves unless {@link #lockSettings} is set. */
+	public static final class ViewerDefaults {
+		/** Graphics: "vanilla" (like the game) or "shaders" (shadows, reflections, bloom...). */
+		public String graphics = "vanilla";
+		/** Shader quality when graphics is "shaders": "low", "medium", "high" or "ultra". */
+		public String shaderQuality = "medium";
+		/** Custom post-processing shader: a file name (without .glsl) from config/cctv/shaders, empty for none. */
+		public String postShader = "";
+		/** Sky box per dimension, e.g. {"minecraft:overworld": "sunset"}: a folder or image in config/cctv/skyboxes. */
+		public Map<String, String> skyboxes = new LinkedHashMap<>();
+		/** Clouds: "fancy", "fast" or "off". */
+		public String clouds = "fancy";
+		/** Player names above heads. */
+		public boolean labels = true;
+		/** Names above all mobs (only when they are visible from the camera). */
+		public boolean mobLabels = false;
+		/** Picture mode: "color", "mono" or "night". */
+		public String mode = "color";
+		/** CCTV look (scan lines, vignette). */
+		public boolean cctvEffect = false;
+		/** Visitors cannot change the settings above. */
+		public boolean lockSettings = false;
+	}
+
 	public static CctvConfig load(Path file, Logger logger) {
 		CctvConfig config = new CctvConfig();
+		config.configVersion = CURRENT_VERSION;
 
 		if (Files.exists(file)) {
 			try (Reader reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
@@ -74,9 +117,39 @@ public final class CctvConfig {
 			}
 		}
 
+		config.migrate();
 		config.sanitize();
 		config.save(file, logger);
 		return config;
+	}
+
+	/** Re-reads only the viewer defaults (safe while running). */
+	public void reloadViewer(Path file, Logger logger) throws IOException {
+		try (Reader reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
+			CctvConfig loaded = GSON.fromJson(reader, CctvConfig.class);
+			if (loaded != null && loaded.viewer != null) {
+				viewer = loaded.viewer;
+				sanitize();
+			}
+		} catch (JsonParseException e) {
+			throw new IOException(e.getMessage(), e);
+		}
+	}
+
+	/** Raises limits that were defaults in older versions (only when they were left untouched). */
+	private void migrate() {
+		if (configVersion < 2) {
+			if (maxRange == 160) {
+				maxRange = 512;
+			}
+			if (defaultRange == 64) {
+				defaultRange = 96;
+			}
+			if (sectionsPerTick == 48) {
+				sectionsPerTick = 96;
+			}
+		}
+		configVersion = CURRENT_VERSION;
 	}
 
 	public void save(Path file, Logger logger) {
@@ -100,15 +173,39 @@ public final class CctvConfig {
 		if (publicUrl == null) {
 			publicUrl = "";
 		}
+		if (viewer == null) {
+			viewer = new ViewerDefaults();
+		}
+		if (viewer.skyboxes == null) {
+			viewer.skyboxes = new LinkedHashMap<>();
+		}
+		viewer.graphics = oneOf(viewer.graphics, "vanilla", "vanilla", "shaders");
+		viewer.shaderQuality = oneOf(viewer.shaderQuality, "medium", "low", "medium", "high", "ultra");
+		viewer.clouds = oneOf(viewer.clouds, "fancy", "fancy", "fast", "off");
+		viewer.mode = oneOf(viewer.mode, "color", "color", "mono", "night");
+		if (viewer.postShader == null || !viewer.postShader.matches("[A-Za-z0-9_-]{0,64}")) {
+			viewer.postShader = "";
+		}
 		port = clamp(port, 1, 65535);
 		defaultFov = Math.max(10, Math.min(140, defaultFov));
-		maxRange = clamp(maxRange, 16, 512);
+		maxRange = clamp(maxRange, 16, 1024);
+		entityRange = clamp(entityRange, 16, 512);
+		workerThreads = clamp(workerThreads, 1, 32);
 		defaultRange = clamp(defaultRange, 16, maxRange);
 		entityUpdateTicks = clamp(entityUpdateTicks, 1, 20);
 		sectionsPerTick = clamp(sectionsPerTick, 1, 1024);
 		rescanSeconds = clamp(rescanSeconds, 1, 600);
 		maxViewersPerCamera = clamp(maxViewersPerCamera, 1, 1000);
 		maxQueuedMessages = clamp(maxQueuedMessages, 1000, 1_000_000);
+	}
+
+	private static String oneOf(String value, String fallback, String... allowed) {
+		for (String option : allowed) {
+			if (option.equals(value)) {
+				return value;
+			}
+		}
+		return fallback;
 	}
 
 	private static int clamp(int value, int min, int max) {

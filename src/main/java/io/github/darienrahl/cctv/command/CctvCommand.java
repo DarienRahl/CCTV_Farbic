@@ -21,6 +21,9 @@ import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.commands.SharedSuggestionProvider;
+import net.minecraft.commands.arguments.EntityAnchorArgument;
+import net.minecraft.commands.arguments.coordinates.Coordinates;
+import net.minecraft.commands.arguments.coordinates.LocalCoordinates;
 import net.minecraft.commands.arguments.coordinates.RotationArgument;
 import net.minecraft.commands.arguments.coordinates.Vec3Argument;
 import net.minecraft.network.chat.ClickEvent;
@@ -81,17 +84,17 @@ public final class CctvCommand {
 						.then(Commands.argument("name", StringArgumentType.word())
 								.executes(context -> create(context, null, null))
 								.then(Commands.argument("pos", Vec3Argument.vec3())
-										.executes(context -> create(context, Vec3Argument.getVec3(context, "pos"), null))
+										.executes(context -> create(context, eyeLevel(context), null))
 										.then(Commands.argument("rotation", RotationArgument.rotation())
-												.executes(context -> create(context, Vec3Argument.getVec3(context, "pos"),
+												.executes(context -> create(context, eyeLevel(context),
 														RotationArgument.getRotation(context, "rotation").getRotation(context.getSource())))))))
 				.then(Commands.literal("move").requires(op)
 						.then(cameraArgument()
 								.executes(context -> move(context, null, null))
 								.then(Commands.argument("pos", Vec3Argument.vec3())
-										.executes(context -> move(context, Vec3Argument.getVec3(context, "pos"), null))
+										.executes(context -> move(context, eyeLevel(context), null))
 										.then(Commands.argument("rotation", RotationArgument.rotation())
-												.executes(context -> move(context, Vec3Argument.getVec3(context, "pos"),
+												.executes(context -> move(context, eyeLevel(context),
 														RotationArgument.getRotation(context, "rotation").getRotation(context.getSource())))))))
 				.then(Commands.literal("aim").requires(op)
 						.then(cameraArgument()
@@ -104,11 +107,13 @@ public final class CctvCommand {
 										.executes(context -> fov(context, DoubleArgumentType.getDouble(context, "degrees"))))))
 				.then(Commands.literal("range").requires(op)
 						.then(cameraArgument()
-								.then(Commands.argument("blocks", IntegerArgumentType.integer(16, 512))
+								.then(Commands.argument("blocks", IntegerArgumentType.integer(16, 1024))
 										.executes(context -> range(context, IntegerArgumentType.getInteger(context, "blocks"))))))
 				.then(Commands.literal("remove").requires(op)
 						.then(cameraArgument()
-								.executes(context -> remove(context.getSource(), name(context))))));
+								.executes(context -> remove(context.getSource(), name(context)))))
+				.then(Commands.literal("reload").requires(op)
+						.executes(context -> reload(context.getSource()))));
 	}
 
 	private static RequiredArgumentBuilder<CommandSourceStack, String> cameraArgument() {
@@ -141,6 +146,24 @@ public final class CctvCommand {
 		return entity != null ? entity.getEyePosition() : source.getPosition();
 	}
 
+	/**
+	 * The {@code pos} argument, but relative coordinates start at the executor's eyes: {@code ~ ~ ~} is where the
+	 * player looks from (vanilla would use the feet) and {@code ^ ^ ^1} is one block in front of the eyes.
+	 */
+	private static Vec3 eyeLevel(CommandContext<CommandSourceStack> context) {
+		CommandSourceStack source = context.getSource();
+		Coordinates coordinates = Vec3Argument.getCoordinates(context, "pos");
+		if (coordinates instanceof LocalCoordinates) {
+			return coordinates.getPosition(source.withAnchor(EntityAnchorArgument.Anchor.EYES));
+		}
+		Vec3 pos = coordinates.getPosition(source);
+		Entity entity = source.getEntity();
+		if (entity != null && coordinates.isYRelative()) {
+			pos = pos.add(0, entity.getEyeHeight(), 0);
+		}
+		return pos;
+	}
+
 	private static String dimension(CommandSourceStack source) {
 		return source.getLevel().dimension().identifier().toString();
 	}
@@ -148,13 +171,14 @@ public final class CctvCommand {
 	private static int help(CommandSourceStack source) {
 		source.sendSuccess(() -> Component.literal("CCTV - kamery podglądu na żywo w przeglądarce").withStyle(ChatFormatting.GOLD), false);
 		String[] lines = {
-				"/cctv create <nazwa> [pos] [yaw pitch] - postaw kamerę (domyślnie: tam gdzie patrzysz)",
+				"/cctv create <nazwa> [pos] [yaw pitch] - postaw kamerę na wysokości oczu (~ ~ ~ = twoje oczy)",
 				"/cctv move <nazwa> [pos] [yaw pitch] - przenieś kamerę",
 				"/cctv aim <nazwa> [cel] - skieruj kamerę na punkt (domyślnie: na ciebie)",
 				"/cctv fov <nazwa> <stopnie> - kąt widzenia",
 				"/cctv range <nazwa> <bloki> - zasięg widzenia",
 				"/cctv remove <nazwa> - usuń kamerę",
-				"/cctv list | url [nazwa] | info <nazwa>"
+				"/cctv list | url [nazwa] | info <nazwa>",
+				"/cctv reload - wczytaj ponownie ustawienia podglądu (shadery, skyboxy)"
 		};
 		for (String line : lines) {
 			source.sendSuccess(() -> Component.literal(line).withStyle(ChatFormatting.GRAY), false);
@@ -291,6 +315,19 @@ public final class CctvCommand {
 		manager.remove(camera.name());
 		CameraMarker.remove(manager, camera);
 		source.sendSuccess(() -> Component.literal("Kamera '" + camera.name() + "' usunięta.").withStyle(ChatFormatting.YELLOW), true);
+		return 1;
+	}
+
+	private static int reload(CommandSourceStack source) throws CommandSyntaxException {
+		CameraManager manager = manager();
+		try {
+			manager.reloadViewerSettings();
+		} catch (java.io.IOException e) {
+			source.sendFailure(Component.literal("Nie udało się wczytać config/cctv/config.json: " + e.getMessage()));
+			return 0;
+		}
+		source.sendSuccess(() -> Component.literal("Ustawienia podglądu (sekcja \"viewer\") wczytane ponownie. Odśwież stronę w przeglądarce.")
+				.withStyle(ChatFormatting.GREEN), true);
 		return 1;
 	}
 
