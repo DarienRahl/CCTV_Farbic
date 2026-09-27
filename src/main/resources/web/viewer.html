@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="pl">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>CCTV</title>
+	<link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="viewer">
+	<div id="screen">
+		<canvas id="view"></canvas>
+		<div id="labels"></div>
+		<div id="fx"></div>
+		<div id="noise"></div>
+
+		<div class="hud top-left">
+			<div class="cam"><span class="rec"></span><span id="cam-name">CAM</span></div>
+			<div id="cam-sub" class="sub"></div>
+		</div>
+		<div class="hud top-right">
+			<div id="clock"></div>
+			<div id="game-time" class="sub"></div>
+		</div>
+		<div class="hud bottom-left"><span id="status" data-state="connecting">ŁĄCZENIE…</span></div>
+		<div class="hud bottom-right" id="stats"></div>
+
+		<div id="loading" hidden>
+			<div class="bar"><div id="loading-fill"></div></div>
+			<div id="loading-text"></div>
+		</div>
+		<div id="message" hidden></div>
+	</div>
+
+	<nav id="toolbar">
+		<a href="/" id="back" class="button">◀ Wszystkie kamery</a>
+		<span class="spacer"></span>
+		<button type="button" data-toggle="labels" title="Nazwy graczy nad głowami">Nazwy</button>
+		<button type="button" data-toggle="allLabels" title="Podpisy nad wszystkimi mobami">Podpisy mobów</button>
+		<button type="button" id="mode" title="Kolor / czarno-biały / noktowizor">Tryb</button>
+		<button type="button" data-toggle="fx" title="Skanlinie i winieta">Efekt CCTV</button>
+		<button type="button" id="reset-view" title="Przeciągnij myszą, aby rozejrzeć się; kółko = zoom">Reset widoku</button>
+		<button type="button" id="fullscreen">Pełny ekran</button>
+	</nav>
+
+	<script type="module" src="/static/app.js"></script>
+</body>
+</html>

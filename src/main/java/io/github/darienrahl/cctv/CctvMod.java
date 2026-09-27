@@ -12,6 +12,7 @@ import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.loader.api.FabricLoader;
 
+import io.github.darienrahl.cctv.assets.ClientAssets;
 import io.github.darienrahl.cctv.camera.CameraManager;
 import io.github.darienrahl.cctv.camera.CameraStore;
 import io.github.darienrahl.cctv.command.CctvCommand;
@@ -39,7 +40,11 @@ public final class CctvMod implements ModInitializer {
 
 		ServerLifecycleEvents.SERVER_STARTED.register(server -> {
 			CctvConfig config = CctvConfig.load(dir.resolve("config.json"), LOGGER);
-			CameraManager started = new CameraManager(server, config, new CameraStore(dir.resolve("cameras.json"), LOGGER), LOGGER);
+			String version = FabricLoader.getInstance().getModContainer("minecraft")
+					.map(container -> container.getMetadata().getVersion().getFriendlyString())
+					.orElse("unknown");
+			ClientAssets assets = new ClientAssets(dir.resolve("assets"), version, config.downloadClientAssets, LOGGER);
+			CameraManager started = new CameraManager(server, config, new CameraStore(dir.resolve("cameras.json"), LOGGER), assets, LOGGER);
 			started.start();
 			manager = started;
 		});

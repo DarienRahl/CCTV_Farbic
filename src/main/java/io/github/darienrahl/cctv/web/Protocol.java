@@ -10,6 +10,11 @@ import java.util.Base64;
  * local palette plus run-length encoded palette indices in YZX order
  * ({@code index = (y * 16 + z) * 16 + x}), packed as varint pairs
  * {@code (runLength, paletteIndex)} and base64 encoded.
+ *
+ * <p>Sky and block light (0-15 per block, same order) use the same run-length
+ * encoding with the light level instead of a palette index ({@code sl}, {@code bl}).
+ * Biomes are stored per 4x4x4 cell: a palette of biome ids ({@code bp}) and,
+ * when there is more than one, 64 indices in YZX order ({@code bi}).
  */
 public final class Protocol {
 	public static final int SECTION_VOLUME = 16 * 16 * 16;
@@ -18,6 +23,16 @@ public final class Protocol {
 	}
 
 	public static String section(int sx, int sy, int sz, int[] states) {
+		return section(sx, sy, sz, states, null, null, null, null);
+	}
+
+	/**
+	 * @param sky          sky light per block (0-15), or {@code null} if the dimension has none
+	 * @param block        block light per block (0-15), or {@code null}
+	 * @param biomePalette biome ids used in the section, or {@code null}
+	 * @param biomes       64 palette indices (4x4x4, YZX order), ignored when the palette has one entry
+	 */
+	public static String section(int sx, int sy, int sz, int[] states, byte[] sky, byte[] block, String[] biomePalette, byte[] biomes) {
 		int[] palette = new int[16];
 		int paletteSize = 0;
 		ByteArrayOutputStream runs = new ByteArrayOutputStream(64);
@@ -74,9 +89,43 @@ public final class Protocol {
 			json.value(palette[p]);
 		}
 		json.endArray()
-				.field("r", Base64.getEncoder().encodeToString(runs.toByteArray()))
-				.endObject();
-		return json.toString();
+				.field("r", Base64.getEncoder().encodeToString(runs.toByteArray()));
+		if (sky != null) {
+			json.field("sl", lightRuns(sky));
+		}
+		if (block != null) {
+			json.field("bl", lightRuns(block));
+		}
+		if (biomePalette != null && biomePalette.length > 0) {
+			json.name("bp").beginArray();
+			for (String biome : biomePalette) {
+				json.value(biome);
+			}
+			json.endArray();
+			if (biomePalette.length > 1 && biomes != null) {
+				json.field("bi", Base64.getEncoder().encodeToString(biomes));
+			}
+		}
+		return json.endObject().toString();
+	}
+
+	private static String lightRuns(byte[] light) {
+		ByteArrayOutputStream out = new ByteArrayOutputStream(16);
+		int value = light[0];
+		int run = 0;
+		for (int i = 0; i <= SECTION_VOLUME; i++) {
+			if (i < SECTION_VOLUME && light[i] == value) {
+				run++;
+				continue;
+			}
+			writeVarInt(out, run);
+			writeVarInt(out, value);
+			if (i < SECTION_VOLUME) {
+				value = light[i];
+				run = 1;
+			}
+		}
+		return Base64.getEncoder().encodeToString(out.toByteArray());
 	}
 
 	private static void writeVarInt(ByteArrayOutputStream out, int value) {

@@ -24,6 +24,7 @@ import com.sun.net.httpserver.HttpServer;
 import org.slf4j.Logger;
 
 import io.github.darienrahl.cctv.CctvConfig;
+import io.github.darienrahl.cctv.assets.ClientAssets;
 
 /**
  * Small HTTP server built on the JDK's {@code com.sun.net.httpserver}.
@@ -35,6 +36,9 @@ import io.github.darienrahl.cctv.CctvConfig;
  * GET /api/cameras               camera list (JSON)
  * GET /api/cameras/{name}/stream live stream (Server-Sent Events)
  * GET /skin/{uuid}?name={player} player skin PNG
+ * GET /assets/bundle.json        block states, models and textures (from the client jar)
+ * GET /assets/entities.json      list of entity textures
+ * GET /assets/entity/{path}.png  one entity texture
  * </pre>
  */
 public final class WebServer {
@@ -44,6 +48,7 @@ public final class WebServer {
 
 	private final CctvConfig config;
 	private final CameraDirectory directory;
+	private final ClientAssets assets;
 	private final Logger logger;
 	private final SkinProxy skins;
 	private final Map<String, byte[]> resourceCache = new ConcurrentHashMap<>();
@@ -52,9 +57,10 @@ public final class WebServer {
 	private HttpServer server;
 	private ExecutorService executor;
 
-	public WebServer(CctvConfig config, CameraDirectory directory, Logger logger) {
+	public WebServer(CctvConfig config, CameraDirectory directory, ClientAssets assets, Logger logger) {
 		this.config = config;
 		this.directory = directory;
+		this.assets = assets;
 		this.logger = logger;
 		this.skins = new SkinProxy(logger);
 		String dev = System.getProperty("cctv.webDir");
@@ -134,6 +140,8 @@ public final class WebServer {
 			stream(exchange, name);
 		} else if (path.startsWith("/skin/")) {
 			skin(exchange, path.substring("/skin/".length()), query.get("name"));
+		} else if (path.startsWith("/assets/")) {
+			asset(exchange, path.substring("/assets/".length()));
 		} else {
 			sendText(exchange, 404, "text/plain", "Not found");
 		}
@@ -198,6 +206,48 @@ public final class WebServer {
 		exchange.getResponseHeaders().add("Access-Control-Expose-Headers", "X-Skin-Model");
 		exchange.getResponseHeaders().add("Cache-Control", "max-age=3600");
 		sendBytes(exchange, 200, "image/png", skin.png());
+	}
+
+	private void asset(HttpExchange exchange, String path) throws IOException {
+		Headers headers = exchange.getResponseHeaders();
+		headers.add("Access-Control-Allow-Origin", "*");
+
+		if (path.equals("bundle.json")) {
+			ClientAssets.State state = assets.state();
+			if (state != ClientAssets.State.READY) {
+				headers.add("Cache-Control", "no-store");
+				int status = state == ClientAssets.State.LOADING ? 503 : 404;
+				sendText(exchange, status, "application/json", "{\"state\":\"" + state.name().toLowerCase() + "\"}");
+				return;
+			}
+
+			headers.add("ETag", assets.etag());
+			headers.add("Cache-Control", "no-cache");
+			if (assets.etag().equals(exchange.getRequestHeaders().getFirst("If-None-Match"))) {
+				exchange.sendResponseHeaders(304, -1);
+				return;
+			}
+			if (acceptsGzip(exchange)) {
+				headers.add("Content-Encoding", "gzip");
+				sendBytes(exchange, 200, "application/json", assets.bundle());
+			} else {
+				sendBytes(exchange, 200, "application/json",
+						new java.util.zip.GZIPInputStream(new java.io.ByteArrayInputStream(assets.bundle())).readAllBytes());
+			}
+		} else if (path.equals("entities.json")) {
+			headers.add("Cache-Control", "no-cache");
+			sendText(exchange, 200, "application/json", assets.entityListJson());
+		} else if (path.startsWith("entity/") && path.endsWith(".png")) {
+			byte[] png = assets.entityTexture(path.substring("entity/".length(), path.length() - ".png".length()));
+			if (png == null) {
+				sendText(exchange, 404, "text/plain", "Not found");
+				return;
+			}
+			headers.add("Cache-Control", "max-age=86400");
+			sendBytes(exchange, 200, "image/png", png);
+		} else {
+			sendText(exchange, 404, "text/plain", "Not found");
+		}
 	}
 
 	private void serveResource(HttpExchange exchange, String file) throws IOException {

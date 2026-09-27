@@ -17,6 +17,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.block.state.BlockState;
 
 import io.github.darienrahl.cctv.CctvConfig;
+import io.github.darienrahl.cctv.assets.ClientAssets;
 import io.github.darienrahl.cctv.web.CameraDirectory;
 import io.github.darienrahl.cctv.web.Json;
 import io.github.darienrahl.cctv.web.Viewer;
@@ -31,13 +32,15 @@ public final class CameraManager implements CameraDirectory {
 	private final Map<String, Camera> cameras = new ConcurrentHashMap<>();
 	private final Map<String, CameraSession> sessions = new ConcurrentHashMap<>();
 	private final BlockPalette palette = new BlockPalette();
+	private final ClientAssets assets;
 	private @Nullable WebServer web;
 	private long tick;
 
-	public CameraManager(MinecraftServer server, CctvConfig config, CameraStore store, Logger logger) {
+	public CameraManager(MinecraftServer server, CctvConfig config, CameraStore store, ClientAssets assets, Logger logger) {
 		this.server = server;
 		this.config = config;
 		this.store = store;
+		this.assets = assets;
 		this.logger = logger;
 	}
 
@@ -55,7 +58,8 @@ public final class CameraManager implements CameraDirectory {
 		}
 		logger.info("Loaded {} CCTV camera(s)", cameras.size());
 
-		WebServer webServer = new WebServer(config, this, logger);
+		assets.start();
+		WebServer webServer = new WebServer(config, this, assets, logger);
 		try {
 			webServer.start();
 			web = webServer;
@@ -74,6 +78,7 @@ public final class CameraManager implements CameraDirectory {
 			web.stop();
 			web = null;
 		}
+		assets.close();
 	}
 
 	public boolean isWebRunning() {

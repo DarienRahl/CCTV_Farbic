@@ -42,6 +42,13 @@ public final class CctvConfig {
 	/** A full re-scan of a watched camera's area is spread over this many seconds (safety net for missed block updates). */
 	public int rescanSeconds = 5;
 
+	/**
+	 * Download the official client jar of this Minecraft version from Mojang (once, ~30 MB, cached in
+	 * config/cctv/assets) so the viewer can draw real block textures and models. The file is never sent
+	 * to players. When false, put a client jar there yourself or the viewer uses plain colours.
+	 */
+	public boolean downloadClientAssets = true;
+
 	/** Compress the live stream with gzip when the browser supports it. */
 	public boolean gzip = true;
 	/** Serve player skins (fetched from Mojang by the server and cached). */

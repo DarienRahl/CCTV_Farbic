@@ -27,6 +27,8 @@ final class BlockPalette {
 	static final int FLAG_WATER = 4;
 	static final int FLAG_LAVA = 8;
 	static final int FLAG_NO_COLLISION = 16;
+	/** Collision shape is a full block: it darkens neighbours in smooth lighting (ambient occlusion). */
+	static final int FLAG_FULL_COLLISION = 32;
 
 	private static final int MAX_BOXES = 24;
 
@@ -81,6 +83,9 @@ final class BlockPalette {
 			boxes = shape.toAabbs();
 			if (state.getCollisionShape(EmptyBlockGetter.INSTANCE, BlockPos.ZERO).isEmpty()) {
 				flags |= FLAG_NO_COLLISION;
+			}
+			if (state.isCollisionShapeFullBlock(EmptyBlockGetter.INSTANCE, BlockPos.ZERO)) {
+				flags |= FLAG_FULL_COLLISION;
 			}
 		} catch (RuntimeException e) {
 			boxes = List.of(new AABB(0, 0, 0, 1, 1, 1));

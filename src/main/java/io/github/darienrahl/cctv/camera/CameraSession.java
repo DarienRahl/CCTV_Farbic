@@ -4,6 +4,8 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.BitSet;
 import java.util.HashMap;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Queue;
@@ -15,15 +17,11 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.block.Block;
-import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.level.chunk.LevelChunk;
-import net.minecraft.world.level.chunk.LevelChunkSection;
 import net.minecraft.world.phys.AABB;
 
 import io.github.darienrahl.cctv.CctvConfig;
 import io.github.darienrahl.cctv.web.Json;
-import io.github.darienrahl.cctv.web.Protocol;
 import io.github.darienrahl.cctv.web.Viewer;
 
 /**
@@ -42,17 +40,19 @@ final class CameraSession {
 	private static final double SECTION_RADIUS = Math.sqrt(3 * 8 * 8);
 	/** Sections this close are always included, even behind the camera. */
 	private static final double ALWAYS_INCLUDE_DISTANCE = 28;
-	private static final int AIR_ID = Block.getId(Blocks.AIR.defaultBlockState());
+	/** After a block change, light is re-read for this many ticks (the light engine updates a bit later). */
+	private static final int LIGHT_WATCH_TICKS = 30;
 
 	private static final class SectionEntry {
 		final int x;
 		final int y;
 		final int z;
 		final int order;
-		/** Global block state ids in YZX order, {@code null} while the chunk is not loaded. */
-		int @Nullable [] states;
+		/** {@code null} while the chunk is not loaded. */
+		@Nullable SectionCapture data;
 		int @Nullable [] distinct;
 		@Nullable String encoded;
+		long lightWatchUntil;
 
 		SectionEntry(int x, int y, int z, int order) {
 			this.x = x;
@@ -61,16 +61,21 @@ final class CameraSession {
 			this.order = order;
 		}
 
+		void changed() {
+			encoded = null;
+			distinct = null;
+		}
+
 		String json() {
 			if (encoded == null) {
-				encoded = Protocol.section(x, y, z, states);
+				encoded = data.json(x, y, z);
 			}
 			return encoded;
 		}
 
 		int[] distinct() {
 			if (distinct == null) {
-				distinct = Arrays.stream(states).distinct().toArray();
+				distinct = Arrays.stream(data.states).distinct().toArray();
 			}
 			return distinct;
 		}
@@ -116,6 +121,8 @@ final class CameraSession {
 	private int captureCursor;
 	private int rescanCursor;
 	private final List<int[]> blockChanges = new ArrayList<>();
+	private final LinkedHashMap<SectionEntry, Boolean> lightWatch = new LinkedHashMap<>();
+	private String biomes = "{}";
 	private int idleTicks;
 	private boolean needsRebuild = true;
 
@@ -213,7 +220,8 @@ final class CameraSession {
 		}
 
 		captureNewSections(level);
-		flushBlockChanges();
+		flushBlockChanges(tick);
+		refreshLight(level, tick);
 		rescan(level);
 		syncViewers();
 
@@ -242,19 +250,18 @@ final class CameraSession {
 		}
 
 		SectionEntry entry = sections.get(key(x >> 4, y >> 4, z >> 4));
-		if (entry == null || entry.states == null) {
+		if (entry == null || entry.data == null) {
 			return;
 		}
 
 		int index = ((y & 15) << 8) | ((z & 15) << 4) | (x & 15);
 		int id = Block.getId(state);
-		if (entry.states[index] == id) {
+		if (entry.data.states[index] == id) {
 			return;
 		}
 
-		entry.states[index] = id;
-		entry.encoded = null;
-		entry.distinct = null;
+		entry.data.states[index] = id;
+		entry.changed();
 		blockChanges.add(new int[]{x, y, z, id, entry.order});
 	}
 
@@ -263,12 +270,19 @@ final class CameraSession {
 		this.needsRebuild = false;
 		sections.clear();
 		blockChanges.clear();
+		lightWatch.clear();
 		captureCursor = 0;
 		rescanCursor = 0;
 		order = List.of();
 
 		if (level == null) {
 			return;
+		}
+
+		try {
+			biomes = BiomeTable.json(level);
+		} catch (RuntimeException e) {
+			biomes = "{}";
 		}
 
 		Camera c = camera;
@@ -345,11 +359,11 @@ final class CameraSession {
 		int budget = config.sectionsPerTick;
 		while (captureCursor < order.size() && budget-- > 0) {
 			SectionEntry entry = order.get(captureCursor++);
-			entry.states = capture(level, entry.x, entry.y, entry.z);
+			entry.data = SectionCapture.capture(level, entry.x, entry.y, entry.z);
 		}
 	}
 
-	/** Slowly re-reads everything: picks up chunks that loaded later and any change the mixin missed. */
+	/** Slowly re-reads everything: picks up chunks that loaded later and anything the mixin missed. */
 	private void rescan(ServerLevel level) {
 		if (captureCursor < order.size() || order.isEmpty()) {
 			return;
@@ -359,18 +373,54 @@ final class CameraSession {
 		for (int i = 0; i < perTick; i++) {
 			rescanCursor = (rescanCursor + 1) % order.size();
 			SectionEntry entry = order.get(rescanCursor);
-			int[] states = capture(level, entry.x, entry.y, entry.z);
-			if (states == null || (entry.states != null && Arrays.equals(states, entry.states))) {
+			SectionCapture data = SectionCapture.capture(level, entry.x, entry.y, entry.z);
+			if (data == null || (entry.data != null && data.sameAs(entry.data))) {
 				continue;
 			}
 
-			entry.states = states;
-			entry.encoded = null;
-			entry.distinct = null;
-			for (ViewerState state : viewers) {
-				if (entry.order < state.syncIndex) {
-					sendSection(state, entry);
+			entry.data = data;
+			entry.changed();
+			broadcastSection(entry);
+		}
+	}
+
+	/** Light follows block changes a few ticks later; watch the touched sections and resend them when it settles. */
+	private void refreshLight(ServerLevel level, long tick) {
+		if (lightWatch.isEmpty() || tick % 3 != 0) {
+			return;
+		}
+
+		Iterator<SectionEntry> iterator = lightWatch.keySet().iterator();
+		while (iterator.hasNext()) {
+			SectionEntry entry = iterator.next();
+			if (entry.data != null && entry.data.refreshLight(level, entry.x, entry.y, entry.z)) {
+				entry.changed();
+				broadcastSection(entry);
+			}
+			if (tick > entry.lightWatchUntil) {
+				iterator.remove();
+			}
+		}
+	}
+
+	private void watchLight(SectionEntry entry, long tick) {
+		for (int dx = -1; dx <= 1; dx++) {
+			for (int dy = -1; dy <= 1; dy++) {
+				for (int dz = -1; dz <= 1; dz++) {
+					SectionEntry neighbor = sections.get(key(entry.x + dx, entry.y + dy, entry.z + dz));
+					if (neighbor != null && neighbor.data != null) {
+						neighbor.lightWatchUntil = tick + LIGHT_WATCH_TICKS;
+						lightWatch.put(neighbor, Boolean.TRUE);
+					}
 				}
+			}
+		}
+	}
+
+	private void broadcastSection(SectionEntry entry) {
+		for (ViewerState state : viewers) {
+			if (entry.order < state.syncIndex) {
+				sendSection(state, entry);
 			}
 		}
 	}
@@ -380,7 +430,7 @@ final class CameraSession {
 			int sent = 0;
 			while (state.syncIndex < captureCursor && sent < SECTIONS_PER_VIEWER_TICK) {
 				SectionEntry entry = order.get(state.syncIndex++);
-				if (entry.states != null) {
+				if (entry.data != null) {
 					sendSection(state, entry);
 					sent++;
 				}
@@ -393,9 +443,16 @@ final class CameraSession {
 		}
 	}
 
-	private void flushBlockChanges() {
+	private void flushBlockChanges(long tick) {
 		if (blockChanges.isEmpty()) {
 			return;
+		}
+
+		for (int[] change : blockChanges) {
+			SectionEntry entry = order.get(change[4]);
+			if (entry.lightWatchUntil < tick + LIGHT_WATCH_TICKS - 5) {
+				watchLight(entry, tick);
+			}
 		}
 
 		for (ViewerState state : viewers) {
@@ -449,46 +506,6 @@ final class CameraSession {
 		}
 	}
 
-	private static int @Nullable [] capture(ServerLevel level, int sx, int sy, int sz) {
-		LevelChunk chunk = level.getChunkSource().getChunkNow(sx, sz);
-		if (chunk == null) {
-			return null;
-		}
-
-		int[] states = new int[Protocol.SECTION_VOLUME];
-		if (AIR_ID != 0) {
-			Arrays.fill(states, AIR_ID);
-		}
-
-		LevelChunkSection[] chunkSections = chunk.getSections();
-		int index = chunk.getSectionIndexFromSectionY(sy);
-		if (index < 0 || index >= chunkSections.length) {
-			return states;
-		}
-
-		LevelChunkSection section = chunkSections[index];
-		if (section == null || section.hasOnlyAir()) {
-			return states;
-		}
-
-		BlockState last = null;
-		int lastId = AIR_ID;
-		int i = 0;
-		for (int y = 0; y < 16; y++) {
-			for (int z = 0; z < 16; z++) {
-				for (int x = 0; x < 16; x++) {
-					BlockState state = section.getBlockState(x, y, z);
-					if (state != last) {
-						last = state;
-						lastId = Block.getId(state);
-					}
-					states[i++] = lastId;
-				}
-			}
-		}
-		return states;
-	}
-
 	private String initJson(long tick) {
 		Json json = new Json(512);
 		json.beginObject().name("camera");
@@ -499,6 +516,7 @@ final class CameraSession {
 				.field("tick", tick)
 				.field("entityTicks", config.entityUpdateTicks)
 				.field("loaded", level != null)
+				.name("biomes").raw(biomes)
 				.endObject();
 		return json.toString();
 	}
