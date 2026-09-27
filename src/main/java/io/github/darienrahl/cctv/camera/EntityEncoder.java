@@ -59,7 +59,7 @@ final class EntityEncoder {
 			if (living.isDeadOrDying()) {
 				json.field("dead", true);
 			}
-			if (living.swinging) {
+			if (living.isSwinging()) {
 				json.field("swing", true);
 			}
 			ItemStack hand = living.getMainHandItem();
