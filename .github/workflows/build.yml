@@ -1,5 +1,6 @@
-# Builds the mod on every push and pull request. The built jar is attached
-# to the workflow run as the "cctv-fabric" artifact.
+# Builds the mod on every push and pull request (the jar is attached to the run
+# as the "cctv-fabric" artifact), then starts a real dedicated server with the
+# mod and checks the camera stream end to end.
 
 name: build
 on: [pull_request, push]
@@ -26,3 +27,57 @@ jobs:
         with:
           name: cctv-fabric
           path: build/libs/
+
+  server-test:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: checkout repository
+        uses: actions/checkout@v6
+      - name: setup jdk
+        uses: actions/setup-java@v5
+        with:
+          java-version: '25'
+          distribution: 'microsoft'
+      - name: prepare dedicated server
+        run: |
+          mkdir -p run
+          echo "eula=true" > run/eula.txt
+          cat > run/server.properties <<'PROPS'
+          enable-rcon=true
+          rcon.password=cctv-ci
+          rcon.port=25575
+          online-mode=false
+          level-type=minecraft\:flat
+          generate-structures=false
+          spawn-protection=0
+          view-distance=4
+          simulation-distance=4
+          PROPS
+      - name: start server with the mod
+        run: |
+          chmod +x ./gradlew
+          nohup ./gradlew runServer --no-daemon > server.log 2>&1 &
+      - name: smoke test (RCON + live stream)
+        run: python3 .github/e2e/smoke_test.py
+      - name: viewer screenshot
+        working-directory: .github/e2e
+        run: |
+          npm install --no-save --no-package-lock playwright@1
+          npx playwright install --with-deps chromium
+          node screenshot.mjs
+      - name: stop server
+        if: always()
+        run: |
+          python3 .github/e2e/smoke_test.py --stop || true
+          sleep 10
+          grep -iE "cctv|error|exception" server.log | tail -n 60 || true
+      - name: upload results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: server-test
+          path: |
+            server.log
+            .github/e2e/*.png

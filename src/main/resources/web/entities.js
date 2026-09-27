@@ -6,6 +6,7 @@ import {
 	lerp, lerpAngle, wrapDegrees, transformPoint,
 } from './math.js';
 import { itemColor } from './blocks.js';
+import { MOB_MODELS, buildMobTemplate, animateMob } from './mobs.js';
 
 const FLOATS = 11; // pos3 normal3 uv2 color3
 const DEG = Math.PI / 180;
@@ -623,6 +624,9 @@ export class EntityRenderer {
 			return { template: this.template(skin.slim ? 'player:slim' : 'player', () => playerModel(skin.slim)), texture: skin.texture, standing: 1.8 };
 		}
 
+		const mc = this.mcModelFor(e, type);
+		if (mc) return mc;
+
 		const builder = MOBS[type];
 		if (builder) {
 			return { template: this.template(type, builder), standing: this.standingHeight(type, e) };
@@ -747,6 +751,77 @@ export class EntityRenderer {
 
 	setAssets(assets) {
 		this.assets = assets;
+		this.entityTextures = new Map();
+		fetch('/assets/entities.json' + tokenSuffix('?'), { credentials: 'same-origin' })
+			.then(r => (r.ok ? r.json() : []))
+			.then(list => { this.entityList = new Set(list); })
+			.catch(() => { this.entityList = new Set(); });
+	}
+
+	/** Loads (once) the first available texture from `candidates` (paths below textures/entity). */
+	entityTexture(candidates) {
+		if (!this.entityList) return null;
+		const path = candidates.find(p => this.entityList.has(p));
+		if (!path) return null;
+		let entry = this.entityTextures.get(path);
+		if (!entry) {
+			entry = { ready: false };
+			this.entityTextures.set(path, entry);
+			fetch('/assets/entity/' + path + '.png' + tokenSuffix('?'), { credentials: 'same-origin' })
+				.then(r => { if (!r.ok) throw new Error('missing'); return r.blob(); })
+				.then(blob => createImageBitmap(blob))
+				.then(image => {
+					entry.texture = this.createTexture(image);
+					entry.width = image.width;
+					entry.height = image.height;
+					entry.ready = true;
+				})
+				.catch(() => { entry.failed = true; });
+		}
+		return entry.ready ? entry : null;
+	}
+
+	/** Minecraft model + real texture for this mob, or null while unavailable. */
+	mcModelFor(e, type) {
+		const def = this.assets && MOB_MODELS[type];
+		if (!def) return null;
+		const texture = this.entityTexture(def.textures);
+		if (!texture) return null;
+		const template = this.template('mc:' + type, () => buildMobTemplate(def.model(), texture.width, texture.height));
+		let overlay = null;
+		if (def.overlay) {
+			const t2 = this.entityTexture(def.overlay.textures);
+			if (t2) {
+				overlay = {
+					template: this.template('mc:' + type + ':overlay', () => buildMobTemplate(def[def.overlay.parts](), t2.width, t2.height)),
+					texture: t2.texture,
+				};
+			}
+		}
+		return { template, texture: texture.texture, mc: def, overlay, mcScale: (def.scale || 1) * (e.baby ? 0.5 : 1) };
+	}
+
+	drawParts(template, m, rotations, e) {
+		const gl = this.gl;
+		const u = this.renderer.entityProgram.u;
+		for (const [name, part] of Object.entries(template.parts)) {
+			let rot = rotations[name];
+			if (part.rot) {
+				rot = rot ? [part.rot[0] + rot[0], part.rot[1] + rot[1], part.rot[2] + rot[2]] : part.rot;
+			}
+			let pm = multiply(m, translation(part.pivot[0], part.pivot[1], part.pivot[2]));
+			if (!template.mc && name === 'body' && (e.sneak || e.pose === 'crouching') && template.family === 'humanoid') {
+				pm = multiply(m, translation(part.pivot[0], part.pivot[1] - 1, part.pivot[2]));
+			}
+			if (rot) {
+				if (rot[2]) pm = multiply(pm, rotationZ(rot[2]));
+				if (rot[1]) pm = multiply(pm, rotationY(rot[1]));
+				if (rot[0]) pm = multiply(pm, rotationX(rot[0]));
+			}
+			gl.uniformMatrix4fv(u.uModel, false, pm);
+			gl.bindVertexArray(part.mesh.vao);
+			gl.drawArrays(gl.TRIANGLES, 0, part.mesh.count);
+		}
 	}
 
 	draw(frame, entities, now, world) {
@@ -779,10 +854,11 @@ export class EntityRenderer {
 			const model = this.modelFor(e);
 			const template = model.template;
 			const s = this.animate(e, now);
-			const rotations = this.pose(template, e, s, time);
+			const rotations = template.mc ? animateMob(template, e, s, time, model.mc) : this.pose(template, e, s, time);
 
-			// Scale model pixels so the standing model matches the hitbox height.
-			const scale = template.fixedScale ? 1 / 16 : (model.standing * 16 / template.height) / 16;
+			// Minecraft models are drawn at their real size; generic ones are scaled to the hitbox height.
+			const scale = template.mc ? model.mcScale / 16
+				: template.fixedScale ? 1 / 16 : (model.standing * 16 / template.height) / 16;
 			const bodyYaw = e.body ?? e.yaw;
 			let m = translation(ex, ey, ez);
 
@@ -820,23 +896,13 @@ export class EntityRenderer {
 			const light = model.emissive ? [15, 15] : world.lightAt(Math.floor(e.x), Math.floor(e.y + e.h * 0.85), Math.floor(e.z));
 			gl.uniform2f(u.uLight, light[1] / 16, light[0] / 16);
 
-			for (const [name, part] of Object.entries(template.parts)) {
-				const rot = rotations[name];
-				let pm = multiply(m, translation(part.pivot[0], part.pivot[1], part.pivot[2]));
-				if (name === 'body' && (e.sneak || e.pose === 'crouching') && template.family === 'humanoid') {
-					pm = multiply(m, translation(part.pivot[0], part.pivot[1] - 1, part.pivot[2]));
-				}
-				if (rot) {
-					if (rot[2]) pm = multiply(pm, rotationZ(rot[2]));
-					if (rot[1]) pm = multiply(pm, rotationY(rot[1]));
-					if (rot[0]) pm = multiply(pm, rotationX(rot[0]));
-				}
-				gl.uniformMatrix4fv(u.uModel, false, pm);
-				gl.bindVertexArray(part.mesh.vao);
-				gl.drawArrays(gl.TRIANGLES, 0, part.mesh.count);
+			this.drawParts(template, m, rotations, e);
+			if (model.overlay) {
+				gl.bindTexture(gl.TEXTURE_2D, model.overlay.texture);
+				this.drawParts(model.overlay.template, m, rotations, e);
 			}
 
-			if (e.hand && template.family === 'humanoid' && template.parts.rightArm) {
+			if (e.hand && template.family === 'humanoid' && (template.parts.rightArm || template.parts.right_arm)) {
 				this.drawHeldItem(m, template, rotations, e);
 			}
 		}
@@ -849,8 +915,9 @@ export class EntityRenderer {
 	drawHeldItem(m, template, rotations, e) {
 		const gl = this.gl;
 		const u = this.renderer.entityProgram.u;
-		const arm = template.parts.rightArm;
-		const rot = rotations.rightArm || [0, 0, 0];
+		const arm = template.parts.rightArm || template.parts.right_arm;
+		let rot = rotations.rightArm || rotations.right_arm || [0, 0, 0];
+		if (arm.rot) rot = [arm.rot[0] + rot[0], arm.rot[1] + rot[1], arm.rot[2] + rot[2]];
 		let pm = multiply(m, translation(arm.pivot[0], arm.pivot[1], arm.pivot[2]));
 		if (rot[2]) pm = multiply(pm, rotationZ(rot[2]));
 		if (rot[1]) pm = multiply(pm, rotationY(rot[1]));
