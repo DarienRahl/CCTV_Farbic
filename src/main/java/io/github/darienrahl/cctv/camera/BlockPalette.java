@@ -1,5 +1,6 @@
 package io.github.darienrahl.cctv.camera;
 
+import java.lang.reflect.Method;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -12,6 +13,7 @@ import net.minecraft.util.Mth;
 import net.minecraft.world.level.EmptyBlockGetter;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.RenderShape;
+import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.phys.AABB;
@@ -38,8 +40,6 @@ final class BlockPalette {
 	static final int FLAG_NO_MODEL = 128;
 	/** Always rendered at full brightness (e.g. magma block). */
 	static final int FLAG_EMISSIVE = 256;
-	/** Rain and snow stop on top of it (motion blocking height map). */
-	static final int FLAG_MOTION_BLOCKING = 512;
 
 	private static final BlockPos SEED_PROBE = new BlockPos(5, 70, 9);
 
@@ -88,9 +88,6 @@ final class BlockPalette {
 			}
 			if (state.emissiveRendering()) {
 				flags |= FLAG_EMISSIVE;
-			}
-			if (state.blocksMotion() || !state.getFluidState().isEmpty()) {
-				flags |= FLAG_MOTION_BLOCKING;
 			}
 		} catch (RuntimeException ignored) {
 			// Keep what is known.
@@ -165,8 +162,8 @@ final class BlockPalette {
 				Block block = state.getBlock();
 				boolean vertical = state.getOffset(BlockPos.ZERO).y != 0 || state.getOffset(new BlockPos(1, 0, 0)).y != 0
 						|| state.getOffset(new BlockPos(0, 0, 3)).y != 0;
-				json.name("o").beginArray().value(block.getMaxHorizontalOffset(), 4)
-						.value(vertical ? block.getMaxVerticalOffset() : 0, 4).endArray();
+				json.name("o").beginArray().value(maxOffset(block, "getMaxHorizontalOffset", 0.25F), 4)
+						.value(vertical ? maxOffset(block, "getMaxVerticalOffset", 0.2F) : 0, 4).endArray();
 			}
 		} catch (RuntimeException ignored) {
 			// No offset.
@@ -193,6 +190,17 @@ final class BlockPalette {
 		}
 		if (skip != 0) {
 			json.field("k", skip);
+		}
+	}
+
+	/** The limits are protected in BlockBehaviour (and overridden by bamboo, dripstone...); read them reflectively. */
+	private static float maxOffset(Block block, String method, float fallback) {
+		try {
+			Method getter = BlockBehaviour.class.getDeclaredMethod(method);
+			getter.setAccessible(true);
+			return (float) getter.invoke(block);
+		} catch (ReflectiveOperationException | RuntimeException e) {
+			return fallback;
 		}
 	}
 
