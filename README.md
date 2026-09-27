@@ -22,7 +22,8 @@ oglądasz w przeglądarce: gracze, moby, otwierane drzwi i stawiane bloki widać
 ## Instalacja
 
 1. Weź plik `cctv-fabric-<wersja>.jar`:
-   - z zakładki **Actions** tego repozytorium (artefakt `cctv-fabric` przy każdym buildzie), albo
+   - z zakładki **Releases** tego repozytorium (najnowsze wydanie), albo
+   - z zakładki **Actions** (artefakt `cctv-fabric` przy każdym buildzie), albo
    - zbuduj go sam: `./gradlew build`. Jar pojawi się w `build/libs/`.
 2. Wrzuć go do katalogu `mods/` serwera, obok Fabric API.
 3. Uruchom serwer. W logu zobaczysz `CCTV web server listening on http://0.0.0.0:8100/`.
@@ -136,6 +137,9 @@ Zdarzenia strumienia:
 - `removed`: kamera usunięta.
 
 ## Rozwój
+
+- Nowe wydanie: podbij `version` w `gradle.properties`, dodaj opis w `docs/release-notes/v<wersja>.md`
+  i wypchnij tag `v<wersja>`. Workflow `release` zbuduje mod i opublikuje release z jarem.
 
 - Pliki strony są w `src/main/resources/web/` (zwykły JS, bez bundlera i bibliotek).
 - Po uruchomieniu serwera z `-Dcctv.webDir=/ścieżka/do/src/main/resources/web` zmiany w plikach
