@@ -9,8 +9,9 @@ oglądasz w przeglądarce: gracze, moby, otwierane drzwi i stawiane bloki widać
   biomy i pozycje encji 20 razy na sekundę. Całe renderowanie robi przeglądarka (WebGL2).
 - **Wygląd jak w Minecrafcie.** Są oryginalne tekstury i modele bloków, *smooth lighting* z ambient
   occlusion, lightmapa dnia i nocy, pochodnie, kolory biomów (trawa, liście, woda), animowana woda
-  i lawa, słońce, księżyc z fazami, gwiazdy i chmury. Moby mają modele i tekstury z gry, a gracze
-  swoje skiny.
+  i lawa, słońce, księżyc z fazami, gwiazdy i chmury. Moby mają modele i tekstury z gry, gracze
+  swoje skiny i zbroje. Są też skrzynie, przedmioty na ziemi i w rękach, cienie pod mobami oraz
+  świecące oczy pająków i endermanów.
 
 ## Wymagania
 
@@ -129,7 +130,7 @@ Zdarzenia strumienia:
 - `section`: `{x,y,z, p:[id…], r:RLE, sl:RLE światła nieba, bl:RLE światła bloków, bp:[biomy], bi:indeksy 4³}`,
   gdzie RLE to base64 par varintów `(długość, wartość)` w kolejności YZX;
 - `blocks`: `{b:[[x,y,z,id]…]}`, czyli natychmiastowe zmiany bloków;
-- `entities`: `{t:tick, e:[{id,type,x,y,z,yaw,pitch,body,head,w,h,name?,uuid?,pose?,sneak?,baby?,hurt?,swing?,hand?,item?}]}`;
+- `entities`: `{t:tick, e:[{id,type,x,y,z,yaw,pitch,body,head,w,h,name?,uuid?,pose?,sneak?,baby?,hurt?,swing?,hand?,armor?,item?}]}`;
 - `env`: `{time, rain, thunder}`;
 - `ready`: cały widoczny obszar został wysłany;
 - `removed`: kamera usunięta.
@@ -146,12 +147,13 @@ Zdarzenia strumienia:
 
 ## Ograniczenia
 
-- Bloki rysowane w grze jako „block entity” (skrzynie, tabliczki, łóżka, banery, głowy) są pokazane
-  jako uproszczone bryły w kolorze bloku.
+- Skrzynie mają prawdziwy model. Pozostałe bloki rysowane w grze jako „block entity” (tabliczki,
+  łóżka, banery, głowy) są pokazane jako uproszczone bryły w kolorze bloku.
 - Moby mają modele z gry: gracz, zombie, husk, drowned, szkielety, creeper, pająki, krowa, mooshroom,
   świnia, owca, kurczak, osadnik, wędrowny handlarz, enderman, wilk i slime. Pozostałe mają
   uproszczone modele.
-- Pancerze i przedmioty w rękach są uproszczone.
+- Przedmioty w rękach są płaskimi sprite'ami (bez dokładnych pozycji z modeli przedmiotów).
+  Deszcz, cząsteczki i animacje otwierania skrzyń nie są rysowane.
 - Tekstury z `client.jar` nie są częścią tego repozytorium. Mod pobiera je z serwerów Mojang na
   serwerze, który ma grę.
 

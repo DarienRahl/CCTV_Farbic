@@ -41,8 +41,8 @@ import org.slf4j.Logger;
  * the running version is downloaded once from Mojang (the same way launchers
  * and map renderers such as BlueMap do) and cached in {@code config/cctv/assets}.
  * Resource packs placed in {@code config/cctv/resourcepacks} are applied on top.
- * Browsers receive one bundle with block states, block models and block
- * textures; entity textures are served one by one on demand.
+ * Browsers receive one bundle with block states, block models, block and
+ * item textures; entity textures are served one by one on demand.
  */
 public final class ClientAssets implements AutoCloseable {
 	public enum State {
@@ -290,9 +290,9 @@ public final class ClientAssets implements AutoCloseable {
 						blockstates.put(namespace + ":" + strip(rest, "blockstates/", ".json"), parse(zip, entry));
 					} else if (rest.startsWith("models/block/") && rest.endsWith(".json")) {
 						models.put(namespace + ":" + strip(rest, "models/", ".json"), parse(zip, entry));
-					} else if (rest.startsWith("textures/block/") && rest.endsWith(".png")) {
+					} else if ((rest.startsWith("textures/block/") || rest.startsWith("textures/item/")) && rest.endsWith(".png")) {
 						textures.put(namespace + ":" + strip(rest, "textures/", ".png"), base64(zip, entry));
-					} else if (rest.startsWith("textures/block/") && rest.endsWith(".png.mcmeta")) {
+					} else if ((rest.startsWith("textures/block/") || rest.startsWith("textures/item/")) && rest.endsWith(".png.mcmeta")) {
 						animations.put(namespace + ":" + strip(rest, "textures/", ".png.mcmeta"), parse(zip, entry));
 					} else if (namespace.equals("minecraft") && rest.startsWith("textures/colormap/") && rest.endsWith(".png")) {
 						colormaps.put(strip(rest, "textures/colormap/", ".png"), base64(zip, entry));

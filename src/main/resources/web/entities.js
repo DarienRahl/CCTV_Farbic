@@ -6,6 +6,7 @@ import {
 	lerp, lerpAngle, wrapDegrees, transformPoint,
 } from './math.js';
 import { itemColor } from './blocks.js';
+import { DIR_VECTORS } from './assets.js';
 import { MOB_MODELS, buildMobTemplate, animateMob, blockEntityModel, armorPiece } from './mobs.js';
 
 const FLOATS = 11; // pos3 normal3 uv2 color3
@@ -632,6 +633,11 @@ export class EntityRenderer {
 			return { template: this.template(type, builder), standing: this.standingHeight(type, e) };
 		}
 		if (type === 'item') {
+			const item = this.itemModel(e.item);
+			if (item) {
+				// Dropped blocks are drawn at 1/4 size, item sprites at 1/2 (like the game).
+				return { template: item.template, texture: this.assets.texture, standing: 0.25, fixed: true, itemScale: item.kind === 'block' ? 0.25 : 0.5 };
+			}
 			return { template: this.template('item:' + e.item, () => block(itemColor(e.item), 4, 'item')), standing: 0.25, fixed: true };
 		}
 		if (type === 'experience_orb') {
@@ -781,6 +787,55 @@ export class EntityRenderer {
 		return entry.ready ? entry : null;
 	}
 
+	/**
+	 * Item model from the block atlas: a small block for block items (like dropped blocks in game),
+	 * otherwise the flat item sprite. Returns {template, kind} or null.
+	 */
+	itemModel(itemId) {
+		const assets = this.assets;
+		if (!assets || !itemId) return null;
+		if (!this.itemModels) this.itemModels = new Map();
+		if (this.itemModels.has(itemId)) return this.itemModels.get(itemId);
+
+		const id = itemId.includes(':') ? itemId : 'minecraft:' + itemId;
+		const ns = id.slice(0, id.indexOf(':'));
+		const name = id.slice(id.indexOf(':') + 1);
+		const data = [];
+		let kind = null;
+		const sprite = assets.sprites.get(ns + ':item/' + name);
+		if (sprite) {
+			kind = 'sprite';
+			const v = [[-8, 0, sprite.u0, sprite.v1], [8, 0, sprite.u1, sprite.v1], [8, 16, sprite.u1, sprite.v0], [-8, 16, sprite.u0, sprite.v0]];
+			for (const k of [0, 1, 2, 0, 2, 3]) data.push(v[k][0], v[k][1], 0.01, 0, 0, 1, v[k][2], v[k][3], 1, 1, 1);
+			for (const k of [2, 1, 0, 3, 2, 0]) data.push(v[k][0], v[k][1], -0.01, 0, 0, -1, v[k][2], v[k][3], 1, 1, 1);
+		} else if (assets.bundle.blockstates[id]) {
+			const baked = assets.bake(id, { __item: true });
+			if (baked) {
+				kind = 'block';
+				const shade = [1, 0.5, 0.8, 0.8, 0.6, 0.6];
+				for (const q of baked.alternatives[0]) {
+					const n = DIR_VECTORS[q.dir];
+					const tint = q.tint >= 0 ? [0.57, 0.74, 0.35] : [1, 1, 1];
+					const f = q.shade ? shade[q.dir] : 1;
+					for (const k of [0, 1, 2, 0, 2, 3]) {
+						data.push((q.pos[k * 3] - 0.5) * 16, q.pos[k * 3 + 1] * 16, (q.pos[k * 3 + 2] - 0.5) * 16,
+							n[0], n[1], n[2], q.uvs[k * 2], q.uvs[k * 2 + 1], tint[0] * f, tint[1] * f, tint[2] * f);
+					}
+				}
+			}
+		}
+
+		let model = null;
+		if (kind && data.length) {
+			model = {
+				kind,
+				template: this.template('item-model:' + id, () => ({ family: 'item', parts: { body: { pivot: [0, 0, 0], data } }, fixedScale: true, height: 16 })),
+			};
+		}
+		this.itemModels.set(itemId, model);
+		return model;
+	}
+
 	/** Minecraft model + real texture for this mob, or null while unavailable. */
 	mcModelFor(e, type) {
 		const def = this.assets && MOB_MODELS[type];
@@ -879,7 +934,7 @@ export class EntityRenderer {
 
 			// Minecraft models are drawn at their real size; generic ones are scaled to the hitbox height.
 			const scale = template.mc ? model.mcScale / 16
-				: template.fixedScale ? 1 / 16 : (model.standing * 16 / template.height) / 16;
+				: template.fixedScale ? (model.itemScale || 1) / 16 : (model.standing * 16 / template.height) / 16;
 			const bodyYaw = e.body ?? e.yaw;
 			let m = translation(ex, ey, ez);
 
@@ -1027,6 +1082,26 @@ export class EntityRenderer {
 		if (rot[1]) pm = multiply(pm, rotationY(rot[1]));
 		if (rot[0]) pm = multiply(pm, rotationX(rot[0]));
 		pm = multiply(pm, translation(0, -10, 2));
+		const real = this.itemModel(e.hand);
+		if (real) {
+			// Held like in third person: sprites stand upright pointing forward, blocks sit in the fist.
+			gl.bindTexture(gl.TEXTURE_2D, this.assets.texture);
+			gl.uniform1i(u.uUseTexture, 1);
+			if (real.kind === 'sprite') {
+				pm = multiply(pm, rotationX(Math.PI / 2));
+				pm = multiply(pm, rotationY(Math.PI / 2));
+				pm = multiply(pm, rotationZ(-Math.PI / 4));
+				pm = multiply(pm, scaling(0.7, 0.7, 0.7));
+				pm = multiply(pm, translation(0, -3, 0));
+			} else {
+				pm = multiply(pm, scaling(0.4, 0.4, 0.4));
+				pm = multiply(pm, translation(0, -8, 0));
+			}
+			gl.uniformMatrix4fv(u.uModel, false, pm);
+			gl.bindVertexArray(real.template.parts.body.mesh.vao);
+			gl.drawArrays(gl.TRIANGLES, 0, real.template.parts.body.mesh.count);
+			return;
+		}
 		const item = this.template('held:' + e.hand, () => {
 			const parts = {};
 			const data = [];

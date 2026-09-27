@@ -357,6 +357,11 @@ export class Assets {
 					return pick(value).map(v => [v]);
 				}
 			}
+			if (props.__item) {
+				// Items have no block state: use the first variant (e.g. an upright log).
+				const first = Object.values(def.variants)[0];
+				return first ? pick(first).map(v => [v]) : null;
+			}
 			return null;
 		}
 		if (def.multipart) {

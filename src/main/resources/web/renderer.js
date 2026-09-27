@@ -185,7 +185,7 @@ uniform float uFogStart;
 uniform float uFogEnd;
 out vec4 outColor;
 void main() {
-	vec4 base = uUseTexture ? texture(uTexture, vUv) : vec4(vColor, 1.0);
+	vec4 base = uUseTexture ? texture(uTexture, vUv) * vec4(vColor, 1.0) : vec4(vColor, 1.0);
 	if (base.a < 0.5) discard;
 	vec3 n = normalize(vNormal);
 	// Minecraft's entity lighting: two directional lights plus ambient, times the lightmap.
