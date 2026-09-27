@@ -7,6 +7,7 @@ const FLAG_OPAQUE = 2;
 const FLAG_WATER = 4;
 const FLAG_LAVA = 8;
 const FLAG_NO_COLLISION = 16;
+const FLAG_FULL_COLLISION = 32;
 
 export const MATERIAL_SOLID = 0;
 export const MATERIAL_LEAVES = 1;
@@ -75,7 +76,7 @@ const COLORS = {
 };
 
 const LEAVES = /_leaves$/;
-const GLASS = /(^|_)glass(_pane)?$|^ice$|^frosted_ice$/;
+const GLASS = /(^|_)glass(_pane)?$|^ice$|^frosted_ice$|^slime_block$|^honey_block$/;
 const PLANT_WORDS = /(grass|fern|flower|sapling|bush|tulip|orchid|allium|bluet|daisy|poppy|dandelion|cornflower|lily_of|rose|lilac|peony|sunflower|torchflower|pitcher|wheat|carrots|potatoes|beetroots|stem$|mushroom|fungus|roots|sprouts|kelp|seagrass|sugar_cane|bamboo_sapling|cobweb|dripleaf|berry|vines(_plant)?$|wart|crop|petals|spore|hanging_moss|eyeblossom|cactus_flower|leaf_litter|wildflowers|firefly)/;
 
 function hexToRgb(hex) {
@@ -163,6 +164,7 @@ export function classify(entry) {
 		shortName: name,
 		props,
 		opaque: (flags & FLAG_OPAQUE) !== 0,
+		fullCollision: (flags & FLAG_FULL_COLLISION) !== 0 || (flags & FLAG_OPAQUE) !== 0,
 		water: (flags & FLAG_WATER) !== 0,
 		lava: (flags & FLAG_LAVA) !== 0,
 		fluidLevel: entry.lv || 8,
@@ -198,7 +200,6 @@ export function classify(entry) {
 
 	if (LEAVES.test(name)) {
 		info.material = MATERIAL_LEAVES;
-		info.cullSame = true;
 	} else if (GLASS.test(name) || name.endsWith('_stained_glass') || name.endsWith('_stained_glass_pane')) {
 		info.material = MATERIAL_GLASS;
 		info.translucent = true;

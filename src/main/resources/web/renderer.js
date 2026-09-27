@@ -5,39 +5,38 @@ import { STRIDE } from './world.js';
 
 const WORLD_VS = `#version 300 es
 layout(location = 0) in vec3 aPos;
-layout(location = 1) in vec4 aColor;
-layout(location = 2) in vec4 aExtra;
+layout(location = 1) in vec2 aUv;
+layout(location = 2) in vec4 aColor;
+layout(location = 3) in vec4 aLight;
 uniform mat4 uViewProj;
 out vec3 vPos;
+out vec2 vUv;
 out vec3 vColor;
-out float vBright;
+out vec2 vLight;
 flat out int vMaterial;
-flat out int vFace;
-out float vLight;
 void main() {
 	vPos = aPos;
+	vUv = aUv;
 	vColor = aColor.rgb;
-	vBright = aColor.a;
-	vMaterial = int(aExtra.x + 0.5);
-	vFace = int(aExtra.y + 0.5);
-	vLight = aExtra.z / 15.0;
+	// Lightmap coordinates exactly like Minecraft: (block, sky) * 16 / 256.
+	vLight = clamp(vec2(aLight.y, aLight.x) / 256.0, vec2(0.5 / 16.0), vec2(15.5 / 16.0));
+	vMaterial = int(aLight.z + 0.5);
 	gl_Position = uViewProj * vec4(aPos, 1.0);
 }`;
 
 const WORLD_FS = `#version 300 es
 precision highp float;
 in vec3 vPos;
+in vec2 vUv;
 in vec3 vColor;
-in float vBright;
+in vec2 vLight;
 flat in int vMaterial;
-flat in int vFace;
-in float vLight;
+uniform sampler2D uAtlas;
+uniform sampler2D uLightmap;
 uniform vec3 uCamPos;
 uniform vec3 uFogColor;
 uniform float uFogStart;
 uniform float uFogEnd;
-uniform float uAmbient;
-uniform float uTime;
 out vec4 outColor;
 
 float hash(vec3 p) {
@@ -46,52 +45,23 @@ float hash(vec3 p) {
 	return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
 }
 
-vec3 faceNormal(int f) {
-	if (f == 0) return vec3(0.0, 1.0, 0.0);
-	if (f == 1) return vec3(0.0, -1.0, 0.0);
-	if (f == 2) return vec3(0.0, 0.0, -1.0);
-	if (f == 3) return vec3(0.0, 0.0, 1.0);
-	if (f == 4) return vec3(-1.0, 0.0, 0.0);
-	if (f == 5) return vec3(1.0, 0.0, 0.0);
-	return vec3(0.0);
-}
-
 void main() {
-	vec3 n = faceNormal(vFace);
-	// 16x16 "pixels" per block face, like Minecraft textures.
-	vec3 texel = floor((vPos - n * 0.002) * 16.0);
-	float h = hash(texel);
-	float noise = 0.9 + 0.18 * h;
-	float alpha = 1.0;
-
-	if (vMaterial == 1) {
-		// Leaves: dark speckles.
-		noise = h < 0.28 ? 0.62 : 0.88 + 0.22 * hash(texel + 7.0);
-	} else if (vMaterial == 5) {
-		// Plants: sparse blades, thinner towards the top.
-		float column = hash(vec3(floor(vPos.x * 16.0) + floor(vPos.z * 16.0) * 31.0, 1.0, 3.0));
-		float top = fract(vPos.y - 0.0001);
-		if (column < 0.25 + 0.45 * top) discard;
-		noise = 0.85 + 0.25 * h;
-	} else if (vMaterial == 2) {
-		alpha = 0.42;
-		noise = 1.0 + 0.06 * h;
-	} else if (vMaterial == 3) {
-		alpha = 0.72;
-		float wave = sin(uTime * 1.7 + vPos.x * 1.9 + vPos.z * 1.3) * 0.5 + 0.5;
-		noise = 0.9 + 0.12 * wave * h + 0.06 * h;
+	vec4 base;
+	if (vMaterial == 3) {
+		// No client textures: flat colour with a 16x16 "pixel" pattern.
+		vec3 n = normalize(cross(dFdx(vPos), dFdy(vPos)));
+		base = vec4(vec3(0.9 + 0.18 * hash(floor((vPos - n * 0.002) * 16.0))), 1.0);
+	} else {
+		base = texture(uAtlas, vUv);
+		if (vMaterial == 1 && base.a < 0.5) discard;
+		if (vMaterial == 2 && base.a < 0.004) discard;
+		if (vMaterial == 0) base.a = 1.0;
 	}
-
-	float light = max(uAmbient * vBright, vLight * (0.6 + 0.4 * vBright));
-	if (vMaterial == 4) {
-		light = max(light, 0.95);
-		noise = 0.85 + 0.3 * h;
-	}
-
-	vec3 color = vColor * noise * light;
-	float dist = length(vPos - uCamPos);
-	float fog = smoothstep(uFogStart, uFogEnd, dist);
-	outColor = vec4(mix(color, uFogColor, fog), alpha);
+	vec3 light = texture(uLightmap, vLight).rgb;
+	vec3 color = base.rgb * vColor * light;
+	vec3 d = vPos - uCamPos;
+	float fog = clamp((max(length(d.xz), abs(d.y)) - uFogStart) / (uFogEnd - uFogStart), 0.0, 1.0);
+	outColor = vec4(mix(color, uFogColor, fog), base.a);
 }`;
 
 const SKY_VS = `#version 300 es
@@ -111,15 +81,69 @@ uniform vec3 uHorizon;
 uniform vec3 uZenith;
 uniform vec3 uSunDir;
 uniform float uSun;
+uniform float uMoon;
+uniform float uStars;
+uniform vec2 uMoonPhase;
+uniform sampler2D uSunTex;
+uniform sampler2D uMoonTex;
+uniform sampler2D uCloudTex;
+uniform bool uHasSun;
+uniform bool uHasMoon;
+uniform bool uHasClouds;
+uniform float uCloudY;
+uniform vec2 uCloudPos;
+uniform vec3 uCloudColor;
 out vec4 outColor;
+
+float hash(vec3 p) {
+	p = fract(p * 0.3183099 + vec3(0.71, 0.113, 0.419));
+	p *= 17.0;
+	return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+}
+
 void main() {
 	vec4 p = uInvViewProj * vec4(vNdc, 1.0, 1.0);
 	vec3 dir = normalize(p.xyz / p.w - uCamPos);
-	float t = clamp(dir.y * 1.6 + 0.08, 0.0, 1.0);
+
+	// Sky dome: sky colour above, fog colour at the horizon (like the client's sky + fog).
+	float t = clamp(dir.y / 0.45, 0.0, 1.0);
 	vec3 color = mix(uHorizon, uZenith, sqrt(t));
-	if (dir.y < 0.0) color = mix(uHorizon, uHorizon * 0.75, clamp(-dir.y * 3.0, 0.0, 1.0));
-	float sun = max(dot(dir, uSunDir), 0.0);
-	color += vec3(1.0, 0.9, 0.7) * (pow(sun, 900.0) * 1.5 + pow(sun, 12.0) * 0.12) * uSun;
+
+	// Stars
+	if (uStars > 0.0 && dir.y > 0.0) {
+		vec3 cell = floor(dir * 180.0);
+		float h = hash(cell);
+		if (h > 0.9975) color += vec3((h - 0.9975) / 0.0025 * uStars);
+	}
+
+	// Sun and moon: textured squares seen at 100 blocks (sun 30 wide, moon 20), added like the game does.
+	vec3 u = vec3(0.0, 0.0, 1.0);
+	vec3 v = normalize(cross(uSunDir, u));
+	float ds = dot(dir, uSunDir);
+	if (uHasSun && uSun > 0.0 && ds > 0.0) {
+		vec3 q = dir / ds;
+		vec2 c = vec2(dot(q, u), dot(q, v)) / 0.3;
+		if (abs(c.x) < 1.0 && abs(c.y) < 1.0) color += texture(uSunTex, c * 0.5 + 0.5).rgb * uSun;
+	}
+	if (uHasMoon && uMoon > 0.0 && ds < 0.0) {
+		vec3 q = dir / -ds;
+		vec2 c = vec2(dot(q, u), -dot(q, v)) / 0.2;
+		if (abs(c.x) < 1.0 && abs(c.y) < 1.0) color += texture(uMoonTex, (c * 0.5 + 0.5 + uMoonPhase) / vec2(4.0, 2.0)).rgb * uMoon;
+	}
+
+	// Flat clouds (like "Fast" clouds): 12 blocks per texel of clouds.png, drifting slowly.
+	if (uHasClouds && abs(dir.y) > 0.002) {
+		float dist = uCloudY / dir.y;
+		if (dist > 0.0 && dist < 1600.0) {
+			vec2 xz = uCloudPos + dir.xz * dist;
+			vec4 cloud = texture(uCloudTex, xz / 3072.0);
+			if (cloud.a > 0.5) {
+				float fade = 1.0 - smoothstep(600.0, 1600.0, dist);
+				color = mix(color, uCloudColor, 0.8 * fade);
+			}
+		}
+	}
+
 	outColor = vec4(color, 1.0);
 }`;
 
@@ -150,11 +174,11 @@ in vec3 vNormal;
 in vec2 vUv;
 in vec3 vColor;
 uniform sampler2D uTexture;
+uniform sampler2D uLightmap;
 uniform bool uUseTexture;
 uniform vec3 uTint;
 uniform float uHurt;
-uniform float uAmbient;
-uniform float uEmissive;
+uniform vec2 uLight;
 uniform vec3 uCamPos;
 uniform vec3 uFogColor;
 uniform float uFogStart;
@@ -164,12 +188,14 @@ void main() {
 	vec4 base = uUseTexture ? texture(uTexture, vUv) : vec4(vColor, 1.0);
 	if (base.a < 0.5) discard;
 	vec3 n = normalize(vNormal);
-	float light = 0.55 + 0.35 * max(dot(n, normalize(vec3(0.2, 1.0, -0.7))), 0.0)
-		+ 0.18 * max(dot(n, normalize(vec3(-0.2, 1.0, 0.7))), 0.0);
-	light = min(light, 1.0) * max(uAmbient, uEmissive);
-	vec3 color = base.rgb * uTint * light;
+	// Minecraft's entity lighting: two directional lights plus ambient, times the lightmap.
+	float light = 0.4 + 0.6 * max(dot(n, normalize(vec3(0.2, 1.0, -0.7))), 0.0)
+		+ 0.6 * max(dot(n, normalize(vec3(-0.2, 1.0, 0.7))), 0.0);
+	light = min(light, 1.0);
+	vec3 color = base.rgb * uTint * light * texture(uLightmap, clamp(uLight, vec2(0.5 / 16.0), vec2(15.5 / 16.0))).rgb;
 	color = mix(color, vec3(0.9, 0.1, 0.1), uHurt * 0.5);
-	float fog = smoothstep(uFogStart, uFogEnd, length(vWorld - uCamPos));
+	vec3 d = vWorld - uCamPos;
+	float fog = clamp((max(length(d.xz), abs(d.y)) - uFogStart) / (uFogEnd - uFogStart), 0.0, 1.0);
 	outColor = vec4(mix(color, uFogColor, fog), 1.0);
 }`;
 
@@ -215,6 +241,16 @@ export class Renderer {
 		this.indexVersion = 0;
 		this.meshes = new Map();
 		this.ensureIndices(16384);
+		this.lightmap = gl.createTexture();
+		gl.bindTexture(gl.TEXTURE_2D, this.lightmap);
+		gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 16, 16, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(16 * 16 * 4).fill(255));
+		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+		this.atlas = gl.createTexture();
+		gl.bindTexture(gl.TEXTURE_2D, this.atlas);
+		gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([255, 255, 255, 255]));
 		gl.enable(gl.DEPTH_TEST);
 		gl.depthFunc(gl.LEQUAL);
 	}
@@ -250,12 +286,34 @@ export class Renderer {
 		gl.enableVertexAttribArray(0);
 		gl.vertexAttribPointer(0, 3, gl.FLOAT, false, STRIDE, 0);
 		gl.enableVertexAttribArray(1);
-		gl.vertexAttribPointer(1, 4, gl.UNSIGNED_BYTE, true, STRIDE, 12);
+		gl.vertexAttribPointer(1, 2, gl.UNSIGNED_SHORT, true, STRIDE, 12);
 		gl.enableVertexAttribArray(2);
-		gl.vertexAttribPointer(2, 4, gl.UNSIGNED_BYTE, false, STRIDE, 16);
+		gl.vertexAttribPointer(2, 4, gl.UNSIGNED_BYTE, true, STRIDE, 16);
+		gl.enableVertexAttribArray(3);
+		gl.vertexAttribPointer(3, 4, gl.UNSIGNED_BYTE, false, STRIDE, 20);
 		gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.indexBuffer);
 		gl.bindVertexArray(null);
 		return { vao, vbo, count: (vertices / 4) * 6, indexVersion: this.indexVersion };
+	}
+
+	/** Uploads the 16x16 lightmap (x = block light, y = sky light). */
+	setLightmap(pixels) {
+		const gl = this.gl;
+		gl.bindTexture(gl.TEXTURE_2D, this.lightmap);
+		gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 16, 16, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+	}
+
+	bindWorldTextures(program) {
+		const gl = this.gl;
+		gl.activeTexture(gl.TEXTURE1);
+		gl.bindTexture(gl.TEXTURE_2D, this.lightmap);
+		gl.uniform1i(program.u.uLightmap, 1);
+		if (program.u.uAtlas) {
+			gl.activeTexture(gl.TEXTURE0);
+			gl.bindTexture(gl.TEXTURE_2D, this.atlas);
+			gl.uniform1i(program.u.uAtlas, 0);
+		}
+		gl.activeTexture(gl.TEXTURE0);
 	}
 
 	deletePart(part) {
@@ -331,6 +389,23 @@ export class Renderer {
 		gl.uniform3fv(su.uZenith, frame.zenith);
 		gl.uniform3fv(su.uSunDir, frame.sunDir);
 		gl.uniform1f(su.uSun, frame.sun);
+		gl.uniform1f(su.uMoon, frame.moon || 0);
+		gl.uniform1f(su.uStars, frame.stars || 0);
+		const env = frame.environment || {};
+		const bindSky = (unit, name, flag, texture) => {
+			gl.activeTexture(gl.TEXTURE0 + unit);
+			gl.bindTexture(gl.TEXTURE_2D, texture || this.atlas);
+			gl.uniform1i(su[name], unit);
+			gl.uniform1i(su[flag], texture ? 1 : 0);
+		};
+		bindSky(2, 'uSunTex', 'uHasSun', env.sun);
+		bindSky(3, 'uMoonTex', 'uHasMoon', env.moon);
+		bindSky(4, 'uCloudTex', 'uHasClouds', env.clouds);
+		gl.activeTexture(gl.TEXTURE0);
+		gl.uniform2fv(su.uMoonPhase, frame.moonPhase || [0, 0]);
+		gl.uniform1f(su.uCloudY, frame.cloudY ?? 120);
+		gl.uniform2fv(su.uCloudPos, frame.cloudPos || [0, 0]);
+		gl.uniform3fv(su.uCloudColor, frame.cloudColor || [1, 1, 1]);
 		gl.bindVertexArray(this.skyVao);
 		gl.drawArrays(gl.TRIANGLES, 0, 3);
 		gl.enable(gl.DEPTH_TEST);
@@ -343,8 +418,7 @@ export class Renderer {
 		gl.uniform3fv(wu.uFogColor, frame.fogColor);
 		gl.uniform1f(wu.uFogStart, frame.fogStart);
 		gl.uniform1f(wu.uFogEnd, frame.fogEnd);
-		gl.uniform1f(wu.uAmbient, frame.ambient);
-		gl.uniform1f(wu.uTime, frame.time);
+		this.bindWorldTextures(this.worldProgram);
 		gl.enable(gl.CULL_FACE);
 		gl.cullFace(gl.BACK);
 		gl.disable(gl.BLEND);
@@ -363,10 +437,11 @@ export class Renderer {
 
 		// Translucent world, back to front
 		gl.useProgram(this.worldProgram.program);
+		this.bindWorldTextures(this.worldProgram);
 		gl.enable(gl.BLEND);
 		gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 		gl.depthMask(false);
-		gl.disable(gl.CULL_FACE);
+		gl.enable(gl.CULL_FACE);
 		const cam = frame.camPos;
 		const translucent = visible.filter(m => m.translucent);
 		for (const m of translucent) {

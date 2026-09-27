@@ -4,6 +4,8 @@
 import { World } from './world.js';
 import { Renderer } from './renderer.js';
 import { EntityRenderer } from './entities.js';
+import { Assets } from './assets.js';
+import { Lighting } from './lighting.js';
 import { perspective, lookDir, multiply, invert, direction, lerp } from './math.js';
 
 const params = new URLSearchParams(location.search);
@@ -38,6 +40,8 @@ try {
 
 const world = new World();
 const entities = new EntityRenderer(renderer, $('labels'));
+const lighting = new Lighting();
+let assetsRequested = false;
 applySettings();
 
 const state = {
@@ -86,6 +90,8 @@ function connect() {
 	on('init', data => {
 		state.init = data;
 		state.camera = data.camera;
+		world.biomeDefs = data.biomes || {};
+		loadAssets();
 		state.received = 0;
 		state.ready = false;
 		const c = data.camera;
@@ -119,6 +125,24 @@ function connect() {
 		setStatus('removed');
 		showMessage('Kamera została usunięta.');
 	});
+}
+
+function loadAssets() {
+	if (assetsRequested) return;
+	assetsRequested = true;
+	const query = token ? '?token=' + encodeURIComponent(token) : '';
+	Assets.load(renderer.gl, query, text => { $('assets-status').textContent = text; })
+		.then(assets => {
+			$('assets-status').textContent = '';
+			if (!assets) return;
+			renderer.atlas = assets.texture;
+			world.setAssets(assets);
+			entities.setAssets(assets);
+		})
+		.catch(err => {
+			console.error('CCTV: textures unavailable', err);
+			$('assets-status').textContent = '';
+		});
 }
 
 function on(event, handler) {
@@ -217,7 +241,7 @@ for (const button of document.querySelectorAll('[data-toggle]')) {
 }
 
 function loadSettings() {
-	const defaults = { labels: true, allLabels: false, fx: true, mode: 'color' };
+	const defaults = { labels: true, allLabels: false, fx: false, mode: 'color' };
 	try {
 		return { ...defaults, ...JSON.parse(localStorage.getItem('cctv-settings') || '{}') };
 	} catch {
@@ -247,40 +271,8 @@ function applySettings() {
 
 // --- environment ----------------------------------------------------------
 
-const DAY = { horizon: [0.74, 0.83, 0.96], zenith: [0.42, 0.62, 0.98] };
-const NIGHT = { horizon: [0.05, 0.07, 0.14], zenith: [0.01, 0.015, 0.04] };
-const SUNSET = [0.95, 0.6, 0.35];
-
-function mix(a, b, t) {
-	return [lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t)];
-}
-
-function environment() {
-	const dim = state.camera ? state.camera.dimension : 'minecraft:overworld';
-	if (dim === 'minecraft:the_nether') {
-		const fog = [0.2, 0.03, 0.03];
-		return { horizon: fog, zenith: fog, fog, ambient: 0.75, sun: 0, sunDir: [0, 1, 0] };
-	}
-	if (dim === 'minecraft:the_end') {
-		const fog = [0.06, 0.04, 0.09];
-		return { horizon: fog, zenith: [0.02, 0.01, 0.03], fog, ambient: 0.7, sun: 0, sunDir: [0, 1, 0] };
-	}
-
-	const time = ((state.env.time % 24000) + 24000) % 24000;
-	const angle = time / 24000 * Math.PI * 2;
-	const day = Math.max(0, Math.min(1, 0.5 + 2 * Math.sin(angle)));
-	let horizon = mix(NIGHT.horizon, DAY.horizon, day);
-	let zenith = mix(NIGHT.zenith, DAY.zenith, day);
-	const twilight = Math.max(0, 1 - Math.abs(Math.sin(angle)) * 4);
-	horizon = mix(horizon, SUNSET, twilight * 0.55);
-	let ambient = lerp(0.3, 1.0, day);
-	if (state.env.rain) {
-		const grey = [0.45, 0.48, 0.52];
-		horizon = mix(horizon, mix(grey, [0.08, 0.08, 0.1], 1 - day), 0.7);
-		zenith = mix(zenith, mix(grey, [0.05, 0.05, 0.07], 1 - day), 0.7);
-		ambient *= state.env.thunder ? 0.7 : 0.82;
-	}
-	return { horizon, zenith, fog: horizon, ambient, sun: day * (state.env.rain ? 0.1 : 1), sunDir: [Math.cos(angle), Math.sin(angle), 0] };
+function dimension() {
+	return state.camera ? state.camera.dimension : 'minecraft:overworld';
 }
 
 // --- frame loop -----------------------------------------------------------
@@ -369,29 +361,44 @@ function frame(now) {
 	const view = lookDir(eye, dir);
 	const viewProj = multiply(projection, view);
 
+	// Game ticks drive texture animations and torch flicker, like the client.
+	const gameTick = Math.floor(now / 50);
+	if (gameTick !== state.gameTick) {
+		state.gameTick = gameTick;
+		lighting.tick();
+		if (world.assets) world.assets.tick(gameTick);
+	}
+
 	meshDirty(eye, state.ready ? 6 : 12);
 
-	const env = environment();
-	const night = settings.mode === 'night';
+	const sky = lighting.sky(state.env, dimension());
+	renderer.setLightmap(lighting.lightmap(state.env, dimension(), settings.mode === 'night' ? 1 : 0));
 	const frameData = {
 		viewProj,
 		invViewProj: invert(viewProj),
 		camPos: eye,
 		origin: o,
-		fogColor: env.fog,
-		fogStart: range * 0.65,
-		fogEnd: range * 0.98,
-		ambient: night ? 1 : env.ambient,
-		horizon: env.horizon,
-		zenith: env.zenith,
-		sunDir: env.sunDir,
-		sun: env.sun,
+		fogColor: sky.fog,
+		// Minecraft's render distance fog: only the last ~10% of the view distance.
+		fogStart: range - Math.max(4, Math.min(64, range / 10)),
+		fogEnd: range,
+		horizon: sky.horizon,
+		zenith: sky.zenith,
+		sunDir: sky.sunDir,
+		sun: sky.sun,
+		moon: sky.moon,
+		stars: sky.stars,
+		moonPhase: sky.moonPhase,
+		cloudColor: sky.cloud,
+		cloudY: 192.33 - c.y,
+		cloudPos: [((c.x + now / 50 * 0.03) % 3072 + 3072) % 3072, ((c.z + 3.96) % 3072 + 3072) % 3072],
+		environment: world.assets ? { sun: world.assets.sunTexture, moon: world.assets.moonTexture, clouds: world.assets.cloudTexture } : null,
 		time: now / 1000,
 		frustum: frustumFrom(viewProj),
 	};
 
 	const list = entities.sample(now);
-	renderer.render(frameData, () => entities.draw(frameData, list, now));
+	renderer.render(frameData, () => entities.draw(frameData, list, now, world));
 	entities.updateLabels(frameData, list, canvas.clientWidth, canvas.clientHeight);
 }
 
@@ -399,4 +406,4 @@ connect();
 requestAnimationFrame(frame);
 
 // Handy for debugging from the browser console.
-window.cctv = { world, renderer, entities, state };
+window.cctv = { world, renderer, entities, state, lighting, settings };

@@ -745,7 +745,11 @@ export class EntityRenderer {
 		return r;
 	}
 
-	draw(frame, entities, now) {
+	setAssets(assets) {
+		this.assets = assets;
+	}
+
+	draw(frame, entities, now, world) {
 		const gl = this.gl;
 		const prog = this.renderer.entityProgram;
 		const u = prog.u;
@@ -755,9 +759,11 @@ export class EntityRenderer {
 		gl.uniform3fv(u.uFogColor, frame.fogColor);
 		gl.uniform1f(u.uFogStart, frame.fogStart);
 		gl.uniform1f(u.uFogEnd, frame.fogEnd);
-		gl.uniform1f(u.uAmbient, Math.max(0.35, frame.ambient));
-		gl.uniform1i(u.uTexture, 0);
+		gl.activeTexture(gl.TEXTURE1);
+		gl.bindTexture(gl.TEXTURE_2D, this.renderer.lightmap);
+		gl.uniform1i(u.uLightmap, 1);
 		gl.activeTexture(gl.TEXTURE0);
+		gl.uniform1i(u.uTexture, 0);
 		gl.enable(gl.CULL_FACE);
 
 		const time = now / 1000;
@@ -810,7 +816,9 @@ export class EntityRenderer {
 			if (model.texture) gl.bindTexture(gl.TEXTURE_2D, model.texture);
 			gl.uniform3f(u.uTint, 1, 1, 1);
 			gl.uniform1f(u.uHurt, e.hurt || s.deadStart >= 0 ? 1 : 0);
-			gl.uniform1f(u.uEmissive, model.emissive ? 1 : 0);
+			// Entities are lit by the light at their eyes, through the same lightmap as blocks.
+			const light = model.emissive ? [15, 15] : world.lightAt(Math.floor(e.x), Math.floor(e.y + e.h * 0.85), Math.floor(e.z));
+			gl.uniform2f(u.uLight, light[1] / 16, light[0] / 16);
 
 			for (const [name, part] of Object.entries(template.parts)) {
 				const rot = rotations[name];

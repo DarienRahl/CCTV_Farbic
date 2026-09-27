@@ -252,7 +252,8 @@ public final class ClientAssets implements AutoCloseable {
 
 	/**
 	 * {"version", "blockstates": {id: json}, "models": {id: json}, "textures": {id: base64 png},
-	 * "animations": {id: mcmeta}, "colormaps": {name: base64 png}}. Later sources override earlier ones.
+	 * "animations": {id: mcmeta}, "colormaps": {name: base64 png}, "environment": {path: base64 png}}
+	 * (sun, moon, clouds). Later sources override earlier ones.
 	 */
 	private byte[] buildBundle() throws IOException {
 		Map<String, JsonElement> blockstates = new LinkedHashMap<>();
@@ -260,6 +261,7 @@ public final class ClientAssets implements AutoCloseable {
 		Map<String, String> textures = new LinkedHashMap<>();
 		Map<String, JsonElement> animations = new LinkedHashMap<>();
 		Map<String, String> colormaps = new LinkedHashMap<>();
+		Map<String, String> environment = new LinkedHashMap<>();
 		TreeSet<String> entityTextures = new TreeSet<>();
 
 		List<ZipFile> zips;
@@ -294,6 +296,8 @@ public final class ClientAssets implements AutoCloseable {
 						animations.put(namespace + ":" + strip(rest, "textures/", ".png.mcmeta"), parse(zip, entry));
 					} else if (namespace.equals("minecraft") && rest.startsWith("textures/colormap/") && rest.endsWith(".png")) {
 						colormaps.put(strip(rest, "textures/colormap/", ".png"), base64(zip, entry));
+					} else if (namespace.equals("minecraft") && rest.startsWith("textures/environment/") && rest.endsWith(".png")) {
+						environment.put(strip(rest, "textures/environment/", ".png"), base64(zip, entry));
 					} else if (namespace.equals("minecraft") && rest.startsWith("textures/entity/") && rest.endsWith(".png")) {
 						entityTextures.add(strip(rest, "textures/entity/", ".png"));
 					}
@@ -310,10 +314,14 @@ public final class ClientAssets implements AutoCloseable {
 				continue;
 			}
 			for (Map.Entry<String, JsonElement> texture : model.getAsJsonObject().getAsJsonObject("textures").entrySet()) {
-				if (!texture.getValue().isJsonPrimitive()) {
+				JsonElement value = texture.getValue();
+				if (value.isJsonObject() && value.getAsJsonObject().has("sprite")) {
+					value = value.getAsJsonObject().get("sprite");
+				}
+				if (!value.isJsonPrimitive()) {
 					continue;
 				}
-				String ref = texture.getValue().getAsString();
+				String ref = value.getAsString();
 				if (ref.startsWith("#")) {
 					continue;
 				}
@@ -341,6 +349,9 @@ public final class ClientAssets implements AutoCloseable {
 		JsonObject colormapObject = new JsonObject();
 		colormaps.forEach(colormapObject::addProperty);
 		root.add("colormaps", colormapObject);
+		JsonObject environmentObject = new JsonObject();
+		environment.forEach(environmentObject::addProperty);
+		root.add("environment", environmentObject);
 
 		JsonArray list = new JsonArray();
 		entityTextures.forEach(list::add);

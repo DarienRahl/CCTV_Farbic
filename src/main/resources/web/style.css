@@ -157,6 +157,7 @@ body.no-signal #noise {
 .top-left { top: 12px; left: 14px; }
 .top-right { top: 12px; right: 14px; text-align: right; }
 .bottom-left { bottom: 12px; left: 14px; }
+.bottom-center { bottom: 12px; left: 50%; transform: translateX(-50%); font-size: 12px; font-weight: 500; opacity: 0.85; }
 .bottom-right { bottom: 12px; right: 14px; font-size: 11px; font-weight: 500; opacity: 0.75; }
 
 .cam {
