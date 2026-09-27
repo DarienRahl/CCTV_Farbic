@@ -12,11 +12,14 @@ import net.minecraft.tags.FluidTags;
 import net.minecraft.util.Mth;
 import net.minecraft.world.level.EmptyBlockGetter;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.HalfTransparentBlock;
+import net.minecraft.world.level.block.LeavesBlock;
 import net.minecraft.world.level.block.RenderShape;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.shapes.Shapes;
 import net.minecraft.world.phys.shapes.VoxelShape;
 
 import io.github.darienrahl.cctv.web.Json;
@@ -40,6 +43,10 @@ final class BlockPalette {
 	static final int FLAG_NO_MODEL = 128;
 	/** Always rendered at full brightness (e.g. magma block). */
 	static final int FLAG_EMISSIVE = 256;
+	/** "Solid" in the legacy sense the fluid renderer uses for surface heights. */
+	static final int FLAG_SOLID = 512;
+	/** Water next to it shows the water overlay texture (glass, ice, leaves...). */
+	static final int FLAG_WATER_OVERLAY = 1024;
 
 	private static final BlockPos SEED_PROBE = new BlockPos(5, 70, 9);
 
@@ -88,6 +95,12 @@ final class BlockPalette {
 			}
 			if (state.emissiveRendering()) {
 				flags |= FLAG_EMISSIVE;
+			}
+			if (state.isSolid()) {
+				flags |= FLAG_SOLID;
+			}
+			if (state.getBlock() instanceof HalfTransparentBlock || state.getBlock() instanceof LeavesBlock) {
+				flags |= FLAG_WATER_OVERLAY;
 			}
 		} catch (RuntimeException ignored) {
 			// Keep what is known.
@@ -144,8 +157,10 @@ final class BlockPalette {
 	/**
 	 * What the client's block renderer needs besides the model: shade brightness for ambient occlusion
 	 * ({@code sb}), the random model offset of plants ({@code o: [horizontal, vertical]}), which block
-	 * position seeds the random model variant ({@code sy: -1} for upper halves of doors and tall plants)
-	 * and on which sides identical neighbours hide each other ({@code k}, bit per direction).
+	 * position seeds the random model variant ({@code sy: -1} for upper halves of doors and tall plants),
+	 * which faces are completely covered ({@code fo}, bit per direction, opaque blocks cover all) and on which
+	 * sides identical neighbours hide each other ({@code k}). Directions are numbered like the game's
+	 * (down, up, north, south, west, east).
 	 */
 	private static void writeRenderHints(Json json, BlockState state) {
 		try {
@@ -176,6 +191,22 @@ final class BlockPalette {
 			}
 		} catch (RuntimeException ignored) {
 			// Default seed.
+		}
+
+		int occluding = 0;
+		for (Direction direction : Direction.values()) {
+			try {
+				if (state.getFaceOcclusionShape(direction) == Shapes.block()) {
+					occluding |= 1 << direction.get3DDataValue();
+				}
+			} catch (RuntimeException ignored) {
+				// Not occluding.
+			}
+		}
+		if (occluding != 0 && occluding != 63) {
+			json.field("fo", occluding);
+		} else if (occluding == 63 && !state.isSolidRender()) {
+			json.field("fo", 63);
 		}
 
 		int skip = 0;

@@ -36,7 +36,7 @@ final class EntityModels {
 	 */
 	static @Nullable String extract(Path clientJar, Logger logger) {
 		ClassLoader parent = EntityModels.class.getClassLoader();
-		try (URLClassLoader loader = new URLClassLoader("cctv-client-models", new URL[]{clientJar.toUri().toURL()}, parent)) {
+		try (URLClassLoader loader = new ClientClassLoader(clientJar.toUri().toURL(), parent)) {
 			Class<?> definitions = Class.forName("net.minecraft.client.model.geom.LayerDefinitions", true, loader);
 			Map<?, ?> roots = (Map<?, ?>) definitions.getMethod("createRoots").invoke(null);
 
@@ -76,6 +76,38 @@ final class EntityModels {
 			logger.warn("CCTV: entity models unavailable, mobs are drawn with simplified shapes ({})", e.toString());
 			logger.debug("CCTV: entity model extraction failed", e);
 			return null;
+		}
+	}
+
+	/**
+	 * Loads client-only packages from the client jar itself instead of asking the game's class loader first
+	 * (Fabric refuses client classes on a server, and a production server jar does not have them). Everything
+	 * else, e.g. blocks, entities and math, comes from the running server, so both sides share those classes.
+	 */
+	private static final class ClientClassLoader extends URLClassLoader {
+		private static final String[] CLIENT_PACKAGES = {"net.minecraft.client.", "com.mojang.blaze3d.", "com.mojang.renderpearl."};
+
+		ClientClassLoader(URL clientJar, ClassLoader parent) {
+			super("cctv-client-models", new URL[]{clientJar}, parent);
+		}
+
+		@Override
+		protected Class<?> loadClass(String name, boolean resolve) throws ClassNotFoundException {
+			for (String prefix : CLIENT_PACKAGES) {
+				if (name.startsWith(prefix)) {
+					synchronized (getClassLoadingLock(name)) {
+						Class<?> loaded = findLoadedClass(name);
+						if (loaded == null) {
+							loaded = findClass(name);
+						}
+						if (resolve) {
+							resolveClass(loaded);
+						}
+						return loaded;
+					}
+				}
+			}
+			return super.loadClass(name, resolve);
 		}
 	}
 
