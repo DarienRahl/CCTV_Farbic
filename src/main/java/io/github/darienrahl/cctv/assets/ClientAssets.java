@@ -55,6 +55,7 @@ public final class ClientAssets implements AutoCloseable {
 
 	private static final String MANIFEST = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json";
 	private static final Pattern ENTITY_PATH = Pattern.compile("^[a-z0-9_./-]{1,128}$");
+	private static final Pattern FONT_PATH = Pattern.compile("^[a-z0-9_./-]{1,128}\\.(json|png)$");
 
 	private final Path dir;
 	private final String version;
@@ -126,6 +127,19 @@ public final class ClientAssets implements AutoCloseable {
 	/** @param path path below {@code textures/painting/} without extension, e.g. {@code kebab} */
 	public byte[] paintingTexture(String path) {
 		return texture("painting", path);
+	}
+
+	/**
+	 * The game's font: {@code name.json} from {@code font/} (definitions) or {@code name.png} from
+	 * {@code textures/font/} (glyph sheets), e.g. {@code default.json}, {@code include/default.json}, {@code ascii.png}.
+	 */
+	public byte[] font(String name) {
+		if (state != State.READY || !FONT_PATH.matcher(name).matches() || name.contains("..")) {
+			return null;
+		}
+		return name.endsWith(".json")
+				? read("assets/minecraft/font/" + name)
+				: read("assets/minecraft/textures/font/" + name);
 	}
 
 	private byte[] texture(String folder, String path) {

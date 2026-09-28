@@ -82,9 +82,14 @@ Drag with the mouse to look around, use the wheel to zoom and double-click to go
 camera's view. The view turns only as far as the terrain the server streams around the camera's
 direction (about 20° beyond the picture); aim the camera with `/cctv aim` to look elsewhere. **⚙ Settings** has: graphics (vanilla / shaders) and shader quality, post effect
 (custom shader), sky (sky box), clouds, camera mode (colour / black and white / night vision),
-render resolution (for weak GPUs), player names, mob labels and the CCTV effect. Each viewer's
-choice is remembered in their browser. Names and labels are only shown for entities that are
-really visible (not through walls).
+render resolution (for weak GPUs), name tags, mob labels and the CCTV effect. Each viewer's
+choice is remembered in their browser.
+
+Name tags look exactly like in the game: Minecraft's own font from `client.jar`, floating half a
+block above the head at the game's scale, with the translucent background, lit like the entity and
+dimmed for sneaking players. They follow the game's rules (players within 64 blocks, 32 when
+sneaking; mobs whose custom name is set to always show) and are only drawn for entities the camera
+can really see. "Mob labels" adds tags for every other mob (its custom name or its type).
 
 ### Shaders, post effects and sky boxes
 
@@ -169,6 +174,7 @@ All endpoints support CORS and `?token=` (when a token is set).
 | `GET /assets/models.json` | Mob model geometry (layers from `LayerDefinitions`) |
 | `GET /assets/entities.json`, `/assets/entity/{path}.png` | Mob textures |
 | `GET /assets/painting/{name}.png` | Paintings |
+| `GET /assets/font/{path}` | The game's font (`default.json`, glyph sheets such as `ascii.png`) |
 | `GET /api/viewer` | Viewer defaults, list of shaders and sky boxes |
 | `GET /custom/shaders/{name}.glsl`, `/custom/skyboxes/...` | Shader and sky box files from `config/cctv` |
 | `GET /skin/{uuid}?name=` | Player skin (PNG, `X-Skin-Model` header) |

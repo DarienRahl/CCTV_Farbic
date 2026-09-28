@@ -44,6 +44,7 @@ import io.github.darienrahl.cctv.assets.ClientAssets;
  * GET /assets/models.json        entity model geometry (from the client jar)
  * GET /assets/entities.json      list of entity textures
  * GET /assets/entity/{path}.png  one entity texture
+ * GET /assets/font/{path}         the game's font (definitions .json, glyph sheets .png)
  * </pre>
  */
 public final class WebServer {
@@ -270,6 +271,14 @@ public final class WebServer {
 		} else if (path.equals("entities.json")) {
 			headers.add("Cache-Control", "no-cache");
 			sendText(exchange, 200, "application/json", assets.entityListJson());
+		} else if (path.startsWith("font/")) {
+			byte[] data = assets.font(path.substring("font/".length()));
+			if (data == null) {
+				sendText(exchange, 404, "text/plain", "Not found");
+				return;
+			}
+			headers.add("Cache-Control", "max-age=86400");
+			sendBytes(exchange, 200, path.endsWith(".png") ? "image/png" : "application/json", data);
 		} else if ((path.startsWith("entity/") || path.startsWith("painting/")) && path.endsWith(".png")) {
 			String name = path.substring(path.indexOf('/') + 1, path.length() - ".png".length());
 			byte[] png = path.startsWith("entity/") ? assets.entityTexture(name) : assets.paintingTexture(name);

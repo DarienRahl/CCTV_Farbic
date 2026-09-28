@@ -47,7 +47,7 @@ const sky = new SkyRenderer(gl);
 const clouds = new CloudRenderer(gl);
 const weather = new WeatherRenderer(gl);
 const post = new PostProcessor(gl, renderer);
-const entities = new EntityRenderer(renderer, $('labels'));
+const entities = new EntityRenderer(renderer);
 const world = new World((key, section, message) => {
 	renderer.setSectionMesh(key, section, message, performance.now());
 });
@@ -524,6 +524,7 @@ function frame(now) {
 		sky: () => sky.render(frameData, skyState, state.assets ? state.assets.environment : null, custom && custom.ready ? custom : null),
 		entities: (pass, shadowInfo) => entities.draw(pass, frameData, shadowInfo),
 		translucent: () => {
+			entities.drawNameTags(frameData);
 			const showClouds = !(custom && custom.ready && custom.options && custom.options.showClouds === false);
 			if (cloudRadius > 0 && showClouds) {
 				clouds.render(viewProj, { x: c.x, y: c.y, z: c.z }, settings.clouds === 'fast' ? 'fast' : 'fancy', skyState.cloudColor,
@@ -556,7 +557,6 @@ function frame(now) {
 		far,
 	});
 
-	entities.updateLabels(frameData, list, canvas.clientWidth, canvas.clientHeight, world);
 }
 
 loadViewerInfo().finally(() => {

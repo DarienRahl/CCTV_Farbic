@@ -193,6 +193,10 @@ final class EntityEncoder {
 					.field("uuid", player.getUUID().toString());
 		} else if (entity.hasCustomName() && entity.getCustomName() != null) {
 			json.field("name", entity.getCustomName().getString());
+			if (entity.isCustomNameVisible()) {
+				// The game shows other custom names only while the crosshair is on the entity.
+				json.field("nameVisible", true);
+			}
 		}
 
 		if (entity instanceof ItemEntity item) {

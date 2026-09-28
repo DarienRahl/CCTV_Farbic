@@ -72,12 +72,16 @@ class StreamReader(threading.Thread):
         self.entity_types = set()
         self.block_updates = []
         self.sections = set()
+        self.names = set()
         self.ready = threading.Event()
         self.error = None
+        self.response = None
+        self.closed = False
 
     def run(self):
         try:
             with urllib.request.urlopen(self.url, timeout=60) as response:
+                self.response = response
                 event = None
                 for raw in response:
                     line = raw.decode().rstrip("\n")
@@ -89,6 +93,7 @@ class StreamReader(threading.Thread):
                         self.first.setdefault(event, data)
                         if event == "entities":
                             self.entity_types.update(e["type"] for e in data["e"])
+                            self.names.update(e["name"] for e in data["e"] if e.get("nameVisible"))
                         elif event == "blocks":
                             self.block_updates.extend(data["b"])
                         elif event == "section":
@@ -96,7 +101,15 @@ class StreamReader(threading.Thread):
                         elif event == "ready":
                             self.ready.set()
         except Exception as e:  # noqa: BLE001 - reported below
-            self.error = e
+            if not self.closed:
+                self.error = e
+
+    def close(self):
+        self.closed = True
+        try:
+            self.response.close()
+        except Exception:  # noqa: BLE001 - already gone
+            pass
 
 
 def wait_for_assets(timeout=300):
@@ -162,6 +175,7 @@ def main():
                       ("horse", -4, 9), ("wolf", 2, 1)]:
         rcon.command(f"summon minecraft:{mob} {x} -60 {z}")
     rcon.command("summon minecraft:happy_ghast 1 -55 16")
+    rcon.command('summon minecraft:pig 0 -60 8 {CustomName:"Bob",CustomNameVisible:1b}')
     rcon.command("summon minecraft:armor_stand -3 -60 2")
     rcon.command("item replace entity @e[type=minecraft:armor_stand,limit=1] armor.head with minecraft:golden_helmet")
 
@@ -228,6 +242,8 @@ def main():
             failures.append(f"no '{event}' events")
     if stream.events.get("entities", 0) < 50:
         failures.append("entity frames are not live (expected ~20 per second)")
+    if "Bob" not in stream.names:
+        failures.append("the pig named Bob (name always visible) was not streamed with its name")
     if "minecraft:cow" not in stream.entity_types:
         failures.append("the cow in front of the camera was not streamed")
     if not any(b[0] == 0 and b[1] == -60 and b[2] == 0 for b in stream.block_updates):
@@ -236,6 +252,7 @@ def main():
         failures.append(f"stream error: {stream.error}")
 
     failures += far_terrain_check(rcon)
+    failures += resubscribe_check()
 
     if failures:
         print("FAILED:\n - " + "\n - ".join(failures), flush=True)
@@ -265,7 +282,18 @@ def far_terrain_check(rcon):
             failures.append(f"far camera: visible cliff section {section} was not streamed")
     if (4, -3, 0) in stream.sections:
         failures.append("far camera: a section inside the mesa was streamed (buried sections are not skipped)")
+    stream.close()
     return failures
+
+
+def resubscribe_check():
+    """A camera nobody watched for over a minute releases its session; the next viewer must get a new one."""
+    time.sleep(75)
+    stream = StreamReader("far")
+    stream.start()
+    ok = stream.ready.wait(90)
+    print("far camera after idle:", stream.events, "sections:", len(stream.sections), "error:", stream.error, flush=True)
+    return [] if ok else [f"far camera: no 'ready' after its session was released (events: {stream.events})"]
 
 
 if __name__ == "__main__":

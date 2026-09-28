@@ -11,7 +11,8 @@ import { collectParts } from './models.js';
 import { JavaRandom } from './rng.js';
 import { program, FOG_GLSL, setFog } from './gl.js';
 import { SHADOW_GLSL, SHADER_LIGHT_GLSL } from './renderer.js';
-import { lerp, lerpAngle, wrapDegrees, transformPoint } from './math.js';
+import { lerp, lerpAngle, wrapDegrees } from './math.js';
+import { NameTagRenderer } from './nametags.js';
 
 const MODE_CUTOUT = 0, MODE_NOCULL = 1, MODE_TRANSLUCENT = 2, MODE_EYES = 3, MODE_ENERGY = 4;
 const MODES = { cutout: MODE_CUTOUT, cutout_nocull: MODE_NOCULL, translucent: MODE_TRANSLUCENT, eyes: MODE_EYES, energy: MODE_ENERGY };
@@ -154,6 +155,7 @@ function tokenSuffix(sep) {
 }
 
 const strip = id => (id || '').replace(/^minecraft:/, '');
+const titleCase = name => name.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
 
 function hashColor(text) {
 	let h = 0;
@@ -199,10 +201,10 @@ const THROWN = {
 };
 
 export class EntityRenderer {
-	constructor(renderer, labelContainer) {
+	constructor(renderer) {
 		this.renderer = renderer;
 		this.gl = renderer.gl;
-		this.labels = labelContainer;
+		this.nameTags = new NameTagRenderer(this.gl);
 		this.library = new ModelLibrary();
 		this.sink = new VertexSink();
 		this.batches = [];
@@ -248,7 +250,6 @@ export class EntityRenderer {
 		this.offset = null;
 		this.states.clear();
 		this.motion.clear();
-		for (const label of this.labels.querySelectorAll('.label')) label.remove();
 	}
 
 	setAssets(assets) {
@@ -258,6 +259,7 @@ export class EntityRenderer {
 			.then(r => (r.ok ? r.json() : []))
 			.then(list => { this.entityList = new Set(list); })
 			.catch(() => { this.entityList = new Set(); });
+		this.nameTags.load(query);
 		this.library.load(query).then(ok => {
 			if (!ok) console.warn('CCTV: entity models unavailable, entities are drawn as boxes');
 		});
@@ -521,6 +523,8 @@ export class EntityRenderer {
 			}
 		}
 		this.visibleCount = visible;
+		const view = frame.viewRotation;
+		this.nameTags.build(this.collectNameTags(frame, list, world), [view[0], view[4], view[8]], [view[1], view[5], view[9]]);
 		if (this.assets) this.prepareBlockEntities(frame, world);
 		this.upload();
 		this.cleanupStates(now);
@@ -1316,46 +1320,44 @@ export class EntityRenderer {
 	// --- name tags -----------------------------------------------------------------------------------
 
 	/** Name tags only for entities on screen with a clear line of sight from the camera. */
-	updateLabels(frame, entities, width, height, world) {
-		const seen = new Set();
+	/**
+	 * Name tags of the entities that can be seen: players (64 blocks, 32 when sneaking, like
+	 * LivingEntityRenderer.shouldShowName), named mobs and, when enabled, every mob's type. A tag is only
+	 * shown when the head or the middle of the body is not hidden behind blocks.
+	 */
+	collectNameTags(frame, list, world) {
+		const tags = [];
+		if (!this.nameTags.ready) return tags;
 		const o = frame.origin, cam = frame.camPos;
 		const eye = [cam[0] + o[0], cam[1] + o[1], cam[2] + o[2]];
-		for (const e of entities) {
-			if (!this.showLabels || e.invisible) continue;
+		for (const e of list) {
+			if (e.invisible || e.dead) continue;
 			const type = strip(e.type);
 			if (type === 'item' || type === 'experience_orb' || type === 'lightning_bolt' || type.endsWith('arrow')) continue;
-			const named = !!e.name;
-			if (!named && !this.showMobLabels) continue;
-			const top = e.y + (e.h || 1) + 0.5;
-			const dx = e.x - eye[0], dy = top - eye[1], dz = e.z - eye[2];
+			// Players and mobs whose custom name is always visible, like in the game; every mob with "mob labels".
+			const named = type === 'player' || (!!e.name && !!e.nameVisible);
+			if (named ? !this.showLabels : !this.showMobLabels) continue;
+			const height = e.h || 1;
+			const dx = e.x - eye[0], dy = e.y + height - eye[1], dz = e.z - eye[2];
 			const distance = Math.hypot(dx, dy, dz);
-			if (distance > (named ? 64 : 32) || distance > frame.fogEnd) continue;
-			const p = transformPoint(frame.viewProj, e.x - o[0] - cam[0], top - o[1] - cam[1], e.z - o[2] - cam[2]);
-			if (p[3] <= 0 || p[0] < -1.05 || p[0] > 1.05 || p[1] < -1.05 || p[1] > 1.1) continue;
+			const limit = !named ? 32 : type === 'player' && e.sneak ? 32 : 64;
+			if (distance >= limit || distance > frame.fogEnd) continue;
+			const rx = e.x - o[0] - cam[0], ry = e.y + height - o[1] - cam[1], rz = e.z - o[2] - cam[2];
+			if (!frame.frustum(rx, ry + 0.6, rz, 2)) continue;
 			// Visible if the head or the middle of the body can be seen.
-			const mid = [e.x, e.y + (e.h || 1) * 0.5, e.z];
-			const head = [e.x, e.y + (e.h || 1) * 0.9, e.z];
-			if (world.occluded(eye, head) && world.occluded(eye, mid)) continue;
+			if (world.occluded(eye, [e.x, e.y + height * 0.9, e.z]) && world.occluded(eye, [e.x, e.y + height * 0.5, e.z])) continue;
+			tags.push({
+				pos: [rx, ry, rz],
+				text: e.name || titleCase(type),
+				discrete: type === 'player' && !!(e.sneak || e.pose === 'crouching'),
+				light: this.lightFor(e, world),
+			});
+		}
+		return tags;
+	}
 
-			const key = 'label-' + e.id;
-			seen.add(key);
-			let label = this.labels.querySelector('#' + key);
-			if (!label) {
-				label = document.createElement('div');
-				label.className = 'label';
-				label.id = key;
-				this.labels.appendChild(label);
-			}
-			const text = e.name || type.replace(/_/g, ' ');
-			if (label.textContent !== text) label.textContent = text;
-			label.classList.toggle('player', type === 'player');
-			label.classList.toggle('sneaking', !!e.sneak);
-			const x = (p[0] * 0.5 + 0.5) * width;
-			const y = (1 - (p[1] * 0.5 + 0.5)) * height;
-			label.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) translate(-50%, -100%)`;
-		}
-		for (const label of [...this.labels.querySelectorAll('.label')]) {
-			if (!seen.has(label.id)) label.remove();
-		}
+	/** Draws the name tags prepared for this frame (after the translucent world, before clouds and weather). */
+	drawNameTags(frame) {
+		this.nameTags.draw(frame, this.renderer.lightmap);
 	}
 }
