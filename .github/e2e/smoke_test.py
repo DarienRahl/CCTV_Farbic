@@ -301,6 +301,11 @@ def resubscribe_check():
     ok = stream.ready.wait(90)
     print("far camera after idle:", stream.events, "sections:", len(stream.sections), "error:", stream.error,
           "connected:", stream.connected, "lines:", stream.lines, "reading:", stream.is_alive(), flush=True)
+    if not ok:
+        try:
+            print("status:", urllib.request.urlopen(f"{WEB}/api/status", timeout=10).read().decode(), flush=True)
+        except OSError as e:
+            print("status unavailable:", e, flush=True)
     return [] if ok else [f"far camera: no 'ready' after its session was released (events: {stream.events})"]
 
 

@@ -178,6 +178,9 @@ final class CameraSession {
 	private String biomes = "{}";
 	private int idleTicks;
 	private boolean needsRebuild = true;
+	/** For {@link #writeStatus}: how often and when this session was last ticked. */
+	private volatile long ticks;
+	private volatile long lastTick;
 	private final EnvironmentSampler environment = new EnvironmentSampler();
 
 	CameraSession(Camera camera, CctvConfig config, BlockPalette palette, Executor workers) {
@@ -239,6 +242,8 @@ final class CameraSession {
 	 * @return {@code false} once the session is idle and can be forgotten
 	 */
 	boolean tick(@Nullable ServerLevel level, long tick) {
+		ticks++;
+		lastTick = tick;
 		if (disposed) {
 			return false;
 		}
@@ -325,6 +330,40 @@ final class CameraSession {
 		}
 
 		return true;
+	}
+
+	/** Troubleshooting snapshot (web thread; plain reads of server-thread state, good enough for a status page). */
+	synchronized void writeStatus(Json json) {
+		int[] counts = new int[Status.values().length];
+		for (SectionEntry entry : order) {
+			counts[entry.status.ordinal()]++;
+		}
+		json.field("camera", camera.name())
+				.field("ticks", ticks)
+				.field("lastTick", lastTick)
+				.field("disposed", disposed)
+				.field("idleTicks", idleTicks)
+				.field("pending", pending.size())
+				.field("viewerCount", viewerCount)
+				.field("sections", order.size())
+				.field("new", counts[Status.NEW.ordinal()])
+				.field("reading", counts[Status.PENDING.ordinal()])
+				.field("ready", counts[Status.READY.ordinal()])
+				.field("empty", counts[Status.EMPTY.ordinal()])
+				.field("captureCursor", captureCursor)
+				.field("diskReads", diskReads)
+				.field("skipBuried", skipBuried);
+		json.name("viewers").beginArray();
+		for (ViewerState state : List.copyOf(viewers)) {
+			json.beginObject()
+					.field("open", state.viewer.isOpen())
+					.field("backlog", state.viewer.backlog())
+					.field("scanFrom", state.scanFrom)
+					.field("sent", state.sent.cardinality())
+					.field("ready", state.ready)
+					.endObject();
+		}
+		json.endArray();
 	}
 
 	/** Called by the mixin for every block change in any level. */

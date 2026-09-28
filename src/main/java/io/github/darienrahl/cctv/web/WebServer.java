@@ -45,6 +45,7 @@ import io.github.darienrahl.cctv.assets.ClientAssets;
  * GET /assets/entities.json      list of entity textures
  * GET /assets/entity/{path}.png  one entity texture
  * GET /assets/font/{path}         the game's font (definitions .json, glyph sheets .png)
+ * GET /api/status                 state of the live camera sessions (troubleshooting)
  * </pre>
  */
 public final class WebServer {
@@ -146,6 +147,9 @@ public final class WebServer {
 			sendText(exchange, 200, "application/json; charset=utf-8", CustomContent.viewerJson(config, dataDir));
 		} else if (path.startsWith("/custom/")) {
 			custom(exchange, path.substring("/custom/".length()));
+		} else if (path.equals("/api/status")) {
+			exchange.getResponseHeaders().add("Cache-Control", "no-store");
+			sendText(exchange, 200, "application/json; charset=utf-8", directory.statusJson());
 		} else if (path.equals("/api/cameras")) {
 			exchange.getResponseHeaders().add("Access-Control-Allow-Origin", "*");
 			exchange.getResponseHeaders().add("Cache-Control", "no-store");

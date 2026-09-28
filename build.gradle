@@ -45,3 +45,12 @@ jar {
 		rename { "${it}_$projectName" }
 	}
 }
+
+loom {
+	runs {
+		server {
+			// Development runs (and the CI server test) list thread stacks on /api/status.
+			vmArg "-Dcctv.debug=true"
+		}
+	}
+}

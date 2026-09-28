@@ -241,6 +241,38 @@ public final class CameraManager implements CameraDirectory {
 	}
 
 	@Override
+	public String statusJson() {
+		Json json = new Json(1024);
+		json.beginObject().field("tick", tick).field("serverTicking", server.isRunning()).name("sessions").beginArray();
+		for (Map.Entry<String, CameraSession> entry : sessions.entrySet()) {
+			json.beginObject().field("key", entry.getKey());
+			entry.getValue().writeStatus(json);
+			json.endObject();
+		}
+		json.endArray();
+		if (Boolean.getBoolean("cctv.debug")) {
+			// Development runs: where the server thread and the CCTV threads are right now.
+			json.name("threads").beginArray();
+			for (Map.Entry<Thread, StackTraceElement[]> entry : Thread.getAllStackTraces().entrySet()) {
+				String name = entry.getKey().getName();
+				if (!name.equals("Server thread") && !name.startsWith("cctv")) {
+					continue;
+				}
+				StringBuilder stack = new StringBuilder();
+				for (StackTraceElement element : entry.getValue()) {
+					if (stack.length() > 3000) {
+						break;
+					}
+					stack.append(element).append(" | ");
+				}
+				json.beginObject().field("name", name).field("state", entry.getKey().getState().name()).field("stack", stack.toString()).endObject();
+			}
+			json.endArray();
+		}
+		return json.endObject().toString();
+	}
+
+	@Override
 	public Subscription subscribe(String name, Viewer viewer) {
 		String key = name.toLowerCase(Locale.ROOT);
 

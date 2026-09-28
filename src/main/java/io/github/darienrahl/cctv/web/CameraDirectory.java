@@ -16,4 +16,9 @@ public interface CameraDirectory {
 
 	/** Attaches a viewer to a camera. Called from web threads. */
 	Subscription subscribe(String camera, Viewer viewer);
+
+	/** JSON object with the state of the live camera sessions (for troubleshooting). Called from web threads. */
+	default String statusJson() {
+		return "{}";
+	}
 }
