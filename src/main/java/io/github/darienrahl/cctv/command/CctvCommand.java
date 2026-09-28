@@ -47,15 +47,15 @@ import io.github.darienrahl.cctv.camera.CameraManager;
  */
 public final class CctvCommand {
 	private static final SimpleCommandExceptionType NOT_RUNNING = new SimpleCommandExceptionType(
-			Component.literal("CCTV nie działa (serwer się jeszcze uruchamia?)"));
+			Component.literal("CCTV is not running (is the server still starting?)"));
 	private static final SimpleCommandExceptionType BAD_NAME = new SimpleCommandExceptionType(
-			Component.literal("Nazwa kamery: 1-32 znaki, tylko litery, cyfry, _ i -"));
+			Component.literal("Camera names: 1-32 characters, only letters, digits, _ and -"));
 	private static final DynamicCommandExceptionType EXISTS = new DynamicCommandExceptionType(
-			name -> Component.literal("Kamera '" + name + "' już istnieje (użyj /cctv move)"));
+			name -> Component.literal("Camera '" + name + "' already exists (use /cctv move)"));
 	private static final DynamicCommandExceptionType UNKNOWN = new DynamicCommandExceptionType(
-			name -> Component.literal("Nie ma kamery '" + name + "'"));
+			name -> Component.literal("No camera named '" + name + "'"));
 	private static final DynamicCommandExceptionType RANGE_TOO_BIG = new DynamicCommandExceptionType(
-			max -> Component.literal("Maksymalny zasięg to " + max + " (maxRange w config/cctv/config.json)"));
+			max -> Component.literal("The maximum range is " + max + " (maxRange in config/cctv/config.json)"));
 
 	private static final SuggestionProvider<CommandSourceStack> CAMERAS = (context, builder) -> {
 		CameraManager manager = CctvMod.manager();
@@ -169,16 +169,16 @@ public final class CctvCommand {
 	}
 
 	private static int help(CommandSourceStack source) {
-		source.sendSuccess(() -> Component.literal("CCTV - kamery podglądu na żywo w przeglądarce").withStyle(ChatFormatting.GOLD), false);
+		source.sendSuccess(() -> Component.literal("CCTV - live camera views in your web browser").withStyle(ChatFormatting.GOLD), false);
 		String[] lines = {
-				"/cctv create <nazwa> [pos] [yaw pitch] - postaw kamerę na wysokości oczu (~ ~ ~ = twoje oczy)",
-				"/cctv move <nazwa> [pos] [yaw pitch] - przenieś kamerę",
-				"/cctv aim <nazwa> [cel] - skieruj kamerę na punkt (domyślnie: na ciebie)",
-				"/cctv fov <nazwa> <stopnie> - kąt widzenia",
-				"/cctv range <nazwa> <bloki> - zasięg widzenia",
-				"/cctv remove <nazwa> - usuń kamerę",
-				"/cctv list | url [nazwa] | info <nazwa>",
-				"/cctv reload - wczytaj ponownie ustawienia podglądu (shadery, skyboxy)"
+				"/cctv create <name> [pos] [yaw pitch] - place a camera at your eye height (~ ~ ~ = your eyes)",
+				"/cctv move <name> [pos] [yaw pitch] - move a camera",
+				"/cctv aim <name> [target] - point a camera at a position (default: at you)",
+				"/cctv fov <name> <degrees> - field of view",
+				"/cctv range <name> <blocks> - view distance",
+				"/cctv remove <name> - remove a camera",
+				"/cctv list | url [name] | info <name>",
+				"/cctv reload - reload the viewer settings (shaders, sky boxes)"
 		};
 		for (String line : lines) {
 			source.sendSuccess(() -> Component.literal(line).withStyle(ChatFormatting.GRAY), false);
@@ -190,13 +190,13 @@ public final class CctvCommand {
 		CameraManager manager = manager();
 		List<Camera> cameras = manager.list();
 		if (cameras.isEmpty()) {
-			source.sendSuccess(() -> Component.literal("Brak kamer. Postaw pierwszą: /cctv create <nazwa>").withStyle(ChatFormatting.GRAY), false);
+			source.sendSuccess(() -> Component.literal("No cameras yet. Place the first one: /cctv create <name>").withStyle(ChatFormatting.GRAY), false);
 			return 0;
 		}
 
-		source.sendSuccess(() -> Component.literal("Kamery (" + cameras.size() + "):").withStyle(ChatFormatting.GOLD), false);
+		source.sendSuccess(() -> Component.literal("Cameras (" + cameras.size() + "):").withStyle(ChatFormatting.GOLD), false);
 		for (Camera camera : cameras) {
-			MutableComponent line = Component.literal(String.format(Locale.ROOT, " %s [%s %.0f %.0f %.0f, widzów: %d] ",
+			MutableComponent line = Component.literal(String.format(Locale.ROOT, " %s [%s %.0f %.0f %.0f, viewers: %d] ",
 					camera.name(), shortDimension(camera.dimension()), camera.x(), camera.y(), camera.z(), manager.viewers(camera)));
 			line.append(link(cameraUrl(manager, source, camera.name())));
 			source.sendSuccess(() -> line, false);
@@ -212,10 +212,10 @@ public final class CctvCommand {
 		} else {
 			url = cameraUrl(manager, source, camera(manager, name).name());
 		}
-		MutableComponent message = Component.literal("Podgląd: ").append(link(url));
+		MutableComponent message = Component.literal("View: ").append(link(url));
 		source.sendSuccess(() -> message, false);
 		if (!manager.isWebRunning()) {
-			source.sendFailure(Component.literal("Uwaga: serwer WWW nie działa - sprawdź port w config/cctv/config.json i logi."));
+			source.sendFailure(Component.literal("Warning: the web server is not running - check the port in config/cctv/config.json and the server log."));
 		}
 		return 1;
 	}
@@ -224,7 +224,7 @@ public final class CctvCommand {
 		CameraManager manager = manager();
 		Camera camera = camera(manager, name);
 		source.sendSuccess(() -> Component.literal(String.format(Locale.ROOT,
-				"%s: %s %.2f %.2f %.2f, yaw %.1f, pitch %.1f, fov %.0f°, zasięg %d, widzów %d",
+				"%s: %s %.2f %.2f %.2f, yaw %.1f, pitch %.1f, fov %.0f°, range %d, viewers %d",
 				camera.name(), camera.dimension(), camera.x(), camera.y(), camera.z(), camera.yaw(), camera.pitch(),
 				camera.fov(), camera.range(), manager.viewers(camera))), false);
 		return 1;
@@ -249,7 +249,7 @@ public final class CctvCommand {
 		manager.put(camera);
 		CameraMarker.place(manager, camera);
 
-		MutableComponent message = Component.literal("Kamera '" + name + "' postawiona. Podgląd: ").withStyle(ChatFormatting.GREEN)
+		MutableComponent message = Component.literal("Camera '" + name + "' placed. View: ").withStyle(ChatFormatting.GREEN)
 				.append(link(cameraUrl(manager, source, name)));
 		source.sendSuccess(() -> message, true);
 		return 1;
@@ -267,7 +267,7 @@ public final class CctvCommand {
 		CameraMarker.remove(manager, old);
 		CameraMarker.place(manager, camera);
 
-		source.sendSuccess(() -> Component.literal("Kamera '" + camera.name() + "' przeniesiona.").withStyle(ChatFormatting.GREEN), true);
+		source.sendSuccess(() -> Component.literal("Camera '" + camera.name() + "' moved.").withStyle(ChatFormatting.GREEN), true);
 		return 1;
 	}
 
@@ -283,7 +283,7 @@ public final class CctvCommand {
 		CameraMarker.remove(manager, old);
 		CameraMarker.place(manager, camera);
 
-		source.sendSuccess(() -> Component.literal(String.format(Locale.ROOT, "Kamera '%s' skierowana (yaw %.1f, pitch %.1f).",
+		source.sendSuccess(() -> Component.literal(String.format(Locale.ROOT, "Camera '%s' aimed (yaw %.1f, pitch %.1f).",
 				camera.name(), camera.yaw(), camera.pitch())).withStyle(ChatFormatting.GREEN), true);
 		return 1;
 	}
@@ -292,7 +292,7 @@ public final class CctvCommand {
 		CameraManager manager = manager();
 		Camera camera = camera(manager, name(context)).withFov(degrees);
 		manager.put(camera);
-		context.getSource().sendSuccess(() -> Component.literal(String.format(Locale.ROOT, "Kamera '%s': fov %.0f°.",
+		context.getSource().sendSuccess(() -> Component.literal(String.format(Locale.ROOT, "Camera '%s': fov %.0f°.",
 				camera.name(), camera.fov())).withStyle(ChatFormatting.GREEN), true);
 		return 1;
 	}
@@ -304,7 +304,7 @@ public final class CctvCommand {
 		}
 		Camera camera = camera(manager, name(context)).withRange(blocks);
 		manager.put(camera);
-		context.getSource().sendSuccess(() -> Component.literal("Kamera '" + camera.name() + "': zasięg " + blocks + " bloków.")
+		context.getSource().sendSuccess(() -> Component.literal("Camera '" + camera.name() + "': range " + blocks + " blocks.")
 				.withStyle(ChatFormatting.GREEN), true);
 		return 1;
 	}
@@ -314,7 +314,7 @@ public final class CctvCommand {
 		Camera camera = camera(manager, name);
 		manager.remove(camera.name());
 		CameraMarker.remove(manager, camera);
-		source.sendSuccess(() -> Component.literal("Kamera '" + camera.name() + "' usunięta.").withStyle(ChatFormatting.YELLOW), true);
+		source.sendSuccess(() -> Component.literal("Camera '" + camera.name() + "' removed.").withStyle(ChatFormatting.YELLOW), true);
 		return 1;
 	}
 
@@ -323,10 +323,10 @@ public final class CctvCommand {
 		try {
 			manager.reloadViewerSettings();
 		} catch (java.io.IOException e) {
-			source.sendFailure(Component.literal("Nie udało się wczytać config/cctv/config.json: " + e.getMessage()));
+			source.sendFailure(Component.literal("Could not read config/cctv/config.json: " + e.getMessage()));
 			return 0;
 		}
-		source.sendSuccess(() -> Component.literal("Ustawienia podglądu (sekcja \"viewer\") wczytane ponownie. Odśwież stronę w przeglądarce.")
+		source.sendSuccess(() -> Component.literal("Viewer settings (the \"viewer\" section) reloaded. Refresh the page in your browser.")
 				.withStyle(ChatFormatting.GREEN), true);
 		return 1;
 	}
@@ -374,7 +374,7 @@ public final class CctvCommand {
 		try {
 			text.setStyle(Style.EMPTY.withColor(ChatFormatting.AQUA).withUnderlined(true)
 					.withClickEvent(new ClickEvent.OpenUrl(URI.create(url)))
-					.withHoverEvent(new HoverEvent.ShowText(Component.literal("Otwórz w przeglądarce"))));
+					.withHoverEvent(new HoverEvent.ShowText(Component.literal("Open in your browser"))));
 		} catch (IllegalArgumentException e) {
 			text.withStyle(ChatFormatting.AQUA);
 		}

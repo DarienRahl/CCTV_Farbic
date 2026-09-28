@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="pl">
+<html lang="en">
 <head>
 	<meta charset="utf-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1">
@@ -21,7 +21,7 @@
 			<div id="clock"></div>
 			<div id="game-time" class="sub"></div>
 		</div>
-		<div class="hud bottom-left"><span id="status" data-state="connecting">ŁĄCZENIE…</span></div>
+		<div class="hud bottom-left"><span id="status" data-state="connecting">CONNECTING…</span></div>
 		<div class="hud bottom-right" id="stats"></div>
 
 		<div id="loading" hidden>
@@ -33,70 +33,70 @@
 
 		<form id="settings" class="panel" hidden onsubmit="return false">
 			<header>
-				<strong>Ustawienia obrazu</strong>
-				<button type="button" id="close-settings" title="Zamknij">✕</button>
+				<strong>Picture settings</strong>
+				<button type="button" id="close-settings" title="Close">✕</button>
 			</header>
-			<label>Grafika
+			<label>Graphics
 				<select data-setting="graphics">
 					<option value="vanilla">Minecraft (vanilla)</option>
-					<option value="shaders">Shadery (cienie, fale, poświata)</option>
+					<option value="shaders">Shaders (shadows, waves, glow)</option>
 				</select>
 			</label>
-			<label>Jakość shaderów
+			<label>Shader quality
 				<select data-setting="shaderQuality">
-					<option value="low">Niska</option>
-					<option value="medium">Średnia</option>
-					<option value="high">Wysoka</option>
+					<option value="low">Low</option>
+					<option value="medium">Medium</option>
+					<option value="high">High</option>
 					<option value="ultra">Ultra</option>
 				</select>
 			</label>
-			<label>Efekt końcowy (shader)
+			<label>Post effect (shader)
 				<select data-setting="postShader">
-					<option value="">Brak</option>
+					<option value="">None</option>
 				</select>
 			</label>
-			<label>Niebo
+			<label>Sky
 				<select data-setting="skybox">
-					<option value="default">Domyślne serwera</option>
+					<option value="default">Server default</option>
 					<option value="none">Minecraft</option>
 				</select>
 			</label>
-			<label>Chmury
+			<label>Clouds
 				<select data-setting="clouds">
-					<option value="fancy">Ozdobne</option>
-					<option value="fast">Szybkie</option>
-					<option value="off">Wyłączone</option>
+					<option value="fancy">Fancy</option>
+					<option value="fast">Fast</option>
+					<option value="off">Off</option>
 				</select>
 			</label>
-			<label>Tryb kamery
+			<label>Camera mode
 				<select data-setting="mode">
-					<option value="color">Kolor</option>
-					<option value="mono">Czarno-biały</option>
-					<option value="night">Noktowizor</option>
+					<option value="color">Colour</option>
+					<option value="mono">Black and white</option>
+					<option value="night">Night vision</option>
 				</select>
 			</label>
-			<label>Rozdzielczość renderowania
+			<label>Render resolution
 				<select data-setting="renderScale">
-					<option value="0.5">50% (słabe GPU)</option>
+					<option value="0.5">50% (weak GPU)</option>
 					<option value="0.75">75%</option>
 					<option value="1">100%</option>
 				</select>
 			</label>
-			<label class="check"><input type="checkbox" data-setting="labels"> Nazwy graczy (tylko widoczne)</label>
-			<label class="check"><input type="checkbox" data-setting="mobLabels"> Podpisy mobów</label>
-			<label class="check"><input type="checkbox" data-setting="cctvEffect"> Efekt CCTV (skanlinie)</label>
+			<label class="check"><input type="checkbox" data-setting="labels"> Player names (visible players only)</label>
+			<label class="check"><input type="checkbox" data-setting="mobLabels"> Mob labels</label>
+			<label class="check"><input type="checkbox" data-setting="cctvEffect"> CCTV effect (scan lines)</label>
 			<footer>
-				<button type="button" id="settings-reset">Przywróć domyślne serwera</button>
+				<button type="button" id="settings-reset">Restore server defaults</button>
 			</footer>
 		</form>
 	</div>
 
 	<nav id="toolbar">
-		<a href="/" id="back" class="button">◀ Wszystkie kamery</a>
+		<a href="/" id="back" class="button">◀ All cameras</a>
 		<span class="spacer"></span>
-		<button type="button" id="open-settings" class="unlocked-only" title="Grafika, shadery, niebo, podpisy">⚙ Ustawienia</button>
-		<button type="button" id="reset-view" title="Przeciągnij myszą, aby rozejrzeć się; kółko = zoom">Reset widoku</button>
-		<button type="button" id="fullscreen">Pełny ekran</button>
+		<button type="button" id="open-settings" class="unlocked-only" title="Graphics, shaders, sky, labels">⚙ Settings</button>
+		<button type="button" id="reset-view" title="Drag with the mouse to look around; wheel = zoom">Reset view</button>
+		<button type="button" id="fullscreen">Fullscreen</button>
 	</nav>
 
 	<script type="module" src="/static/app.js"></script>

@@ -111,7 +111,7 @@ export class Assets {
 				response = null;
 			}
 			if (response && response.ok) {
-				onStatus?.('Tekstury: przygotowanie…');
+				onStatus?.('Textures: preparing…');
 				const bundle = await response.json();
 				const assets = new Assets(gl, bundle);
 				await assets.buildAtlas();
@@ -120,7 +120,7 @@ export class Assets {
 				return assets;
 			}
 			if (response && response.status === 404) return null;
-			onStatus?.('Serwer pobiera tekstury Minecrafta…');
+			onStatus?.('The server is downloading Minecraft textures…');
 			await new Promise(r => setTimeout(r, Math.min(10000, 2000 + attempt * 1000)));
 		}
 	}

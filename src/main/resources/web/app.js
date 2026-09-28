@@ -38,7 +38,7 @@ let renderer;
 try {
 	renderer = new Renderer(canvas);
 } catch (e) {
-	showMessage('Ta przeglądarka nie obsługuje WebGL2: ' + e.message);
+	showMessage('This browser does not support WebGL2: ' + e.message);
 	throw e;
 }
 const gl = renderer.gl;
@@ -118,7 +118,7 @@ function applySettings() {
 					shaderSources.set(name, source);
 					if (settings.postShader === name) reportShaderError(post.setCustomShader(name, source));
 				})
-				.catch(() => reportShaderError('nie można wczytać ' + name + '.glsl'));
+				.catch(() => reportShaderError('could not load ' + name + '.glsl'));
 		}
 	}
 	for (const input of document.querySelectorAll('[data-setting]')) {
@@ -259,7 +259,7 @@ function connect() {
 		state.removed = true;
 		source.close();
 		setStatus('removed');
-		showMessage('Kamera została usunięta.');
+		showMessage('This camera has been removed.');
 	});
 }
 
@@ -297,7 +297,7 @@ function updateLoading() {
 		loadingEl.hidden = true;
 		return;
 	}
-	if (!state.init.loaded) showMessage('Wymiar kamery nie jest wczytany na serwerze.');
+	if (!state.init.loaded) showMessage('The camera\'s dimension is not loaded on the server.');
 	if (state.ready) {
 		loadingEl.hidden = true;
 		return;
@@ -308,11 +308,11 @@ function updateLoading() {
 	const pct = total > 0 ? Math.min(100, Math.round(done / total * 100)) : 0;
 	loadingEl.hidden = false;
 	loadingFill.style.width = pct + '%';
-	loadingText.textContent = 'Wczytywanie obrazu… ' + pct + '%';
+	loadingText.textContent = 'Loading the picture… ' + pct + '%';
 }
 
 function setStatus(kind) {
-	const labels = { live: 'NA ŻYWO', connecting: 'ŁĄCZENIE…', offline: 'BRAK SYGNAŁU', removed: 'KAMERA USUNIĘTA' };
+	const labels = { live: 'LIVE', connecting: 'CONNECTING…', offline: 'NO SIGNAL', removed: 'CAMERA REMOVED' };
 	statusEl.textContent = labels[kind] || kind;
 	statusEl.dataset.state = kind;
 	document.body.classList.toggle('no-signal', kind !== 'live');
@@ -391,15 +391,15 @@ function updateHud(now) {
 		const hours = Math.floor(t / 1000 + 6) % 24;
 		const minutes = Math.floor((t % 1000) / 1000 * 60);
 		const day = Math.floor(time / 24000) + 1;
-		const weatherText = env.thunder > 0.5 ? ' · burza' : env.rain > 0.2 ? (env.precipitation === false ? '' : ' · opady') : '';
-		gameTimeEl.textContent = `Dzień ${day} · ${pad2(hours)}:${pad2(minutes)}${weatherText}`;
+		const weatherText = env.thunder > 0.5 ? ' · thunderstorm' : env.rain > 0.2 ? (env.precipitation === false ? '' : ' · rain') : '';
+		gameTimeEl.textContent = `Day ${day} · ${pad2(hours)}:${pad2(minutes)}${weatherText}`;
 	} else {
 		gameTimeEl.textContent = '';
 	}
 	if (now - (state.lastStats || 0) > 500) {
 		state.lastStats = now;
 		const s = renderer.stats;
-		statsEl.textContent = `${Math.round(state.fps)} fps · sekcje ${world.sections.size} · rysowane ${s.drawn} · encje ${entities.visibleCount}`;
+		statsEl.textContent = `${Math.round(state.fps)} fps · sections ${world.sections.size} · drawn ${s.drawn} · entities ${entities.visibleCount}`;
 	}
 }
 

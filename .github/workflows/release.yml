@@ -3,7 +3,8 @@
 # Either push a version tag (v1.2.3) or run this workflow manually
 # ("Run workflow" in the Actions tab): then the tag v<version> is taken from
 # gradle.properties and created on the selected commit. Release notes come
-# from docs/release-notes/<tag>.md when that file exists.
+# from docs/release-notes/<tag>.md when that file exists; the notes of
+# earlier releases are refreshed from their files as well.
 
 name: release
 on:
@@ -57,3 +58,15 @@ jobs:
           gh release create "$TAG" build/libs/cctv-fabric-*[0-9].jar \
             --target "$GITHUB_SHA" \
             --title "CCTV $TAG (Minecraft 26.3)" "${NOTES_ARG[@]}"
+      - name: sync notes of earlier releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Keeps published release descriptions in line with docs/release-notes (e.g. after edits).
+          for file in docs/release-notes/v*.md; do
+            tag=$(basename "$file" .md)
+            if [ "$tag" != "$TAG" ] && gh release view "$tag" > /dev/null 2>&1; then
+              gh release edit "$tag" --notes-file "$file"
+              echo "Updated notes of $tag"
+            fi
+          done

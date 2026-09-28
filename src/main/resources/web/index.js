@@ -20,9 +20,9 @@ function renderList() {
 	list.replaceChildren();
 	if (cameras.length === 0) {
 		list.append(el('div', { className: 'empty' }, [
-			'Brak kamer. W grze wpisz ',
-			el('code', { textContent: '/cctv create <nazwa>' }),
-			' – kamera stanie tam, gdzie patrzysz.',
+			'No cameras yet. In game, type ',
+			el('code', { textContent: '/cctv create <name>' }),
+			' and the camera appears where you are looking.',
 		]));
 		return;
 	}
@@ -32,7 +32,7 @@ function renderList() {
 			el('div', {
 				className: 'meta',
 				textContent: `${c.dimension.replace('minecraft:', '')} · ${c.x.toFixed(0)} ${c.y.toFixed(0)} ${c.z.toFixed(0)}\n`
-					+ `fov ${c.fov.toFixed(0)}° · zasięg ${c.range} · widzów ${c.viewers}`,
+					+ `fov ${c.fov.toFixed(0)}° · range ${c.range} · viewers ${c.viewers}`,
 				style: 'white-space: pre-line',
 			}),
 		]));
@@ -59,7 +59,7 @@ function renderWall() {
 function render() {
 	list.hidden = wallMode;
 	wall.hidden = !wallMode;
-	toggle.textContent = wallMode ? 'Lista kamer' : 'Ściana monitorów';
+	toggle.textContent = wallMode ? 'Camera list' : 'Video wall';
 	if (wallMode) renderWall();
 	else {
 		wall.replaceChildren();

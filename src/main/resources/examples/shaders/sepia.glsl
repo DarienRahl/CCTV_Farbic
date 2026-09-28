@@ -1,6 +1,6 @@
 // Example post-processing shader for the CCTV viewer (GLSL ES 3.00).
 // Put your own *.glsl files next to this one and pick them in the viewer
-// ("Shader" button) or for everybody with viewer.postShader in config.json.
+// (Settings > Post effect) or for everybody with viewer.postShader in config.json.
 //
 // Write a function `vec4 postProcess(vec2 uv)`. Available:
 //   sampler2D uScene      finished picture (colour)

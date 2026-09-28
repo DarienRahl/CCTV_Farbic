@@ -1,210 +1,213 @@
-# CCTV – kamery na żywo dla serwera Minecraft (Fabric 26.3)
+# CCTV – live cameras for a Minecraft server (Fabric 26.3)
 
-Mod **tylko po stronie serwera**. Stawiasz komendą „kamerę” w świecie, a jej obraz na żywo
-oglądasz w przeglądarce: gracze, moby, otwierane drzwi i stawiane bloki widać od razu.
+A **server-side only** mod. Place a "camera" in the world with a command and watch its live picture
+in a web browser: players, mobs, opening doors and placed blocks show up right away.
 
-- **Gracze nie potrzebują moda.** Wchodzą na serwer zwykłym klientem vanilla.
-- **Bez dodatkowego konta Minecraft i bez bota.** Nikt nie musi być zalogowany, żeby kamera działała.
-- **Serwer nie renderuje obrazu i nie potrzebuje GPU.** Wysyła tylko lekkie dane: bloki, światło,
-  biomy i pozycje encji 20 razy na sekundę. Całe renderowanie robi przeglądarka (WebGL2).
-- **Wygląd 1:1 jak w Minecrafcie 26.3.** Siatki bloków powstają tym samym algorytmem co w kliencie
-  (warianty modeli, przesunięcia roślin, *smooth lighting* z AO, cieniowanie ścian, mieszanie kolorów
-  biomów 5×5, ciecze). Światło, mgła, niebo, słońce, księżyc z fazami, gwiazdy, wschody i zachody,
-  chmury, deszcz, śnieg, burze z piorunami i błyskami, niebo Endu i **rozbłyski w Endzie** są liczone
-  z tych samych atrybutów środowiska co w grze.
-- **Wszystkie moby z prawdziwymi modelami.** Geometria modeli jest brana z `client.jar` (happy ghast,
-  konie z umaszczeniem i znaczeniami, wilki, koty, osadnicy z profesjami, warianty zimne/ciepłe…),
-  razem z siodłami, zbrojami, obrożami, wełną, uprzężami i świecącymi oczami. Gracze mają swoje skiny.
-- **Ogromny zasięg.** Kamera widzi też teren z niezaładowanych chunków (czytany z plików regionów
-  poza głównym wątkiem, podobnie jak robi to Bobby), do 1024 bloków.
-- **Shadery i własne niebo.** Opcjonalny tryb „shaderów” (cienie od słońca, falujące rośliny, woda
-  z odbiciami, poświata, promienie słońca), własne efekty końcowe GLSL i skyboxy, z domyślnymi
-  ustawieniami dla wszystkich widzów ustawianymi przez admina.
+- **Players do not need the mod.** They join with a normal vanilla client.
+- **No extra Minecraft account and no bot.** Nobody has to be logged in for a camera to work.
+- **The server renders nothing and needs no GPU.** It only sends light data: blocks, light, biomes
+  and entity positions 20 times a second. All rendering happens in the browser (WebGL2).
+- **Looks 1:1 like Minecraft 26.3.** Block meshes are built with the same algorithm as the client
+  (model variants, plant offsets, *smooth lighting* with AO, face shading, 5×5 biome colour
+  blending, fluids). Light, fog, sky, sun, moon phases, stars, sunrises and sunsets, clouds, rain,
+  snow, thunderstorms with lightning and sky flashes, the End sky and **End flashes** are computed
+  from the same environment attributes as in the game.
+- **Every mob with its real model.** Model geometry is taken from `client.jar` (happy ghast, horses
+  with coats and markings, wolves, cats, villagers with professions, cold/warm variants…), together
+  with saddles, armour, collars, wool, harnesses and glowing eyes. Players have their own skins.
+- **Huge view distance.** A camera also sees terrain in unloaded chunks (read from the region files
+  off the main thread, much like Bobby does), up to 1024 blocks.
+- **Shaders and custom skies.** An optional "shaders" mode (sun shadows, waving plants, water with
+  reflections, glow, sun rays), custom GLSL post effects and sky boxes, with defaults for every
+  viewer set by the admin.
 
-## Wymagania
+## Requirements
 
-- serwer **Fabric** dla Minecraft **26.3** (Fabric Loader ≥ 0.19.5),
+- a **Fabric** server for Minecraft **26.3** (Fabric Loader ≥ 0.19.5),
 - **Fabric API**,
 - **Java 25**.
 
-## Instalacja
+## Installation
 
-1. Weź plik `cctv-fabric-<wersja>.jar`:
-   - z zakładki **Releases** tego repozytorium (najnowsze wydanie), albo
-   - z zakładki **Actions** (artefakt `cctv-fabric` przy każdym buildzie), albo
-   - zbuduj go sam: `./gradlew build`. Jar pojawi się w `build/libs/`.
-2. Wrzuć go do katalogu `mods/` serwera, obok Fabric API.
-3. Uruchom serwer. W logu zobaczysz `CCTV web server listening on http://0.0.0.0:8100/`.
-4. Otwórz port **8100/TCP** w firewallu lub u hostingu. Port zmienisz w konfiguracji.
+1. Get `cctv-fabric-<version>.jar`:
+   - from the **Releases** page of this repository (latest release), or
+   - from the **Actions** tab (the `cctv-fabric` artifact of every build), or
+   - build it yourself: `./gradlew build`. The jar ends up in `build/libs/`.
+2. Put it into the server's `mods/` folder, next to Fabric API.
+3. Start the server. The log shows `CCTV web server listening on http://0.0.0.0:8100/`.
+4. Open port **8100/TCP** in your firewall or at your host. The port can be changed in the config.
 
-Przy pierwszym starcie mod pobiera z oficjalnych serwerów Mojang `client.jar` tej samej wersji gry
-(ok. 30 MB, jednorazowo, trafia do `config/cctv/assets/`). Tak samo robią launchery i mapy typu
-BlueMap. Z pliku brane są tylko tekstury, modele bloków i geometria modeli mobów dla przeglądarki
-(geometria jest zapisywana w `entity-models-<wersja>.json.gz`, żeby nie czytać jej przy każdym
-starcie). **Graczom nic nie jest wysyłane.** Jeśli serwer nie ma internetu, wrzuć `client.jar` ręcznie do `config/cctv/assets/`.
-Możesz też wyłączyć pobieranie (`downloadClientAssets: false`); podgląd działa wtedy na zwykłych
-kolorach.
+On the first start the mod downloads the `client.jar` of the same game version from Mojang's
+official servers (about 30 MB, once, stored in `config/cctv/assets/`), the same way launchers and
+map renderers such as BlueMap do. Only textures, block models and mob model geometry are taken from
+it for the browser (the geometry is cached in `entity-models-<version>.json.gz`, so it is not read
+on every start). **Nothing is sent to players.** If the server has no internet access, put
+`client.jar` into `config/cctv/assets/` yourself. You can also turn the download off
+(`downloadClientAssets: false`); the viewer then uses plain colours.
 
-## Komendy
+## Commands
 
-Wymagają uprawnień operatora (poziom 2). `list` i `url` może wpisać każdy.
+They need operator permissions (level 2). Anyone can use `list` and `url`.
 
-| Komenda | Opis |
+| Command | Description |
 |---|---|
-| `/cctv create <nazwa>` | Stawia kamerę na wysokości twoich oczu i kieruje ją tam, gdzie patrzysz |
-| `/cctv create <nazwa> <x y z> [<yaw> <pitch>]` | Kamera w podanym miejscu (`~ ~ ~` = wysokość oczu, `^ ^ ^` liczone od oczu) |
-| `/cctv move <nazwa> [<x y z> [<yaw> <pitch>]]` | Przenosi kamerę (domyślnie w twoje miejsce) |
-| `/cctv aim <nazwa> [<x y z>]` | Kieruje kamerę na punkt (domyślnie na ciebie) |
-| `/cctv fov <nazwa> <stopnie>` | Kąt widzenia (10–140°, domyślnie 70) |
-| `/cctv range <nazwa> <bloki>` | Zasięg widzenia (16–`maxRange`, domyślnie 96) |
-| `/cctv remove <nazwa>` | Usuwa kamerę |
-| `/cctv list` | Lista kamer z klikalnymi linkami |
-| `/cctv url [<nazwa>]` | Link do podglądu |
-| `/cctv info <nazwa>` | Szczegóły kamery |
-| `/cctv reload` | Wczytuje ponownie ustawienia podglądu (`viewer`), shadery i skyboxy |
+| `/cctv create <name>` | Places a camera at your eye height, looking where you look |
+| `/cctv create <name> <x y z> [<yaw> <pitch>]` | Camera at the given position (`~ ~ ~` = your eye height, `^ ^ ^` relative to your eyes) |
+| `/cctv move <name> [<x y z> [<yaw> <pitch>]]` | Moves a camera (to your position by default) |
+| `/cctv aim <name> [<x y z>]` | Points a camera at a position (at you by default) |
+| `/cctv fov <name> <degrees>` | Field of view (10–140°, default 70) |
+| `/cctv range <name> <blocks>` | View distance (16–`maxRange`, default 96) |
+| `/cctv remove <name>` | Removes a camera |
+| `/cctv list` | Lists cameras with clickable links |
+| `/cctv url [<name>]` | Link to the viewer |
+| `/cctv info <name>` | Camera details |
+| `/cctv reload` | Reloads the viewer settings (`viewer`), shaders and sky boxes |
 
-Kamera jest w grze widoczna jako mały blok obserwatora (encja `block_display`, którą każdy klient
-vanilla widzi). Wyłączysz to opcją `markers`. Działa też `execute in <wymiar> run cctv create ...`.
+In game a camera shows up as a small observer block (a `block_display` entity that every vanilla
+client can see). Turn this off with the `markers` option. `execute in <dimension> run cctv create ...`
+works too.
 
-Na żywo (moby, zmiany bloków, światło) kamera pokazuje **załadowane chunki**. Dalszy teren
-(`farTerrain`) jest czytany z zapisanych plików świata, bez ładowania chunków, i odświeżany co
-jakiś czas. Jeśli kamera ma pokazywać ruch, gdy nikogo nie ma w pobliżu, załaduj teren na stałe, np.
+Live content (mobs, block changes, light) comes from **loaded chunks**. Terrain further away
+(`farTerrain`) is read from the saved world files without loading chunks and refreshed from time to
+time. If a camera should show movement while nobody is nearby, keep the area loaded, e.g.
 `/forceload add <x1> <z1> <x2> <z2>`.
 
-## Podgląd w przeglądarce
+## Browser viewer
 
-- `http://IP-SERWERA:8100/` to lista kamer i **ściana monitorów** (wszystkie kamery naraz).
-- `http://IP-SERWERA:8100/cam/<nazwa>` to jedna kamera.
+- `http://SERVER-IP:8100/` shows the camera list and a **video wall** (all cameras at once).
+- `http://SERVER-IP:8100/cam/<name>` shows a single camera.
 
-Myszą możesz się rozejrzeć (przeciąganie), kółkiem przybliżyć, a podwójnym kliknięciem wrócić do
-widoku kamery. W **⚙ Ustawieniach** są: grafika (vanilla / shadery) i jakość shaderów, efekt końcowy
-(własny shader), niebo (skybox), chmury, tryb (kolor / czarno-biały / noktowizor), rozdzielczość
-renderowania (dla słabych GPU), nazwy graczy, podpisy mobów i efekt CCTV. Wybór widza jest
-zapamiętywany w przeglądarce. Nazwy i podpisy są pokazywane tylko dla encji, które naprawdę widać
-(nie przez ściany).
+Drag with the mouse to look around, use the wheel to zoom and double-click to go back to the
+camera's view. **⚙ Settings** has: graphics (vanilla / shaders) and shader quality, post effect
+(custom shader), sky (sky box), clouds, camera mode (colour / black and white / night vision),
+render resolution (for weak GPUs), player names, mob labels and the CCTV effect. Each viewer's
+choice is remembered in their browser. Names and labels are only shown for entities that are
+really visible (not through walls).
 
-### Shadery, efekty i skyboxy
+### Shaders, post effects and sky boxes
 
-- **Grafika „Shadery”** działa w każdej przeglądarce z WebGL2: cienie od słońca i księżyca, falujące
-  liście i trawa, fale i odbicia na wodzie, poświata jasnych bloków i promienie słońca. Jakość
-  (niska–ultra) zmienia rozdzielczość i zasięg cieni.
-- **Efekty końcowe**: pliki `config/cctv/shaders/<nazwa>.glsl` z funkcją `vec4 postProcess(vec2 uv)`
-  (dostępne `uScene`, `uDepth`, `uResolution`, `uTime`, `uDaylight`, `uRain`, `linearDepth(uv)`).
-  Przykłady `sepia.glsl` i `security-camera.glsl` są kopiowane przy pierwszym starcie.
-- **Skyboxy**: folder `config/cctv/skyboxes/<nazwa>/` z sześcioma ścianami `px nx py ny pz nz`
-  (png/jpg/webp) albo jedna panorama `config/cctv/skyboxes/<nazwa>.jpg`, opcjonalnie
-  `<nazwa>.json` z `brightness`, `followDaylight`, `rotateWithSun`, `showSun`, `showClouds`
-  (szczegóły w `config/cctv/skyboxes/README.txt`).
-- **Domyślnie dla wszystkich**: sekcja `viewer` w `config.json` (np.
-  `"viewer": {"graphics": "shaders", "skyboxes": {"minecraft:overworld": "zachod"}, "postShader": "sepia"}`),
-  potem `/cctv reload`. `lockSettings: true` blokuje zmiany po stronie widzów.
+- **"Shaders" graphics** works in any browser with WebGL2: shadows from the sun and the moon,
+  waving leaves and grass, waves and reflections on water, glowing bright blocks and sun rays. The
+  quality (low–ultra) changes the shadow resolution and distance.
+- **Post effects**: files `config/cctv/shaders/<name>.glsl` with a `vec4 postProcess(vec2 uv)`
+  function (available: `uScene`, `uDepth`, `uResolution`, `uTime`, `uDaylight`, `uRain`,
+  `linearDepth(uv)`). The examples `sepia.glsl` and `security-camera.glsl` are copied on the first
+  start.
+- **Sky boxes**: a folder `config/cctv/skyboxes/<name>/` with six faces `px nx py ny pz nz`
+  (png/jpg/webp) or a single panorama `config/cctv/skyboxes/<name>.jpg`, optionally with
+  `<name>.json` holding `brightness`, `followDaylight`, `rotateWithSun`, `showSun`, `showClouds`
+  (see `config/cctv/skyboxes/README.txt`). A `sunset` panorama is included as an example.
+- **Defaults for everybody**: the `viewer` section in `config.json` (e.g.
+  `"viewer": {"graphics": "shaders", "skyboxes": {"minecraft:overworld": "sunset"}, "postShader": "sepia"}`),
+  then `/cctv reload`. `lockSettings: true` stops viewers from changing them.
 
-## Konfiguracja – `config/cctv/config.json`
+## Configuration – `config/cctv/config.json`
 
-| Klucz | Domyślnie | Opis |
+| Key | Default | Description |
 |---|---|---|
-| `bindAddress` | `0.0.0.0` | Adres serwera WWW |
-| `port` | `8100` | Port serwera WWW |
-| `accessToken` | `""` | Jeśli ustawisz, podgląd wymaga `?token=...` (zapamiętywany w ciasteczku). Operatorzy dostają link z tokenem w `/cctv url` |
-| `publicUrl` | `""` | Adres do linków w czacie, np. `http://mc.example.com:8100` |
-| `defaultFov` / `defaultRange` / `maxRange` | `70` / `96` / `512` | Ustawienia nowych kamer (`maxRange` do 1024) |
-| `farTerrain` | `true` | Teren z niezaładowanych chunków czytany z plików regionów (daleki zasięg) |
-| `entityRange` | `128` | Do jakiej odległości wysyłać encje |
-| `entityUpdateTicks` | `1` | Co ile ticków wysyłać encje (1 = 20×/s) |
-| `sectionsPerTick` | `96` | Ile sekcji 16³ kamera może skopiować na tick przy ładowaniu |
-| `workerThreads` | połowa rdzeni (1–4) | Wątki, które dekodują sekcje i czytają pliki świata poza głównym wątkiem |
-| `rescanSeconds` | `5` | Pełne ponowne sprawdzenie obszaru co tyle sekund (zabezpieczenie) |
-| `downloadClientAssets` | `true` | Pobieranie tekstur/modeli z `client.jar` od Mojang |
-| `gzip` | `true` | Kompresja strumienia |
-| `skins` | `true` | Skiny graczy (serwer pobiera je z API Mojang i trzyma w cache) |
-| `markers` | `true` | Blok-znacznik kamery w świecie |
-| `maxViewersPerCamera` | `16` | Limit widzów na kamerę |
-| `viewer` | | Domyślne ustawienia podglądu: `graphics` (`vanilla`/`shaders`), `shaderQuality` (`low`…`ultra`), `postShader`, `skyboxes` (wymiar → nazwa), `clouds` (`fancy`/`fast`/`off`), `labels`, `mobLabels`, `mode` (`color`/`mono`/`night`), `cctvEffect`, `lockSettings` |
+| `bindAddress` | `0.0.0.0` | Web server address |
+| `port` | `8100` | Web server port |
+| `accessToken` | `""` | When set, the viewer needs `?token=...` (remembered in a cookie). Operators get a link with the token from `/cctv url` |
+| `publicUrl` | `""` | Address used for links in chat, e.g. `http://mc.example.com:8100` |
+| `defaultFov` / `defaultRange` / `maxRange` | `70` / `96` / `512` | Settings for new cameras (`maxRange` up to 1024) |
+| `farTerrain` | `true` | Terrain in unloaded chunks is read from the region files (long view distance) |
+| `entityRange` | `128` | How far away entities are sent |
+| `entityUpdateTicks` | `1` | Send entities every N ticks (1 = 20×/s) |
+| `sectionsPerTick` | `96` | How many 16³ sections a camera may copy per tick while loading |
+| `workerThreads` | half the cores (1–4) | Threads that decode sections and read world files off the main thread |
+| `rescanSeconds` | `5` | Full re-check of the area every N seconds (safety net) |
+| `downloadClientAssets` | `true` | Download textures/models from Mojang's `client.jar` |
+| `gzip` | `true` | Compress the stream |
+| `skins` | `true` | Player skins (the server fetches them from the Mojang API and caches them) |
+| `markers` | `true` | Camera marker block in the world |
+| `maxViewersPerCamera` | `16` | Viewer limit per camera |
+| `viewer` | | Viewer defaults: `graphics` (`vanilla`/`shaders`), `shaderQuality` (`low`…`ultra`), `postShader`, `skyboxes` (dimension → name), `clouds` (`fancy`/`fast`/`off`), `labels`, `mobLabels`, `mode` (`color`/`mono`/`night`), `cctvEffect`, `lockSettings` |
 
-Resource packi (`*.zip`) wrzucone do `config/cctv/resourcepacks/` nadpisują tekstury i modele bloków
-w podglądzie, np. żeby zgadzały się z resource packiem serwera.
+Resource packs (`*.zip`) put into `config/cctv/resourcepacks/` override block textures and models
+in the viewer, for example to match the server's resource pack.
 
-## Jak to działa
+## How it works
 
 ```
-Serwer (bez GPU)                                     Przeglądarka (WebGL2)
+Server (no GPU)                                      Browser (WebGL2)
 ────────────────────────                             ──────────────────────────────
-główny wątek: kopia sekcji (paleta, światło) ──┐
-wątki robocze: dekodowanie, JSON, pliki regionów ├─► Web Workery: siatki sekcji jak SectionCompiler
-zmiana bloku (mixin) ──► "blocks" natychmiast   │     (modele z client.jar, AO, biomy, ciecze)
-co tick ──► encje (pozycja, animacja chodu,     └─► GPU: regiony sekcji, lightmapa 26.3, mgła,
-            warianty, wyposażenie…)                   niebo, chmury, pogoda, End, modele mobów
-co 5 ticków ──► atrybuty środowiska w kamerze
-             (niebo, mgła, światło, słońce, deszcz, rozbłyski Endu)
+main thread: copy of sections (palette, light) ─┐
+worker threads: decoding, JSON, region files    ├─► Web Workers: section meshes like SectionCompiler
+block change (mixin) ──► "blocks" right away    │     (models from client.jar, AO, biomes, fluids)
+every tick ──► entities (position, walk         └─► GPU: section regions, 26.3 lightmap, fog,
+               animation, variants, equipment…)       sky, clouds, weather, End, mob models
+every 5 ticks ──► environment attributes at the camera
+               (sky, fog, light, sun, rain, End flashes)
 ```
 
-- Dane płyną przez **Server-Sent Events** (zwykły HTTP, przechodzi przez proxy i nginx).
-- Serwer nigdy nie ładuje chunków: czyta załadowane, a dalsze z zapisanych plików (wątek IO serwera
-  + wątki robocze moda). Główny wątek tylko kopiuje dane sekcji; dekodowanie, kompresja i JSON
-  dzieją się obok. Zakopane sekcje daleko pod powierzchnią i puste powietrze nie są wysyłane.
-- Koszt serwera na kamerę z widzami: jednorazowa kopia sekcji (rozłożona na ticki),
-  lista encji w promieniu kamery co tick i kilka–kilkadziesiąt KB/s danych na widza (zależnie od liczby encji).
-  Kamera bez widzów nic nie kosztuje (jej cache jest zwalniany po minucie).
-- Obraz ma opóźnienie ok. 100–150 ms (bufor wygładzający ruch encji).
+- Data flows over **Server-Sent Events** (plain HTTP, works through proxies and nginx).
+- The server never loads chunks: it reads loaded ones and takes the rest from the saved files (the
+  server's IO thread plus the mod's worker threads). The main thread only copies section data;
+  decoding, compression and JSON happen elsewhere. Sections buried deep under the surface and
+  empty air are not sent.
+- Server cost per camera with viewers: a one-time copy of the sections (spread over ticks), the
+  entity list in the camera's range every tick and a few to a few dozen KB/s per viewer (depending
+  on the number of entities). A camera without viewers costs nothing (its cache is released after a
+  minute).
+- The picture is about 100–150 ms behind (a buffer that smooths entity movement).
 
-## API (do adaptacji na własną stronę)
+## API (to build your own page)
 
-Wszystkie endpointy obsługują CORS i `?token=` (jeśli ustawiono token).
+All endpoints support CORS and `?token=` (when a token is set).
 
-| Endpoint | Zawartość |
+| Endpoint | Content |
 |---|---|
-| `GET /api/cameras` | Lista kamer (JSON) |
-| `GET /api/cameras/{nazwa}/stream` | Strumień SSE, zdarzenia poniżej |
-| `GET /assets/bundle.json` | Blockstates, modele i tekstury bloków (z client.jar) |
-| `GET /assets/models.json` | Geometria modeli mobów (warstwy z `LayerDefinitions`) |
-| `GET /assets/entities.json`, `/assets/entity/{ścieżka}.png` | Tekstury mobów |
-| `GET /assets/painting/{nazwa}.png` | Obrazy |
-| `GET /api/viewer` | Domyślne ustawienia podglądu, lista shaderów i skyboxów |
-| `GET /custom/shaders/{nazwa}.glsl`, `/custom/skyboxes/...` | Pliki shaderów i skyboxów z `config/cctv` |
-| `GET /skin/{uuid}?name=` | Skin gracza (PNG, nagłówek `X-Skin-Model`) |
+| `GET /api/cameras` | Camera list (JSON) |
+| `GET /api/cameras/{name}/stream` | SSE stream, events below |
+| `GET /assets/bundle.json` | Block states, block models and textures (from client.jar) |
+| `GET /assets/models.json` | Mob model geometry (layers from `LayerDefinitions`) |
+| `GET /assets/entities.json`, `/assets/entity/{path}.png` | Mob textures |
+| `GET /assets/painting/{name}.png` | Paintings |
+| `GET /api/viewer` | Viewer defaults, list of shaders and sky boxes |
+| `GET /custom/shaders/{name}.glsl`, `/custom/skyboxes/...` | Shader and sky box files from `config/cctv` |
+| `GET /skin/{uuid}?name=` | Player skin (PNG, `X-Skin-Model` header) |
 
-Zdarzenia strumienia:
+Stream events:
 
 - `init`: `{camera:{name,dimension,x,y,z,yaw,pitch,fov,range}, sections, biomes:{id:{t,d,w,g?,f?,m}}, entityTicks,
-  dim:{id,skybox,cardinal,hasSky,ambient,endFlashes,minY,height,horizon,zoomSeed}}`, po nim świat jest wysyłany od zera;
-- `progress`: `{d, t}` postęp wczytywania;
-- `palette`: `{s:[{id, n:"minecraft:oak_stairs", s:"facing=north,…", c:mapColor, f:flagi, b:[[x0,y0,z0,x1,y1,z1]…], l:światło, lv:poziom cieczy}]}`;
-- `section`: `{x,y,z, p:[id…], r:RLE, sl:RLE światła nieba, bl:RLE światła bloków, bp:[biomy], bi:indeksy 4³}`,
-  gdzie RLE to base64 par varintów `(długość, wartość)` w kolejności YZX;
-- `blocks`: `{b:[[x,y,z,id]…]}`, czyli natychmiastowe zmiany bloków;
+  dim:{id,skybox,cardinal,hasSky,ambient,endFlashes,minY,height,horizon,zoomSeed}}`; the world is sent from scratch after it;
+- `progress`: `{d, t}` loading progress;
+- `palette`: `{s:[{id, n:"minecraft:oak_stairs", s:"facing=north,…", c:mapColor, f:flags, b:[[x0,y0,z0,x1,y1,z1]…], l:light, lv:fluid level}]}`;
+- `section`: `{x,y,z, p:[id…], r:RLE, sl:sky light RLE, bl:block light RLE, bp:[biomes], bi:4³ indices}`,
+  where RLE is base64 of varint pairs `(length, value)` in YZX order;
+- `blocks`: `{b:[[x,y,z,id]…]}`, instant block changes;
 - `entities`: `{t:tick, e:[{id,type,x,y,z,yaw,pitch,body,head,w,h,age,walk,walkSpeed,scale?,name?,uuid?,pose?,sneak?,baby?,
   hurt?,dead?,swing?,hand?,offhand?,saddle?,bodyArmor?,armor?,item?,seed?, d:{variant?, markings?, villager?, color?, …}}]}`;
-- `env`: atrybuty środowiska w kamerze: `{time, clock, gt, rain, thunder, sky, fog, sunrise, cloud, cloudHeight, sunAngle,
+- `env`: environment attributes at the camera: `{time, clock, gt, rain, thunder, sky, fog, sunrise, cloud, cloudHeight, sunAngle,
   moonAngle, starAngle, stars, moonPhase, skyLight, skyFactor, ambient, blockTint, fogStart, fogEnd, skyFogEnd, …, flash?}`;
-- `weather`: kolumny deszczu/śniegu wokół kamery `{x, z, size, h:[wysokości], p:"rsn…"}`;
-- `ready`: cały widoczny obszar został wysłany;
-- `removed`: kamera usunięta.
+- `weather`: rain/snow columns around the camera `{x, z, size, h:[heights], p:"rsn…"}`;
+- `ready`: the whole visible area has been sent;
+- `removed`: the camera was removed.
 
-## Rozwój
+## Development
 
-- Nowe wydanie: podbij `version` w `gradle.properties`, dodaj opis w `docs/release-notes/v<wersja>.md`
-  i wypchnij tag `v<wersja>` albo uruchom ręcznie workflow `release` w zakładce Actions.
-  Workflow zbuduje mod, utworzy tag i opublikuje release z jarem.
+- New release: bump `version` in `gradle.properties`, add notes in `docs/release-notes/v<version>.md`
+  and push the tag `v<version>` or run the `release` workflow by hand in the Actions tab. The
+  workflow builds the mod, creates the tag and publishes the release with the jar.
+- The web page lives in `src/main/resources/web/` (plain JS, no bundler, no libraries).
+- Start the server with `-Dcctv.webDir=/path/to/src/main/resources/web` to see changes to the page
+  after a refresh, without a restart.
+- CI (`.github/workflows/build.yml`) builds the mod, starts a real 26.3 server with it and places a
+  camera over RCON. It checks the stream (sections, light, entities 20×/s, instant block changes),
+  the assets and entity models, then takes screenshots of the viewer in Chromium, vanilla and
+  shaders (artifact `server-test`).
 
-- Pliki strony są w `src/main/resources/web/` (zwykły JS, bez bundlera i bibliotek).
-- Po uruchomieniu serwera z `-Dcctv.webDir=/ścieżka/do/src/main/resources/web` zmiany w plikach
-  strony widać od razu po odświeżeniu, bez restartu.
-- CI (`.github/workflows/build.yml`) buduje mod, uruchamia prawdziwy serwer 26.3 z modem i przez
-  RCON stawia kamerę. Sprawdza strumień (sekcje, światło, encje 20×/s, natychmiastowe zmiany
-  bloków) oraz pobranie assetów, a potem robi zrzut ekranu podglądu w Chromium (artefakt
-  `server-test`).
+## Limitations
 
-## Ograniczenia
+- Mob animations that use keyframes in the game (e.g. sniffer, warden, frog, armadillo) are
+  simplified: head and legs move, but without the full sequences. Banner and shield patterns are
+  not drawn (only the base colour).
+- Particles, sounds and chest opening animations are not drawn.
+- Terrain in unloaded chunks shows the state of the last world save.
+- Textures and models from `client.jar` are not part of this repository. The mod downloads them
+  from Mojang's servers on a server that runs the game.
 
-- Animacje mobów oparte w grze na klatkach kluczowych (np. sniffer, warden, żaba, pancernik) są
-  uproszczone: głowa i nogi się ruszają, ale bez pełnych sekwencji. Wzory na banerach i tarczach
-  nie są rysowane (tylko kolor bazowy).
-- Cząsteczki, dźwięki i animacje otwierania skrzyń nie są rysowane.
-- Teren z niezaładowanych chunków pokazuje stan z ostatniego zapisu świata.
-- Tekstury i modele z `client.jar` nie są częścią tego repozytorium. Mod pobiera je z serwerów Mojang
-  na serwerze, który ma grę.
+## License
 
-## Licencja
-
-MIT – zobacz [LICENSE](LICENSE). Minecraft jest znakiem towarowym Mojang/Microsoft. Mod nie jest
-powiązany z Mojang.
+MIT – see [LICENSE](LICENSE). Minecraft is a trademark of Mojang/Microsoft. This mod is not
+affiliated with Mojang.
