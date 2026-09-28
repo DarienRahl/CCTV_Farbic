@@ -73,6 +73,7 @@ class StreamReader(threading.Thread):
         self.block_updates = []
         self.sections = set()
         self.names = set()
+        self.sign_lines = set()
         self.ready = threading.Event()
         self.error = None
         self.response = None
@@ -102,6 +103,9 @@ class StreamReader(threading.Thread):
                             self.block_updates.extend(data["b"])
                         elif event == "section":
                             self.sections.add((data["x"], data["y"], data["z"]))
+                            for block_entity in data.get("be", []):
+                                for side in ("f", "b"):
+                                    self.sign_lines.update(block_entity.get(side, {}).get("l", []))
                         elif event == "ready":
                             self.ready.set()
         except Exception as e:  # noqa: BLE001 - reported below
@@ -171,6 +175,9 @@ def main():
     rcon.command("setblock 1 -60 3 minecraft:chest[facing=north]")
     rcon.command("setblock 0 -60 5 minecraft:poppy")
     rcon.command("setblock 1 -60 6 minecraft:dandelion")
+    rcon.command('setblock -3 -60 0 minecraft:oak_sign[rotation=8]{front_text:{messages:["CCTV","Camera ci","",""]}}')
+    rcon.command('setblock 7 -59 7 minecraft:spruce_wall_sign[facing=north]'
+                 '{front_text:{messages:["","Welcome","",""],color:"yellow",has_glowing_text:1b}}')
     rcon.command("place feature minecraft:oak -6 -60 18")
     rcon.command("place feature minecraft:birch 12 -60 16")
     rcon.command("place feature minecraft:fancy_oak 14 -60 4")
@@ -196,6 +203,7 @@ def main():
     assert stream.ready.wait(60), f"no 'ready' event (events so far: {stream.events}, error: {stream.error})"
 
     rcon.command("setblock 0 -60 0 minecraft:gold_block")
+    rcon.command('data merge block -3 -60 0 {front_text:{messages:["CCTV","edited","",""]}}')
     time.sleep(4)
 
     print("events:", stream.events, flush=True)
@@ -252,6 +260,9 @@ def main():
         failures.append("the cow in front of the camera was not streamed")
     if not any(b[0] == 0 and b[1] == -60 and b[2] == 0 for b in stream.block_updates):
         failures.append("instant block update (mixin) did not arrive")
+    for line in ("CCTV", "Camera ci", "Welcome", "edited"):
+        if line not in stream.sign_lines:
+            failures.append(f"sign text '{line}' was not streamed (got {sorted(stream.sign_lines)})")
     if stream.error:
         failures.append(f"stream error: {stream.error}")
 
