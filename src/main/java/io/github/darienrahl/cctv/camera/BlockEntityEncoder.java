@@ -1,5 +1,7 @@
 package io.github.darienrahl.cctv.camera;
 
+import java.util.List;
+
 import org.jspecify.annotations.Nullable;
 
 import net.minecraft.core.BlockPos;
@@ -7,6 +9,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.SignBlockEntity;
 import net.minecraft.world.level.block.entity.SignText;
+import net.minecraft.world.level.block.entity.SignTextSlot;
 import net.minecraft.world.level.chunk.LevelChunk;
 
 import io.github.darienrahl.cctv.web.Json;
@@ -28,8 +31,17 @@ final class BlockEntityEncoder {
 				continue;
 			}
 			try {
-				String front = text(sign.getFrontText());
-				String back = text(sign.getBackText());
+				String front = null;
+				String back = null;
+				for (SignTextSlot slot : SignTextSlot.values()) {
+					String side = text(sign.getText(slot));
+					switch (slot.name()) {
+						case "FRONT" -> front = side;
+						case "BACK" -> back = side;
+						default -> {
+						}
+					}
+				}
 				if (front == null && back == null) {
 					continue;
 				}
@@ -59,7 +71,7 @@ final class BlockEntityEncoder {
 
 	/** One side of a sign: lines, text colour and glow, or {@code null} when it is blank. */
 	private static @Nullable String text(SignText text) {
-		Component[] lines = text.getMessages(false);
+		List<Component> lines = text.getMessages(false);
 		boolean blank = true;
 		for (Component line : lines) {
 			if (!line.getString().isEmpty()) {

@@ -147,6 +147,16 @@ public final class CameraManager implements CameraDirectory {
 		return web != null;
 	}
 
+	/** Any thread. Somebody watches a camera (or is connecting to one): the server must not pause. */
+	public boolean isWatched() {
+		for (CameraSession session : sessions.values()) {
+			if (session.viewerCount() > 0) {
+				return true;
+			}
+		}
+		return false;
+	}
+
 	/** End of every server tick. */
 	public void tick() {
 		tick++;
@@ -252,7 +262,7 @@ public final class CameraManager implements CameraDirectory {
 	@Override
 	public String statusJson() {
 		Json json = new Json(1024);
-		json.beginObject().field("tick", tick).field("serverTicking", server.isRunning()).name("sessions").beginArray();
+		json.beginObject().field("tick", tick).field("serverTick", server.getTickCount()).field("watched", isWatched()).name("sessions").beginArray();
 		for (Map.Entry<String, CameraSession> entry : sessions.entrySet()) {
 			json.beginObject().field("key", entry.getKey());
 			entry.getValue().writeStatus(json);

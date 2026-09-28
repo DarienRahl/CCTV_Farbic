@@ -255,11 +255,9 @@ def main():
     if stream.error:
         failures.append(f"stream error: {stream.error}")
 
+    stream.close()
     failures += far_terrain_check(rcon)
-    # Known issue (fixed in the next version): a session that went idle does not come back for a new viewer.
-    known = resubscribe_check()
-    if known:
-        print("KNOWN ISSUE:", known, flush=True)
+    failures += resubscribe_check()
 
     if failures:
         print("FAILED:\n - " + "\n - ".join(failures), flush=True)
@@ -294,7 +292,8 @@ def far_terrain_check(rcon):
 
 
 def resubscribe_check():
-    """A camera nobody watched for over a minute releases its session; the next viewer must get a new one."""
+    """Nobody watches for over a minute: the camera sessions are released and the empty server pauses
+    (pause-when-empty-seconds). The next viewer must wake the server up and get a stream."""
     time.sleep(75)
     stream = StreamReader("far")
     stream.start()
@@ -306,7 +305,7 @@ def resubscribe_check():
             print("status:", urllib.request.urlopen(f"{WEB}/api/status", timeout=10).read().decode(), flush=True)
         except OSError as e:
             print("status unavailable:", e, flush=True)
-    return [] if ok else [f"far camera: no 'ready' after its session was released (events: {stream.events})"]
+    return [] if ok else [f"far camera: no 'ready' after a minute without viewers (events: {stream.events})"]
 
 
 if __name__ == "__main__":
