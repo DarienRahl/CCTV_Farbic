@@ -14,7 +14,8 @@ in a web browser: players, mobs, opening doors and placed blocks show up right a
   from the same environment attributes as in the game.
 - **Every mob with its real model.** Model geometry is taken from `client.jar` (happy ghast, horses
   with coats and markings, wolves, cats, villagers with professions, cold/warm variants…), together
-  with saddles, armour, collars, wool, harnesses and glowing eyes. Players have their own skins.
+  with saddles, armour, collars, wool, harnesses and glowing eyes. Players have their own skins
+  (or the game's default skin for their UUID) and walk, sneak, swim and glide like in the game.
 - **Huge view distance.** A camera also sees terrain in unloaded chunks (read from the region files
   off the main thread, much like Bobby does), up to 1024 blocks.
 - **Shaders and custom skies.** An optional "shaders" mode (sun shadows, waving plants, water with
@@ -78,7 +79,8 @@ time. If a camera should show movement while nobody is nearby, keep the area loa
 - `http://SERVER-IP:8100/cam/<name>` shows a single camera.
 
 Drag with the mouse to look around, use the wheel to zoom and double-click to go back to the
-camera's view. **⚙ Settings** has: graphics (vanilla / shaders) and shader quality, post effect
+camera's view. The view turns only as far as the terrain the server streams around the camera's
+direction (about 20° beyond the picture); aim the camera with `/cctv aim` to look elsewhere. **⚙ Settings** has: graphics (vanilla / shaders) and shader quality, post effect
 (custom shader), sky (sky box), clouds, camera mode (colour / black and white / night vision),
 render resolution (for weak GPUs), player names, mob labels and the CCTV effect. Each viewer's
 choice is remembered in their browser. Names and labels are only shown for entities that are
@@ -143,8 +145,12 @@ every 5 ticks ──► environment attributes at the camera
 - Data flows over **Server-Sent Events** (plain HTTP, works through proxies and nginx).
 - The server never loads chunks: it reads loaded ones and takes the rest from the saved files (the
   server's IO thread plus the mod's worker threads). The main thread only copies section data;
-  decoding, compression and JSON happen elsewhere. Sections buried deep under the surface and
-  empty air are not sent.
+  decoding, compression and JSON happen elsewhere. Empty air and far sections hidden inside the
+  ground are not sent (a section counts as hidden only when it lies below the surface of its own
+  chunk and of the neighbouring chunks towards the camera, so cliffs and hillsides stay complete;
+  nothing is skipped while the camera itself is underground).
+- A viewer gets the world as fast as its connection takes it: new sections wait while earlier ones
+  are still queued, so slow connections never overflow and restart.
 - Server cost per camera with viewers: a one-time copy of the sections (spread over ticks), the
   entity list in the camera's range every tick and a few to a few dozen KB/s per viewer (depending
   on the number of entities). A camera without viewers costs nothing (its cache is released after a

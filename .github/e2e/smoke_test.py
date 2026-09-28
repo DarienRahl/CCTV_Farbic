@@ -71,6 +71,7 @@ class StreamReader(threading.Thread):
         self.first = {}
         self.entity_types = set()
         self.block_updates = []
+        self.sections = set()
         self.ready = threading.Event()
         self.error = None
 
@@ -90,6 +91,8 @@ class StreamReader(threading.Thread):
                             self.entity_types.update(e["type"] for e in data["e"])
                         elif event == "blocks":
                             self.block_updates.extend(data["b"])
+                        elif event == "section":
+                            self.sections.add((data["x"], data["y"], data["z"]))
                         elif event == "ready":
                             self.ready.set()
         except Exception as e:  # noqa: BLE001 - reported below
@@ -232,10 +235,37 @@ def main():
     if stream.error:
         failures.append(f"stream error: {stream.error}")
 
+    failures += far_terrain_check(rcon)
+
     if failures:
         print("FAILED:\n - " + "\n - ".join(failures), flush=True)
         sys.exit(1)
     print("Smoke test passed.", flush=True)
+
+
+def far_terrain_check(rcon):
+    """A steep "mesa" 70 blocks in front of a second camera. Its whole chunk lies below the mesa top, but the
+    face towards the camera is visible from the low ground in front of it, so those sections must be streamed
+    (they used to be skipped as "buried"). Sections inside the mesa must still be skipped."""
+    rcon.command("forceload add 32 -32 95 31")
+    rcon.command("fill 48 -60 -16 79 -41 15 minecraft:stone")
+    rcon.command("fill 48 -40 -16 79 -21 15 minecraft:stone")
+    rcon.command("cctv create far -22 -45 0 -90 5")
+    rcon.command("cctv range far 128")
+    stream = StreamReader("far")
+    stream.start()
+    if not stream.ready.wait(90):
+        return [f"far camera: no 'ready' event (events: {stream.events}, error: {stream.error})"]
+    time.sleep(2)
+    near_face = sorted(s for s in stream.sections if s[0] == 3)
+    print("far camera sections:", len(stream.sections), "mesa front column:", near_face, flush=True)
+    failures = []
+    for section in [(3, -4, 0), (3, -3, 0), (3, -3, -1)]:
+        if section not in stream.sections:
+            failures.append(f"far camera: visible cliff section {section} was not streamed")
+    if (4, -3, 0) in stream.sections:
+        failures.append("far camera: a section inside the mesa was streamed (buried sections are not skipped)")
+    return failures
 
 
 if __name__ == "__main__":

@@ -52,6 +52,7 @@ export class World {
 		this.generation = 0;
 		this.assetsPayload = null;
 		this.workers = [];
+		this.reportedErrors = new Set();
 		const count = Math.max(1, Math.min(4, (navigator.hardwareConcurrency || 4) - 1));
 		for (let i = 0; i < count; i++) this.addWorker();
 		this.reset([0, 0, 0]);
@@ -337,6 +338,11 @@ export class World {
 			console.error('CCTV: meshing failed for section', message.key, message.error);
 			return;
 		}
+		for (const error of message.errors || []) {
+			if (this.reportedErrors.has(error.split(':')[0])) continue;
+			this.reportedErrors.add(error.split(':')[0]);
+			console.warn('CCTV: block drawn as a plain box, its model failed:', error);
+		}
 		const section = this.sections.get(message.key);
 		if (!section || pending.generation !== this.generation) return;
 		if (section.version !== message.version) {
@@ -396,6 +402,7 @@ export class World {
 			sx: section.x, sy: section.y, sz: section.z,
 			base,
 			eye: this.eye,
+			hide: [Math.floor(this.eye[0] + o[0]), Math.floor(this.eye[1] + o[1]), Math.floor(this.eye[2] + o[2])],
 			lod: distance > LOD_DISTANCE ? 1 : 0,
 			pad, light, biomes,
 		};

@@ -85,9 +85,37 @@ function humanoid(p, a, e) {
 		if (p.head) p.head.y += 4.2;
 	}
 	bobArms(p, a.age);
-	if (e.pose === 'swimming' || e.pose === 'fall_flying') {
-		if (p.head) p.head.xRot = -PI / 4;
+	if (p.head) {
+		if (e.pose === 'fall_flying') p.head.xRot = -PI / 4;
+		else if (a.swimAmount > 0) p.head.xRot = lerp(a.swimAmount, p.head.xRot, -PI / 4);
+		else if (e.pose === 'swimming' && !e.type.endsWith(':player')) p.head.xRot = -PI / 4;
 	}
+	if (a.swimAmount > 0) swimStroke(p, a, a.attack > 0);
+}
+
+const lerp = (t, a, b) => a + (b - a) * t;
+const armCurve = f => -65 * f + f * f;
+
+/** HumanoidModel.setupAnim while swimming: the arm stroke and the leg kicks. */
+function swimStroke(p, a, attacking) {
+	const s = a.swimAmount, l = a.walk % 26;
+	const left = s, right = attacking ? 0 : s;
+	const arms = (xl, xr, zl, zr) => {
+		if (p.left_arm) { p.left_arm.xRot = lerp(left, p.left_arm.xRot, xl); p.left_arm.yRot = lerp(left, p.left_arm.yRot, PI); p.left_arm.zRot = lerp(left, p.left_arm.zRot, zl); }
+		if (p.right_arm) { p.right_arm.xRot = lerp(right, p.right_arm.xRot, xr); p.right_arm.yRot = lerp(right, p.right_arm.yRot, PI); p.right_arm.zRot = lerp(right, p.right_arm.zRot, zr); }
+	};
+	if (l < 14) {
+		const f = 1.8707964 * armCurve(l) / armCurve(14);
+		arms(0, 0, PI + f, PI - f);
+	} else if (l < 22) {
+		const o = (l - 14) / 8;
+		arms(PI / 2 * o, PI / 2 * o, 5.012389 - 1.8707964 * o, 1.2707963 + 1.8707964 * o);
+	} else {
+		const o = (l - 22) / 4;
+		arms(PI / 2 - PI / 2 * o, PI / 2 - PI / 2 * o, PI, PI);
+	}
+	if (p.left_leg) p.left_leg.xRot = lerp(s, p.left_leg.xRot, 0.3 * cos(l * 0.33333334 + PI));
+	if (p.right_leg) p.right_leg.xRot = lerp(s, p.right_leg.xRot, 0.3 * cos(l * 0.33333334));
 }
 
 /** AnimationUtils.animateZombieArms */

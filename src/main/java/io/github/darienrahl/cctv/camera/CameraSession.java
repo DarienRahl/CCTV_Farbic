@@ -11,14 +11,17 @@ import java.util.List;
 import java.util.Map;
 import java.util.Queue;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.Executor;
 
 import org.jspecify.annotations.Nullable;
 
+import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.level.LightLayer;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.LevelChunk;
@@ -43,6 +46,11 @@ final class CameraSession {
 	private static final int IDLE_DISPOSE_TICKS = 20 * 60;
 	/** Sections pushed to one viewer per tick while it catches up. */
 	private static final int SECTIONS_PER_VIEWER_TICK = 160;
+	/**
+	 * New sections wait while this many messages are still queued for a viewer: a slow connection gets the world
+	 * at the speed it can take instead of overflowing its queue (which drops the viewer and starts it over).
+	 */
+	private static final int MAX_BACKLOG = 600;
 	/** How far ahead of its first missing section a viewer may receive sections that are already available. */
 	private static final int SYNC_WINDOW = 4096;
 	/** Distance from a section centre to its corner. */
@@ -51,8 +59,12 @@ final class CameraSession {
 	private static final double ALWAYS_INCLUDE_DISTANCE = 28;
 	/** After a block change, light is re-read for this many ticks (the light engine updates a bit later). */
 	private static final int LIGHT_WATCH_TICKS = 30;
-	/** Sections completely below the lowest surface point of their chunk are skipped beyond this distance. */
+	/** Sections hidden under the ground (see {@link #isBuried}) are skipped beyond this distance. */
 	private static final double BURIED_KEEP_DISTANCE = 48;
+	/** Extra angle around the picture that is streamed as well, so the view can be turned a little. */
+	private static final double VIEW_MARGIN_DEGREES = 20;
+	/** Surface value of a column without terrain (not generated): nothing there hides anything. */
+	private static final int NO_SURFACE = Integer.MIN_VALUE;
 	/** Sections closer than this are re-checked every {@code rescanSeconds}, the rest four times less often. */
 	private static final double NEAR_RESCAN_DISTANCE = 80;
 	/** Saved chunks being read from disk at the same time, per camera. */
@@ -144,7 +156,13 @@ final class CameraSession {
 	private List<SectionEntry> farEntries = List.of();
 	private final Map<Long, SectionEntry> sections = new HashMap<>();
 	private final Map<Long, List<SectionEntry>> columns = new HashMap<>();
-	private final Map<Long, Integer> surfaceCache = new HashMap<>();
+	/** Lowest surface point per chunk column; filled on the server thread (loaded chunks) and by workers (saved chunks). */
+	private final Map<Long, Integer> surfaceCache = new ConcurrentHashMap<>();
+	private int cameraChunkX;
+	private int cameraChunkZ;
+	/** False while the camera is under the ground (caves, cellars): then it can see buried sections. */
+	private boolean skipBuried = true;
+	private double coneDegrees = 180;
 	private int minX;
 	private int minY;
 	private int minZ;
@@ -374,9 +392,19 @@ final class CameraSession {
 		double fy = -Math.sin(pitch);
 		double fz = Math.cos(yaw) * Math.cos(pitch);
 
-		// Half-angle of the view cone: vertical FOV widened for up to ~21:9 screens, plus a margin.
+		// Half-angle of the view cone: vertical FOV widened for up to ~21:9 screens, plus a margin
+		// (the viewer keeps its picture inside this cone when the view is turned).
 		double halfVertical = Math.toRadians(c.fov() / 2);
-		double halfAngle = Math.atan(Math.tan(halfVertical) * 2.4) + Math.toRadians(12);
+		double halfAngle = Math.atan(Math.tan(halfVertical) * 2.4) + Math.toRadians(VIEW_MARGIN_DEGREES);
+		coneDegrees = Math.toDegrees(halfAngle);
+
+		cameraChunkX = Math.floorDiv((int) Math.floor(c.x()), 16);
+		cameraChunkZ = Math.floorDiv((int) Math.floor(c.z()), 16);
+		LevelChunk cameraChunk = level.getChunkSource().getChunkNow(cameraChunkX, cameraChunkZ);
+		BlockPos eye = BlockPos.containing(c.x(), c.y(), c.z());
+		skipBuried = cameraChunk == null
+				|| eye.getY() >= cameraChunk.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, eye.getX() & 15, eye.getZ() & 15)
+				|| level.getBrightness(LightLayer.SKY, eye) > 7;
 
 		int sx0 = Math.floorDiv((int) Math.floor(c.x() - range), 16);
 		int sx1 = Math.floorDiv((int) Math.floor(c.x() + range), 16);
@@ -444,11 +472,53 @@ final class CameraSession {
 	// --- reading the world ---------------------------------------------------
 
 	/**
-	 * Far sections that lie completely below the lowest surface point of their chunk cannot be seen from the
-	 * camera (they are inside the ground), so they are not sent at all.
+	 * Far sections inside the ground cannot be seen from the camera, so they are not sent at all. A section is
+	 * inside the ground when it lies below the lowest surface point of its chunk and also below the surface of
+	 * the neighbouring chunks on the camera's side: where a neighbour is lower (a cliff, a hillside, a cave
+	 * entrance) its side faces are visible. Any thread; neighbours that are not known yet keep the section.
 	 */
-	private static boolean isBuried(SectionEntry entry, int minSurfaceY) {
-		return entry.mayBeBuried && minSurfaceY != Integer.MIN_VALUE && entry.y * 16 + 15 < minSurfaceY - 1;
+	private boolean isBuried(SectionEntry entry, int ownSurface) {
+		if (!entry.mayBeBuried || !skipBuried) {
+			return false;
+		}
+		int top = entry.y * 16 + 15;
+		if (!below(top, ownSurface)) {
+			return false;
+		}
+		int dx = Integer.signum(cameraChunkX - entry.x);
+		int dz = Integer.signum(cameraChunkZ - entry.z);
+		return (dx == 0 || below(top, knownSurface(entry.x + dx, entry.z)))
+				&& (dz == 0 || below(top, knownSurface(entry.x, entry.z + dz)));
+	}
+
+	private static boolean below(int top, int surface) {
+		return surface != NO_SURFACE && top < surface - 1;
+	}
+
+	private int knownSurface(int cx, int cz) {
+		Integer surface = surfaceCache.get(columnKey(cx, cz));
+		return surface == null ? NO_SURFACE : surface;
+	}
+
+	/** Server thread: makes the surfaces of loaded neighbour chunks on the camera's side known. */
+	private void learnNeighbourSurfaces(ServerLevel level, SectionEntry entry) {
+		int dx = Integer.signum(cameraChunkX - entry.x);
+		int dz = Integer.signum(cameraChunkZ - entry.z);
+		if (dx != 0) {
+			learnSurface(level, entry.x + dx, entry.z);
+		}
+		if (dz != 0) {
+			learnSurface(level, entry.x, entry.z + dz);
+		}
+	}
+
+	private void learnSurface(ServerLevel level, int cx, int cz) {
+		if (!surfaceCache.containsKey(columnKey(cx, cz))) {
+			LevelChunk chunk = level.getChunkSource().getChunkNow(cx, cz);
+			if (chunk != null) {
+				minSurface(chunk, cx, cz);
+			}
+		}
 	}
 
 	private int minSurface(LevelChunk chunk, int cx, int cz) {
@@ -479,6 +549,7 @@ final class CameraSession {
 			LevelChunk chunk = level.getChunkSource().getChunkNow(entry.x, entry.z);
 			if (chunk != null) {
 				captureCursor++;
+				learnNeighbourSurfaces(level, entry);
 				if (isBuried(entry, minSurface(chunk, entry.x, entry.z))) {
 					entry.status = Status.EMPTY;
 					continue;
@@ -536,7 +607,9 @@ final class CameraSession {
 
 		diskReads++;
 		int gen = generation;
+		learnNeighbourSurfaces(level, wanted.get(0));
 		SavedChunks.read(level, cx, cz, workers).whenComplete((parsed, error) -> {
+			surfaceCache.putIfAbsent(columnKey(cx, cz), parsed == null ? NO_SURFACE : parsed.minSurfaceY());
 			for (SectionEntry entry : wanted) {
 				SectionCapture data = null;
 				if (parsed != null && !isBuried(entry, parsed.minSurfaceY())) {
@@ -623,6 +696,7 @@ final class CameraSession {
 				continue;
 			}
 			surfaceCache.remove(columnKey(entry.x, entry.z));
+			learnNeighbourSurfaces(level, entry);
 			if (isBuried(entry, minSurface(chunk, entry.x, entry.z))) {
 				continue;
 			}
@@ -686,6 +760,7 @@ final class CameraSession {
 	private void syncViewers(long tick) {
 		for (ViewerState state : viewers) {
 			int sent = 0;
+			int allowance = Math.min(SECTIONS_PER_VIEWER_TICK, (MAX_BACKLOG - state.viewer.backlog()) / 2);
 			// Skip everything that is handled; stop at the first section that is still being read.
 			while (state.scanFrom < order.size()) {
 				SectionEntry entry = order.get(state.scanFrom);
@@ -693,7 +768,7 @@ final class CameraSession {
 					break;
 				}
 				if (entry.sendable() && !state.has(entry)) {
-					if (sent >= SECTIONS_PER_VIEWER_TICK) {
+					if (sent >= allowance) {
 						break;
 					}
 					sendSection(state, entry);
@@ -703,7 +778,7 @@ final class CameraSession {
 			}
 			// Sections further on that are already available do not have to wait for a slow disk read.
 			int end = Math.min(order.size(), state.scanFrom + SYNC_WINDOW);
-			for (int i = state.scanFrom; i < end && sent < SECTIONS_PER_VIEWER_TICK; i++) {
+			for (int i = state.scanFrom; i < end && sent < allowance; i++) {
 				SectionEntry entry = order.get(i);
 				if (entry.sendable() && !state.has(entry)) {
 					sendSection(state, entry);
@@ -797,6 +872,7 @@ final class CameraSession {
 		json.beginObject().name("camera");
 		camera.writeJson(json, viewerCount);
 		json.field("sections", order.size())
+				.field("cone", coneDegrees, 1)
 				.field("tick", tick)
 				.field("entityTicks", config.entityUpdateTicks)
 				.field("loaded", level != null);

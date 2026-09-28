@@ -17,6 +17,11 @@ public interface Viewer {
 	 */
 	void sendEntities(String json);
 
+	/** World messages queued but not yet written to the connection (how far the browser lags behind). */
+	default int backlog() {
+		return 0;
+	}
+
 	boolean isOpen();
 
 	void close();

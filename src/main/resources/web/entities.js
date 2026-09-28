@@ -175,6 +175,21 @@ function normalizeSkin(image) {
 	return canvas;
 }
 
+const DEFAULT_SKINS = ['alex', 'ari', 'efe', 'kai', 'makena', 'noor', 'steve', 'sunny', 'zuri'];
+
+/** DefaultPlayerSkin.get(uuid): one of the 18 default skins (slim ones first), picked by UUID.hashCode(). */
+function defaultSkin(uuid) {
+	let index = 6 + DEFAULT_SKINS.length; // wide Steve
+	const hex = String(uuid || '').replace(/-/g, '');
+	if (/^[0-9a-fA-F]{32}$/.test(hex)) {
+		const bits = BigInt('0x' + hex.slice(0, 16)) ^ BigInt('0x' + hex.slice(16));
+		const hash = Number(BigInt.asIntN(32, bits >> 32n) ^ BigInt.asIntN(32, bits));
+		index = ((hash % 18) + 18) % 18;
+	}
+	const slim = index < DEFAULT_SKINS.length;
+	return { path: 'player/' + (slim ? 'slim/' : 'wide/') + DEFAULT_SKINS[index % DEFAULT_SKINS.length], slim };
+}
+
 // Thrown items drawn as sprites (ThrownItemRenderer) and what item they show.
 const THROWN = {
 	snowball: 'snowball', egg: 'egg', blue_egg: 'blue_egg', brown_egg: 'brown_egg', ender_pearl: 'ender_pearl', potion: 'splash_potion',
@@ -194,6 +209,7 @@ export class EntityRenderer {
 		this.textures = new Map();
 		this.skins = new Map();
 		this.states = new Map();
+		this.motion = new Map();
 		this.itemMeshes = new Map();
 		this.frames = [];
 		this.offset = null;
@@ -231,6 +247,7 @@ export class EntityRenderer {
 		this.frames = [];
 		this.offset = null;
 		this.states.clear();
+		this.motion.clear();
 		for (const label of this.labels.querySelectorAll('.label')) label.remove();
 	}
 
@@ -284,11 +301,21 @@ export class EntityRenderer {
 		return entry.texture;
 	}
 
+	/** Player skin: {texture (null while loading), slim}. Without a custom skin, the game's default skin for the UUID. */
 	skin(uuid, name) {
 		let skin = this.skins.get(uuid);
-		if (skin) return skin;
+		if (skin) {
+			if (skin.fallback && !skin.texture) skin.texture = this.texture(skin.fallback);
+			return skin;
+		}
 		skin = { texture: null, slim: false };
 		this.skins.set(uuid, skin);
+		const useDefault = () => {
+			const fallback = defaultSkin(uuid);
+			skin.slim = fallback.slim;
+			skin.fallback = fallback.path;
+			skin.texture = this.texture(fallback.path);
+		};
 		const url = '/skin/' + encodeURIComponent(uuid) + '?name=' + encodeURIComponent(name || '') + tokenSuffix('&');
 		fetch(url, { credentials: 'same-origin' })
 			.then(response => {
@@ -298,7 +325,7 @@ export class EntityRenderer {
 			})
 			.then(blob => createImageBitmap(blob))
 			.then(image => { skin.texture = this.createTexture(normalizeSkin(image)); })
-			.catch(() => { skin.texture = this.texture('player/wide/steve'); skin.fallback = true; });
+			.catch(useDefault);
 		return skin;
 	}
 
@@ -312,9 +339,76 @@ export class EntityRenderer {
 		this.offset = this.offset === null ? sample : Math.min(sample, this.offset + (sample - this.offset) * 0.02 + 0.05);
 		const map = new Map();
 		for (const e of frame.e) map.set(e.id, e);
+		this.animateMotion(frame.t, map);
 		this.frames.push({ t: frame.t, map });
 		while (this.frames.length > 40) this.frames.shift();
 		this.delayTicks = Math.max(2, entityTicks * 2);
+	}
+
+	/**
+	 * Players (and mobs they steer) are moved by their own game client, so the server never updates their walk
+	 * animation or turns their body towards the movement. Like the game client does for other players
+	 * (RemotePlayer: LivingEntity.tick body rotation, calculateEntityAnimation), both are derived from the motion.
+	 */
+	animateMotion(tick, map) {
+		for (const e of map.values()) {
+			const player = e.type === 'minecraft:player';
+			if (!player && !e.steered) continue;
+			let m = this.motion.get(e.id);
+			const ticks = m ? tick - m.t : 0;
+			if (!m || ticks <= 0 || ticks > 40) {
+				m = { t: tick, x: e.x, z: e.z, position: 0, speed: 0, body: e.yaw || 0, swim: e.pose === 'swimming' ? 1 : 0, flying: 0 };
+				this.motion.set(e.id, m);
+			} else {
+				const dx = (e.x - m.x) / ticks, dz = (e.z - m.z) / ticks;
+				const moved = dx * dx + dz * dz;
+				for (let i = 0; i < ticks; i++) {
+					// WalkAnimationState.update(min(distance * 4, 1), 0.4, baby ? 3 : 1)
+					if (e.riding || e.dead) {
+						m.speed = 0;
+						m.position = 0;
+					} else {
+						m.speed += (Math.min(Math.sqrt(moved) * 4, 1) - m.speed) * 0.4;
+						m.position += m.speed;
+					}
+					if (player) {
+						let target = m.body;
+						if (moved > 0.0025000002) {
+							const heading = Math.atan2(dz, dx) * 180 / Math.PI - 90;
+							const away = Math.abs(wrapDegrees(e.yaw) - heading);
+							target = away > 95 && away < 265 ? heading - 180 : heading;
+						}
+						if (e.swing) target = e.yaw;
+						// tickHeadTurn: ease towards the target, never more than 50 degrees away from the head.
+						m.body += wrapDegrees(target - m.body) * 0.3;
+						const head = wrapDegrees(e.yaw - m.body);
+						if (Math.abs(head) > 50) m.body += head - Math.sign(head) * 50;
+						m.body = wrapDegrees(m.body);
+						// Player.updateSwimAmount, fall flying time
+						m.swim = e.pose === 'swimming' ? Math.min(1, m.swim + 0.09) : Math.max(0, m.swim - 0.09);
+						m.flying = e.pose === 'fall_flying' ? m.flying + 1 : 0;
+					}
+				}
+				m.t = tick;
+				m.x = e.x;
+				m.z = e.z;
+			}
+			const scale = e.baby ? 3 : 1;
+			e.walk = m.position * scale;
+			e.walkSpeed = m.speed;
+			if (player) {
+				e.body = m.body;
+				e.head = e.yaw;
+				e.swimAmount = m.swim;
+				e.flyingTicks = m.flying;
+			} else {
+				// AbstractHorse / Pig tickRidden: the body follows the rider's look.
+				e.body = e.head = e.yaw;
+			}
+		}
+		if (this.motion.size > map.size) {
+			for (const id of this.motion.keys()) if (!map.has(id)) this.motion.delete(id);
+		}
 	}
 
 	/** Entities interpolated for the current moment. */
@@ -349,6 +443,7 @@ export class EntityRenderer {
 				x: lerp(ea.x, eb.x, t), y: lerp(ea.y, eb.y, t), z: lerp(ea.z, eb.z, t),
 				yaw: angle('yaw'), pitch: lerp(ea.pitch, eb.pitch, t), body: angle('body'), head: angle('head'),
 				walk: num('walk'), walkSpeed: num('walkSpeed'), age: num('age'), deathTime: num('deathTime'),
+				swimAmount: num('swimAmount'), flyingTicks: num('flyingTicks'),
 			});
 		}
 		for (const [id, eb] of b.map) {
@@ -484,12 +579,15 @@ export class EntityRenderer {
 			netHeadYaw: wrapDegrees((e.head ?? e.yaw) - (e.body ?? e.yaw)),
 			headPitch: e.pitch || 0,
 			flap: e.id * 3 + age,
+			swimAmount: e.swimAmount || 0,
 		};
 		if (def.fullBright) style.light = [240, style.light[1]];
 
 		// LivingEntityRenderer.submit / setupRotations
 		const m = mat4();
 		translate(m, pos[0], pos[1], pos[2]);
+		// AvatarRenderer.getRenderOffset: crouching players sit 2 pixels lower.
+		if (type === 'player' && (e.sneak || e.pose === 'crouching')) translate(m, 0, -2 / 16 * (e.scale || 1), 0);
 		const entityScale = e.scale || 1;
 		scale(m, entityScale);
 		const body = e.body ?? e.yaw ?? 0;
@@ -499,6 +597,7 @@ export class EntityRenderer {
 			translate(m, 0, e.baby ? -0.6 : -1.2, 0);
 		} else if (e.pose !== 'sleeping') {
 			rotate(m, 1, (180 - body) * DEG);
+			if (type === 'player') this.avatarRotations(e, m, world, anim);
 		}
 		if (e.dead && e.deathTime > 0) {
 			const fall = Math.min(1, Math.sqrt(Math.max(0, (e.deathTime - 1) / 20 * 1.6)));
@@ -574,6 +673,20 @@ export class EntityRenderer {
 		if (e.offhand && base.parts.left_arm && base.parts.left_arm.visible) this.drawHeld(base, m, 'left_arm', e.offhand, style, -1);
 
 		this.shadowFor(e, pos, typeof mob.shadow === 'number' ? mob.shadow * entityScale : 0.5, world);
+	}
+
+	/** AvatarRenderer.setupRotations: players lie down while swimming, crawling and gliding with elytra. */
+	avatarRotations(e, m, world, anim) {
+		const pitch = e.pitch || 0;
+		if (e.pose === 'fall_flying') {
+			const t = e.flyingTicks || 0;
+			rotate(m, 0, Math.min(1, t * t / 100) * (-90 - pitch) * DEG);
+		} else if (anim.swimAmount > 0) {
+			const info = world.infoAt(Math.floor(e.x), Math.floor(e.y + 0.5), Math.floor(e.z));
+			const inWater = !!(info && info.water);
+			rotate(m, 0, lerp(0, inWater ? -90 - pitch : -90, anim.swimAmount) * DEG);
+			if (e.pose === 'swimming') translate(m, 0, -1, 0.3);
+		}
 	}
 
 	/** Round shadow on the first solid block below, fading with height (EntityRenderer shadow). */

@@ -338,6 +338,8 @@ canvas.addEventListener('pointermove', e => {
 	if (!drag) return;
 	const fov = (state.camera ? state.camera.fov : 70) / state.zoom;
 	const perPixel = fov / canvas.clientHeight;
+	drag.lastX = e.clientX;
+	drag.lastY = e.clientY;
 	state.lookYaw = drag.yaw + (e.clientX - drag.x) * perPixel;
 	state.lookPitch = Math.max(-89, Math.min(89, drag.pitch + (e.clientY - drag.y) * perPixel));
 });
@@ -377,6 +379,42 @@ function frustumFrom(m) {
 		}
 		return true;
 	};
+}
+
+/**
+ * The server only streams the terrain inside a cone around the camera's direction ("cone" in init, degrees).
+ * Turning the view further would show the edge of the loaded world, so the turn is held inside the cone.
+ */
+function limitLook(c, aspect) {
+	const cone = state.init && state.init.cone;
+	if (!cone || cone >= 179 || (state.lookYaw === 0 && state.lookPitch === 0)) return;
+	const limit = Math.cos(cone * Math.PI / 180);
+	const base = direction(c.yaw, c.pitch);
+	const t = Math.tan(Math.min(170, c.fov / state.zoom) * Math.PI / 360);
+	const inside = k => {
+		const f = direction(c.yaw + state.lookYaw * k, Math.max(-89.9, Math.min(89.9, c.pitch + state.lookPitch * k)));
+		const l = Math.hypot(f[0], f[2]) || 1;
+		const s = [-f[2] / l, 0, f[0] / l];
+		const u = [-s[2] * f[1], s[2] * f[0] - s[0] * f[2], s[0] * f[1]];
+		for (const a of [-t * aspect, t * aspect]) {
+			for (const b of [-t, t]) {
+				const x = f[0] + s[0] * a + u[0] * b, y = f[1] + s[1] * a + u[1] * b, z = f[2] + s[2] * a + u[2] * b;
+				if ((x * base[0] + y * base[1] + z * base[2]) / Math.hypot(x, y, z) < limit) return false;
+			}
+		}
+		return true;
+	};
+	if (inside(1)) return;
+	let lo = 0, hi = 1;
+	for (let i = 0; i < 14; i++) {
+		const mid = (lo + hi) / 2;
+		if (inside(mid)) lo = mid;
+		else hi = mid;
+	}
+	state.lookYaw *= lo;
+	state.lookPitch *= lo;
+	// Dragging on past the edge must not build up a dead zone: continue from here.
+	if (drag && drag.lastX !== undefined) Object.assign(drag, { x: drag.lastX, y: drag.lastY, yaw: state.lookYaw, pitch: state.lookPitch });
 }
 
 const pad2 = n => String(n).padStart(2, '0');
@@ -433,6 +471,7 @@ function frame(now) {
 
 	const o = world.origin;
 	const eye = [c.x - o[0], c.y - o[1], c.z - o[2]];
+	limitLook(c, aspect);
 	const pitch = Math.max(-89.9, Math.min(89.9, c.pitch + state.lookPitch));
 	const dir = direction(c.yaw + state.lookYaw, pitch);
 	const fov = Math.min(170, c.fov / state.zoom) * Math.PI / 180;

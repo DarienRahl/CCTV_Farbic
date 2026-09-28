@@ -4,12 +4,12 @@ import { chromium } from 'playwright';
 
 const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
 
-async function shoot(name, settings) {
+async function shoot(name, settings, camera = 'ci') {
 	const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
 	page.on('console', m => console.log('[browser]', m.type(), m.text()));
 	page.on('pageerror', e => console.log('[browser] pageerror', e.message));
 	if (settings) await page.addInitScript(s => localStorage.setItem('cctv-settings-v2', s), JSON.stringify(settings));
-	await page.goto('http://127.0.0.1:8100/cam/ci');
+	await page.goto('http://127.0.0.1:8100/cam/' + camera);
 	// Wait for block textures (downloaded by the server) and for the world to be meshed.
 	await page.waitForFunction(() => window.cctv && window.cctv.world.assets && window.cctv.state.ready && window.cctv.world.dirty.size === 0, null, { timeout: 180000 }).catch(() => {});
 	await page.waitForTimeout(8000);
@@ -34,6 +34,7 @@ async function shoot(name, settings) {
 
 const vanilla = await shoot('viewer', null);
 await shoot('viewer-shaders', { graphics: 'shaders', shaderQuality: 'high' });
+await shoot('viewer-far', null, 'far');
 
 const index = await browser.newPage({ viewport: { width: 1280, height: 720 } });
 await index.goto('http://127.0.0.1:8100/');

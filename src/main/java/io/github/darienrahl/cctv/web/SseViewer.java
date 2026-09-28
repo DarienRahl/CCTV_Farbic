@@ -51,6 +51,11 @@ final class SseViewer implements Viewer {
 	}
 
 	@Override
+	public int backlog() {
+		return queuedWorldMessages.get();
+	}
+
+	@Override
 	public boolean isOpen() {
 		return open;
 	}

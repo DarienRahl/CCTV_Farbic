@@ -8,7 +8,7 @@
 
 import { JavaRandom, positionSeed } from './rng.js';
 import { biomeInfoNoise2d } from './noise.js';
-import { collectParts, needsRandom, DOWN, UP, NORTH, SOUTH, WEST, EAST, DIR_VECTORS, MAT_OPAQUE, MAT_TRANSLUCENT, MAT_COLOR } from './models.js';
+import { collectParts, needsRandom, DOWN, UP, NORTH, SOUTH, WEST, EAST, DIR_VECTORS, MAT_OPAQUE, MAT_CUTOUT, MAT_TRANSLUCENT, MAT_COLOR } from './models.js';
 
 export const STRIDE = 24; // f32 x3 position | u16 x2 uv (1/65536) | u8 rgb + face | u8 sky, block, material, flags
 export const PAD = 18;
@@ -342,7 +342,9 @@ export class Mesher {
 		opaque.reset();
 		translucent.reset();
 		const blockEntities = [];
+		const errors = [];
 		const wx0 = job.sx * 16, wy0 = job.sy * 16, wz0 = job.sz * 16;
+		const hide = job.hide || null;
 
 		for (let y = 0; y < 16; y++) {
 			for (let z = 0; z < 16; z++) {
@@ -357,24 +359,39 @@ export class Mesher {
 
 					// Far away (level of detail 1): grass, flowers and other small decorations are left out.
 					if (this.lod && info.decoration) continue;
-					if (info.water || info.lava) {
-						this.tesselateFluid(info, p, bx, by, bz, wx, wy, wz, info.water ? translucent : opaque);
-					}
-					if (info.noModel) {
-						if (this.handledBlockEntities.has(info.name)) {
-							blockEntities.push(wx, wy, wz, id);
-						} else if (!info.water && !info.lava && info.boxes.length) {
-							this.fallback(info, p, bx, by, bz, opaque);
+					// Plants in the camera's own block would cover the whole picture.
+					if (hide && info.decoration && wx === hide[0] && wy === hide[1] && wz === hide[2]) continue;
+					const opaqueStart = opaque.count, translucentStart = translucent.count;
+					try {
+						if (info.water || info.lava) {
+							this.tesselateFluid(info, p, bx, by, bz, wx, wy, wz, info.water ? translucent : opaque);
 						}
-						continue;
+						if (info.noModel) {
+							if (this.handledBlockEntities.has(info.name)) {
+								blockEntities.push(wx, wy, wz, id);
+							} else if (!info.water && !info.lava && info.boxes.length) {
+								this.fallback(info, p, bx, by, bz, opaque);
+							}
+							continue;
+						}
+						this.tesselateBlock(info, id, p, x, y, z, bx, by, bz, wx, wy, wz, opaque, translucent);
+					} catch (error) {
+						// One broken block must not take the whole section with it: drop its partial quads, draw its shape.
+						opaque.count = opaqueStart;
+						translucent.count = translucentStart;
+						if (errors.length < 4) errors.push(info.name + (info.props && Object.keys(info.props).length ? JSON.stringify(info.props) : '') + ': ' + String(error && error.message || error));
+						try {
+							if (info.boxes.length) this.fallback(info, p, bx, by, bz, opaque);
+						} catch {
+							opaque.count = opaqueStart;
+						}
 					}
-					this.tesselateBlock(info, id, p, x, y, z, bx, by, bz, wx, wy, wz, opaque, translucent);
 				}
 			}
 		}
 
 		translucent.sortQuads(job.eye);
-		return { opaque: opaque.take(), translucent: translucent.take(), blockEntities };
+		return { opaque: opaque.take(), translucent: translucent.take(), blockEntities, errors };
 	}
 
 	dispatchFor(info) {
@@ -475,6 +492,8 @@ export class Mesher {
 		}
 
 		const out = q.material === MAT_TRANSLUCENT ? translucent : opaque;
+		// Far leaves hide each other (see shouldRenderFace), so they are solid like the "fast" leaves setting.
+		const material = this.lod && info.leaves && q.material === MAT_CUTOUT ? MAT_OPAQUE : q.material;
 		let flags = info.vertexFlags;
 		if (q.emission > 0) flags |= VF_EMISSIVE;
 		for (let k = 0; k < 4; k++) {
@@ -488,7 +507,7 @@ export class Mesher {
 			const vy = q.pos[k * 3 + 1];
 			const vflags = (flags & VF_WAVING_PLANT) && vy > 0.01 ? flags | VF_PLANT_TOP : flags;
 			out.vertex(bx + q.pos[k * 3], by + vy, bz + q.pos[k * 3 + 2], q.uvs[k * 2], q.uvs[k * 2 + 1],
-				tr * c, tg * c, tb * c, q.dir, light, q.material, vflags);
+				tr * c, tg * c, tb * c, q.dir, light, material, vflags);
 		}
 	}
 

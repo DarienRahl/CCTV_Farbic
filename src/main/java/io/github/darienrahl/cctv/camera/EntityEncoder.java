@@ -221,6 +221,10 @@ final class EntityEncoder {
 		if (entity.isPassenger()) {
 			json.field("riding", true);
 		}
+		if (entity.getControllingPassenger() instanceof Player) {
+			// Moved by the rider's client: the server does not animate it, the viewer derives it from the motion.
+			json.field("steered", true);
+		}
 		if (entity.isOnFire() && !entity.fireImmune()) {
 			json.field("burning", true);
 		}
