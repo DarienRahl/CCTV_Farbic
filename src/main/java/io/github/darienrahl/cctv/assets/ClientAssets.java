@@ -68,6 +68,7 @@ public final class ClientAssets implements AutoCloseable {
 	private volatile String entityList = "[]";
 	private volatile byte @Nullable [] entityModels;
 	private volatile String entityModelsEtag = "";
+	private volatile boolean entityModelsPending = true;
 
 	public ClientAssets(Path dir, String version, boolean download, Logger logger) {
 		this.dir = dir;
@@ -112,12 +113,26 @@ public final class ClientAssets implements AutoCloseable {
 		return entityModelsEtag;
 	}
 
+	/** True while entity models may still become available (the client jar is being read). */
+	public boolean entityModelsPending() {
+		return entityModelsPending && state != State.FAILED && state != State.DISABLED;
+	}
+
 	/** @param path path below {@code textures/entity/} without extension, e.g. {@code cow/cow_temperate} */
 	public byte[] entityTexture(String path) {
+		return texture("entity", path);
+	}
+
+	/** @param path path below {@code textures/painting/} without extension, e.g. {@code kebab} */
+	public byte[] paintingTexture(String path) {
+		return texture("painting", path);
+	}
+
+	private byte[] texture(String folder, String path) {
 		if (state != State.READY || !ENTITY_PATH.matcher(path).matches() || path.contains("..")) {
 			return null;
 		}
-		return read("assets/minecraft/textures/entity/" + path + ".png");
+		return read("assets/minecraft/textures/" + folder + "/" + path + ".png");
 	}
 
 	private synchronized byte[] read(String name) {
@@ -181,16 +196,39 @@ public final class ClientAssets implements AutoCloseable {
 			state = State.READY;
 			logger.info("CCTV: block assets ready ({} KB, {} ms)", bundle.length / 1024, (System.nanoTime() - start) / 1_000_000);
 
-			String models = EntityModels.extract(jar, logger);
-			if (models != null) {
-				byte[] gz = gzip(models.getBytes(StandardCharsets.UTF_8));
-				entityModelsEtag = etagOf(gz);
-				entityModels = gz;
-			}
+			loadEntityModels(jar);
 		} catch (Exception e) {
 			error = e.toString();
 			state = State.FAILED;
 			logger.error("CCTV: could not prepare block textures, the viewer falls back to plain colours", e);
+		}
+	}
+
+	/**
+	 * Entity model geometry from the client jar, cached next to it: reading it loads the game's model
+	 * classes, which only has to happen once per version.
+	 */
+	private void loadEntityModels(Path jar) {
+		try {
+			Path cache = dir.resolve("entity-models-" + version + ".json.gz");
+			byte[] gz = null;
+			if (Files.isRegularFile(cache) && Files.getLastModifiedTime(cache).compareTo(Files.getLastModifiedTime(jar)) >= 0) {
+				gz = Files.readAllBytes(cache);
+			} else {
+				String models = EntityModels.extract(jar, logger);
+				if (models != null) {
+					gz = gzip(models.getBytes(StandardCharsets.UTF_8));
+					Files.write(cache, gz);
+				}
+			}
+			if (gz != null) {
+				entityModelsEtag = etagOf(gz);
+				entityModels = gz;
+			}
+		} catch (Exception e) {
+			logger.warn("CCTV: entity models unavailable, the viewer draws entities as boxes", e);
+		} finally {
+			entityModelsPending = false;
 		}
 	}
 

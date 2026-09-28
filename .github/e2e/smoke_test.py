@@ -113,6 +113,22 @@ def wait_for_assets(timeout=300):
     raise RuntimeError("client assets were not ready in time")
 
 
+def wait_for_models(timeout=300):
+    """Entity model geometry read from the client jar (after the block assets)."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            with urllib.request.urlopen(f"{WEB}/assets/models.json", timeout=30) as response:
+                return json.load(response).get("layers", {})
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
+                raise RuntimeError("entity models unavailable")
+        except OSError:
+            pass
+        time.sleep(3)
+    raise RuntimeError("entity models were not ready in time")
+
+
 def main():
     if "--stop" in sys.argv:
         Rcon().command("stop")
@@ -139,8 +155,12 @@ def main():
     rcon.command("place feature minecraft:birch 12 -60 16")
     rcon.command("place feature minecraft:fancy_oak 14 -60 4")
     rcon.command("fill 10 -60 -2 13 -60 1 minecraft:short_grass")
-    for mob, x, z in [("cow", -2, 4), ("pig", 1, 3), ("sheep", 3, 5), ("villager", -1, 7), ("creeper", 4, 2)]:
+    for mob, x, z in [("cow", -2, 4), ("pig", 1, 3), ("sheep", 3, 5), ("villager", -1, 7), ("creeper", 4, 2),
+                      ("horse", -4, 9), ("wolf", 2, 1)]:
         rcon.command(f"summon minecraft:{mob} {x} -60 {z}")
+    rcon.command("summon minecraft:happy_ghast 1 -55 16")
+    rcon.command("summon minecraft:armor_stand -3 -60 2")
+    rcon.command("item replace entity @e[type=minecraft:armor_stand,limit=1] armor.head with minecraft:golden_helmet")
 
     rcon.command("cctv create ci -1 -56 -8 10 30")
     listing = rcon.command("cctv list")
@@ -162,6 +182,8 @@ def main():
     print("entity types:", sorted(stream.entity_types), flush=True)
     print("block updates:", stream.block_updates[:10], flush=True)
     print("first palette entries:", json.dumps(stream.first.get("palette"))[:800], flush=True)
+    print("first env sample:", json.dumps(stream.first.get("env")), flush=True)
+    print("dimension:", json.dumps((stream.first.get("init") or {}).get("dim")), flush=True)
 
     failures = []
     section = stream.first.get("section") or {}
@@ -178,6 +200,25 @@ def main():
                 failures.append(f"asset bundle has too few {key}")
     except RuntimeError as e:
         failures.append(str(e))
+
+    try:
+        layers = wait_for_models()
+        print("entity model layers:", len(layers), flush=True)
+        for layer in ("minecraft:horse#main", "minecraft:happy_ghast#main", "minecraft:cow#main", "minecraft:player#main"):
+            if layer not in layers:
+                failures.append(f"entity model {layer} missing")
+    except RuntimeError as e:
+        failures.append(str(e))
+
+    viewer = json.load(urllib.request.urlopen(f"{WEB}/api/viewer", timeout=10))
+    print("viewer settings:", viewer, flush=True)
+    if "sepia" not in viewer.get("shaders", []):
+        failures.append("example post shaders were not installed")
+
+    env = stream.first.get("env") or {}
+    for key in ("sky", "fog", "sunAngle", "skyFactor", "ambient", "blockTint"):
+        if key not in env:
+            failures.append(f"env sample has no {key}")
 
     for event in ("init", "palette", "section", "ready", "entities", "env"):
         if not stream.events.get(event):

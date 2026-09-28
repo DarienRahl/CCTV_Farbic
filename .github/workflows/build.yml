@@ -67,13 +67,6 @@ jobs:
           npm install --no-save --no-package-lock playwright@1 > /dev/null
           npx playwright install --with-deps chromium > /dev/null 2>&1
           node screenshot.mjs
-      - name: dump entity models (temporary, for viewer development)
-        if: always()
-        run: |
-          curl -s -H 'Accept-Encoding: gzip' -o models.json.gz http://127.0.0.1:8100/assets/models.json || true
-          ls -l models.json.gz || true
-          gunzip -c models.json.gz | python3 -c "import json,sys; d=json.load(sys.stdin); print('LAYERS', len(d['layers'])); print(' '.join(sorted(d['layers'])))" || true
-          base64 -w 4000 models.json.gz | sed 's/^/MODELS:/' || true
       - name: stop server
         if: always()
         run: |

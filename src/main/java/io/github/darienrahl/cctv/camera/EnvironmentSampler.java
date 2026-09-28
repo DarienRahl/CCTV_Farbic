@@ -11,6 +11,7 @@ import net.minecraft.util.Mth;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.attribute.EnvironmentAttributeReader;
 import net.minecraft.world.attribute.EnvironmentAttributes;
+import net.minecraft.world.level.biome.BiomeManager;
 import net.minecraft.world.level.dimension.DimensionType;
 import net.minecraft.world.phys.Vec3;
 
@@ -44,6 +45,8 @@ final class EnvironmentSampler {
 				.field("seaLevel", level.getSeaLevel())
 				// The client's horizon (dark lower sky disc below it): world bottom on superflat worlds, 63 otherwise.
 				.field("horizon", level.isFlat() ? level.getMinY() : 63)
+				// The hashed seed the client gets at login, for the same fuzzy biome borders (BiomeManager).
+				.field("zoomSeed", Long.toString(BiomeManager.obfuscateSeed(level.getSeed())))
 				.endObject();
 	}
 

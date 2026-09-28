@@ -1,15 +1,21 @@
 // Live camera viewer: connects to the server's event stream, keeps a local copy
-// of the blocks around the camera and renders them together with live entities.
+// of the blocks around the camera (meshed in Web Workers) and renders them with
+// the game's sky, light, weather and entities.
 
 import { World } from './world.js';
 import { Renderer } from './renderer.js';
 import { EntityRenderer } from './entities.js';
 import { Assets } from './assets.js';
-import { Lighting } from './lighting.js';
-import { perspective, lookDir, multiply, invert, direction, lerp } from './math.js';
+import { Environment } from './environment.js';
+import { SkyRenderer } from './sky.js';
+import { CloudRenderer } from './clouds.js';
+import { WeatherRenderer } from './weather.js';
+import { PostProcessor } from './post.js';
+import { perspective, lookDir, multiply, direction, lerp, transformPoint } from './math.js';
 
 const params = new URLSearchParams(location.search);
 const token = params.get('token');
+const query = token ? '?token=' + encodeURIComponent(token) : '';
 const embed = params.has('embed');
 const cameraName = decodeURIComponent(location.pathname.replace(/^\/cam\//, '').replace(/\/.*$/, ''));
 
@@ -28,8 +34,6 @@ document.body.classList.toggle('embed', embed);
 $('cam-name').textContent = cameraName.toUpperCase();
 document.title = 'CCTV · ' + cameraName;
 
-const settings = loadSettings();
-
 let renderer;
 try {
 	renderer = new Renderer(canvas);
@@ -37,36 +41,154 @@ try {
 	showMessage('Ta przeglądarka nie obsługuje WebGL2: ' + e.message);
 	throw e;
 }
-
-const world = new World();
+const gl = renderer.gl;
+const environment = new Environment();
+const sky = new SkyRenderer(gl);
+const clouds = new CloudRenderer(gl);
+const weather = new WeatherRenderer(gl);
+const post = new PostProcessor(gl, renderer);
 const entities = new EntityRenderer(renderer, $('labels'));
-const lighting = new Lighting();
-let assetsRequested = false;
-applySettings();
+const world = new World((key, section, message) => {
+	renderer.setSectionMesh(key, section, message, performance.now());
+});
+
+// --- settings: server defaults (config/cctv/config.json "viewer") + the viewer's own choices ---------------
+
+const DEFAULTS = {
+	graphics: 'vanilla', shaderQuality: 'medium', postShader: '', clouds: 'fancy', labels: true, mobLabels: false,
+	mode: 'color', cctvEffect: false, skybox: 'default', renderScale: 1,
+};
+const viewerInfo = { defaults: { ...DEFAULTS, skyboxes: {} }, locked: false, skyboxes: {}, shaders: [] };
+let settings = { ...DEFAULTS };
+
+function loadLocal() {
+	try {
+		return JSON.parse(localStorage.getItem('cctv-settings-v2') || '{}');
+	} catch {
+		return {};
+	}
+}
+
+function saveLocal() {
+	if (viewerInfo.locked) return;
+	try {
+		localStorage.setItem('cctv-settings-v2', JSON.stringify(settings));
+	} catch {
+		// Storage unavailable (private mode): settings are just not remembered.
+	}
+}
+
+async function loadViewerInfo() {
+	try {
+		const response = await fetch('/api/viewer' + query, { credentials: 'same-origin' });
+		if (response.ok) Object.assign(viewerInfo, await response.json());
+	} catch {
+		// Older server or offline: built-in defaults.
+	}
+	const d = viewerInfo.defaults || {};
+	const server = {
+		graphics: d.graphics, shaderQuality: d.shaderQuality, postShader: d.postShader || '', clouds: d.clouds,
+		labels: d.labels, mobLabels: d.mobLabels, mode: d.mode, cctvEffect: d.cctvEffect,
+	};
+	for (const key of Object.keys(server)) if (server[key] === undefined) delete server[key];
+	settings = { ...DEFAULTS, ...server, ...(viewerInfo.locked ? {} : loadLocal()) };
+	buildSettingsPanel();
+	applySettings();
+}
+
+const shaderSources = new Map();
+
+function applySettings() {
+	document.body.dataset.mode = settings.mode;
+	document.body.classList.toggle('fx', !!settings.cctvEffect);
+	renderer.configure({ graphics: settings.graphics, quality: settings.shaderQuality, renderScale: Number(settings.renderScale) || 1 });
+	entities.showLabels = !!settings.labels;
+	entities.showMobLabels = !!settings.mobLabels;
+	const name = settings.postShader || '';
+	if (name !== (post.customName || '')) {
+		if (!name) {
+			post.setCustomShader(null, null);
+		} else if (shaderSources.has(name)) {
+			reportShaderError(post.setCustomShader(name, shaderSources.get(name)));
+		} else {
+			post.customName = name;
+			fetch('/custom/shaders/' + encodeURIComponent(name) + '.glsl' + query, { credentials: 'same-origin' })
+				.then(r => (r.ok ? r.text() : Promise.reject(new Error(String(r.status)))))
+				.then(source => {
+					shaderSources.set(name, source);
+					if (settings.postShader === name) reportShaderError(post.setCustomShader(name, source));
+				})
+				.catch(() => reportShaderError('nie można wczytać ' + name + '.glsl'));
+		}
+	}
+	for (const input of document.querySelectorAll('[data-setting]')) {
+		const key = input.dataset.setting;
+		if (input.type === 'checkbox') input.checked = !!settings[key];
+		else input.value = settings[key] ?? '';
+	}
+	document.body.classList.toggle('locked', !!viewerInfo.locked);
+}
+
+function reportShaderError(error) {
+	$('assets-status').textContent = error ? 'Shader: ' + error.split('\n')[0] : '';
+}
+
+/** Which custom sky box applies to the current dimension ('' = vanilla sky). */
+function skyboxFor(dimension) {
+	const choice = settings.skybox;
+	if (choice && choice !== 'default') return choice === 'none' ? '' : choice;
+	return (viewerInfo.defaults.skyboxes || {})[dimension] || '';
+}
+
+function buildSettingsPanel() {
+	const panel = $('settings');
+	if (!panel) return;
+	const skyboxSelect = panel.querySelector('[data-setting="skybox"]');
+	for (const name of Object.keys(viewerInfo.skyboxes || {})) skyboxSelect.append(new Option(name, name));
+	const shaderSelect = panel.querySelector('[data-setting="postShader"]');
+	for (const name of viewerInfo.shaders || []) shaderSelect.append(new Option(name, name));
+	for (const input of panel.querySelectorAll('[data-setting]')) {
+		input.addEventListener('change', () => {
+			const key = input.dataset.setting;
+			settings[key] = input.type === 'checkbox' ? input.checked : input.value;
+			saveLocal();
+			applySettings();
+		});
+	}
+	$('settings-reset').addEventListener('click', () => {
+		try { localStorage.removeItem('cctv-settings-v2'); } catch { /* ignore */ }
+		loadViewerInfo();
+	});
+}
+
+$('open-settings').addEventListener('click', () => { $('settings').hidden = !$('settings').hidden; });
+$('close-settings').addEventListener('click', () => { $('settings').hidden = true; });
+
+// --- state -------------------------------------------------------------------------------------------
 
 const state = {
 	camera: null,
 	init: null,
-	env: { time: 6000, rain: false, thunder: false },
 	received: 0,
+	total: 0,
 	ready: false,
-	connected: false,
 	removed: false,
-	entities: [],
 	lookYaw: 0,
 	lookPitch: 0,
 	zoom: 1,
 	lastFrame: performance.now(),
 	fps: 60,
+	gameTick: 0,
 };
+let assetsRequested = false;
 
-// --- stream ---------------------------------------------------------------
+// --- stream ------------------------------------------------------------------------------------------
 
 let source = null;
 let retryTimer = null;
 
 function streamUrl() {
-	return '/api/cameras/' + encodeURIComponent(cameraName) + '/stream' + (token ? '?token=' + encodeURIComponent(token) : '');
+	return '/api/cameras/' + encodeURIComponent(cameraName) + '/stream' + query;
 }
 
 function connect() {
@@ -90,14 +212,20 @@ function connect() {
 	on('init', data => {
 		state.init = data;
 		state.camera = data.camera;
-		world.biomeDefs = data.biomes || {};
+		const c = data.camera;
+		const origin = [Math.floor(c.x), Math.floor(c.y), Math.floor(c.z)];
+		world.reset(origin);
+		world.setDimension(data.dim || { hasSky: c.dimension !== 'minecraft:the_nether', cardinal: c.dimension === 'minecraft:the_nether' ? 'nether' : 'default' });
+		world.setBiomes(data.biomes || {});
+		environment.setDimension(data.dim || { id: c.dimension, skybox: c.dimension === 'minecraft:the_end' ? 'end' : c.dimension === 'minecraft:the_nether' ? 'none' : 'overworld' });
+		renderer.clearSections(origin);
+		renderer.setCamera([c.x - origin[0], c.y - origin[1], c.z - origin[2]]);
+		entities.reset();
+		weather.setColumns(null);
 		loadAssets();
 		state.received = 0;
+		state.total = data.sections || 0;
 		state.ready = false;
-		const c = data.camera;
-		world.reset([Math.floor(c.x), Math.floor(c.y), Math.floor(c.z)]);
-		renderer.clearSections();
-		entities.reset();
 		$('cam-sub').textContent = `${c.dimension.replace('minecraft:', '')} · ${c.x.toFixed(0)} ${c.y.toFixed(0)} ${c.z.toFixed(0)}`;
 		loadingEl.hidden = false;
 		updateLoading();
@@ -110,6 +238,10 @@ function connect() {
 		state.received++;
 		updateLoading();
 	});
+	on('progress', data => {
+		state.progress = data;
+		updateLoading();
+	});
 	on('blocks', data => {
 		for (const b of data.b) world.setBlock(b[0], b[1], b[2], b[3]);
 	});
@@ -118,7 +250,8 @@ function connect() {
 		updateLoading();
 	});
 	on('entities', data => entities.push(data, state.init ? state.init.entityTicks : 1));
-	on('env', data => { state.env = data; });
+	on('env', data => environment.push(data, performance.now()));
+	on('weather', data => weather.setColumns(data));
 	on('removed', () => {
 		state.removed = true;
 		source.close();
@@ -130,14 +263,15 @@ function connect() {
 function loadAssets() {
 	if (assetsRequested) return;
 	assetsRequested = true;
-	const query = token ? '?token=' + encodeURIComponent(token) : '';
-	Assets.load(renderer.gl, query, text => { $('assets-status').textContent = text; })
+	Assets.load(gl, query, text => { $('assets-status').textContent = text; })
 		.then(assets => {
 			$('assets-status').textContent = '';
 			if (!assets) return;
 			renderer.atlas = assets.texture;
 			world.setAssets(assets);
 			entities.setAssets(assets);
+			clouds.setTexture(assets.environment.clouds);
+			state.assets = assets;
 		})
 		.catch(err => {
 			console.error('CCTV: textures unavailable', err);
@@ -156,27 +290,26 @@ function on(event, handler) {
 }
 
 function updateLoading() {
-	const total = state.init ? state.init.sections : 0;
-	if (state.ready || total === 0) {
-		loadingEl.hidden = state.ready || !state.init;
-		if (state.init && !state.init.loaded) {
-			showMessage('Wymiar kamery nie jest wczytany na serwerze.');
-		}
+	if (!state.init) {
+		loadingEl.hidden = true;
 		return;
 	}
-	const pct = Math.min(100, Math.round(state.received / total * 100));
+	if (!state.init.loaded) showMessage('Wymiar kamery nie jest wczytany na serwerze.');
+	if (state.ready) {
+		loadingEl.hidden = true;
+		return;
+	}
+	const p = state.progress;
+	const done = p ? p.d : state.received;
+	const total = p ? p.t : state.total;
+	const pct = total > 0 ? Math.min(100, Math.round(done / total * 100)) : 0;
+	loadingEl.hidden = false;
 	loadingFill.style.width = pct + '%';
 	loadingText.textContent = 'Wczytywanie obrazu… ' + pct + '%';
 }
 
 function setStatus(kind) {
-	state.connected = kind === 'live';
-	const labels = {
-		live: 'NA ŻYWO',
-		connecting: 'ŁĄCZENIE…',
-		offline: 'BRAK SYGNAŁU',
-		removed: 'KAMERA USUNIĘTA',
-	};
+	const labels = { live: 'NA ŻYWO', connecting: 'ŁĄCZENIE…', offline: 'BRAK SYGNAŁU', removed: 'KAMERA USUNIĘTA' };
 	statusEl.textContent = labels[kind] || kind;
 	statusEl.dataset.state = kind;
 	document.body.classList.toggle('no-signal', kind !== 'live');
@@ -191,7 +324,7 @@ function hideMessage() {
 	messageEl.hidden = true;
 }
 
-// --- controls -------------------------------------------------------------
+// --- controls ----------------------------------------------------------------------------------------
 
 let drag = null;
 canvas.addEventListener('pointerdown', e => {
@@ -210,7 +343,7 @@ canvas.addEventListener('pointercancel', () => { drag = null; });
 canvas.addEventListener('dblclick', resetView);
 canvas.addEventListener('wheel', e => {
 	e.preventDefault();
-	state.zoom = Math.max(1, Math.min(6, state.zoom * (e.deltaY < 0 ? 1.12 : 1 / 1.12)));
+	state.zoom = Math.max(1, Math.min(8, state.zoom * (e.deltaY < 0 ? 1.12 : 1 / 1.12)));
 }, { passive: false });
 
 function resetView() {
@@ -225,57 +358,8 @@ $('fullscreen').addEventListener('click', () => {
 	if (document.fullscreenElement) document.exitFullscreen();
 	else el.requestFullscreen?.();
 });
-$('mode').addEventListener('click', () => {
-	const modes = ['color', 'mono', 'night'];
-	settings.mode = modes[(modes.indexOf(settings.mode) + 1) % modes.length];
-	saveSettings();
-	applySettings();
-});
-for (const button of document.querySelectorAll('[data-toggle]')) {
-	button.addEventListener('click', () => {
-		const key = button.dataset.toggle;
-		settings[key] = !settings[key];
-		saveSettings();
-		applySettings();
-	});
-}
 
-function loadSettings() {
-	const defaults = { labels: true, allLabels: false, fx: false, mode: 'color' };
-	try {
-		return { ...defaults, ...JSON.parse(localStorage.getItem('cctv-settings') || '{}') };
-	} catch {
-		return defaults;
-	}
-}
-
-function saveSettings() {
-	try {
-		localStorage.setItem('cctv-settings', JSON.stringify(settings));
-	} catch {
-		// Storage unavailable (private mode) - settings just are not remembered.
-	}
-}
-
-function applySettings() {
-	document.body.dataset.mode = settings.mode;
-	document.body.classList.toggle('fx', settings.fx);
-	const names = { color: 'Kolor', mono: 'Cz/B', night: 'Noktowizor' };
-	$('mode').textContent = 'Tryb: ' + names[settings.mode];
-	for (const button of document.querySelectorAll('[data-toggle]')) {
-		button.classList.toggle('on', !!settings[button.dataset.toggle]);
-	}
-	entities.showLabels = settings.labels;
-	entities.showAllLabels = settings.allLabels;
-}
-
-// --- environment ----------------------------------------------------------
-
-function dimension() {
-	return state.camera ? state.camera.dimension : 'minecraft:overworld';
-}
-
-// --- frame loop -----------------------------------------------------------
+// --- frame loop --------------------------------------------------------------------------------------
 
 function frustumFrom(m) {
 	const planes = [];
@@ -292,45 +376,27 @@ function frustumFrom(m) {
 	};
 }
 
-function meshDirty(eye, budgetMs) {
-	if (world.dirty.size === 0) return;
-	const start = performance.now();
-	const o = world.origin;
-	const keys = [...world.dirty];
-	const dist = key => {
-		const [x, y, z] = key.split(',').map(Number);
-		const dx = x * 16 + 8 - o[0] - eye[0], dy = y * 16 + 8 - o[1] - eye[1], dz = z * 16 + 8 - o[2] - eye[2];
-		return dx * dx + dy * dy + dz * dz;
-	};
-	const scored = keys.map(k => [dist(k), k]).sort((a, b) => a[0] - b[0]);
-	for (const [, key] of scored) {
-		world.dirty.delete(key);
-		const section = world.sections.get(key);
-		if (section) renderer.setSectionMesh(key, section, world.mesh(section));
-		else renderer.removeSection(key);
-		if (performance.now() - start > budgetMs) break;
-	}
-}
-
-function pad2(n) {
-	return String(n).padStart(2, '0');
-}
+const pad2 = n => String(n).padStart(2, '0');
 
 function updateHud(now) {
 	const d = new Date();
 	clockEl.textContent = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
-	if (state.camera && state.camera.dimension === 'minecraft:overworld') {
-		const t = ((state.env.time % 24000) + 24000) % 24000;
+	const env = environment.current;
+	if (state.camera && environment.dim.skybox === 'overworld') {
+		const time = env.time || 0;
+		const t = ((time % 24000) + 24000) % 24000;
 		const hours = Math.floor(t / 1000 + 6) % 24;
 		const minutes = Math.floor((t % 1000) / 1000 * 60);
-		const dayNumber = Math.floor(state.env.time / 24000) + 1;
-		gameTimeEl.textContent = `Dzień ${dayNumber} · ${pad2(hours)}:${pad2(minutes)}${state.env.rain ? (state.env.thunder ? ' · burza' : ' · deszcz') : ''}`;
+		const day = Math.floor(time / 24000) + 1;
+		const weatherText = env.thunder > 0.5 ? ' · burza' : env.rain > 0.2 ? (env.precipitation === false ? '' : ' · opady') : '';
+		gameTimeEl.textContent = `Dzień ${day} · ${pad2(hours)}:${pad2(minutes)}${weatherText}`;
 	} else {
 		gameTimeEl.textContent = '';
 	}
 	if (now - (state.lastStats || 0) > 500) {
 		state.lastStats = now;
-		statsEl.textContent = `${Math.round(state.fps)} fps · sekcje ${renderer.meshes.size} · encje ${entities.visibleCount}`;
+		const s = renderer.stats;
+		statsEl.textContent = `${Math.round(state.fps)} fps · sekcje ${world.sections.size} · rysowane ${s.drawn} · encje ${entities.visibleCount}`;
 	}
 }
 
@@ -345,10 +411,21 @@ function frame(now) {
 
 	const c = state.camera;
 	if (!c) {
-		const gl = renderer.gl;
+		gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+		gl.viewport(0, 0, canvas.width, canvas.height);
 		gl.clearColor(0.02, 0.02, 0.02, 1);
 		gl.clear(gl.COLOR_BUFFER_BIT);
 		return;
+	}
+
+	// Game ticks drive texture animations, torch flicker and flashes, like the client.
+	const tick = Math.floor(now / 50);
+	let deltaTicks = 0;
+	if (tick !== state.gameTick) {
+		deltaTicks = Math.min(20, tick - state.gameTick);
+		for (let i = 0; i < Math.min(deltaTicks, 4); i++) environment.tick();
+		state.gameTick = tick;
+		if (state.assets) state.assets.tick(tick);
 	}
 
 	const o = world.origin;
@@ -357,53 +434,88 @@ function frame(now) {
 	const dir = direction(c.yaw + state.lookYaw, pitch);
 	const fov = Math.min(170, c.fov / state.zoom) * Math.PI / 180;
 	const range = c.range;
-	const projection = perspective(fov, aspect, 0.05, range * 1.5 + 32);
-	const view = lookDir(eye, dir);
-	const viewProj = multiply(projection, view);
 
-	// Game ticks drive texture animations and torch flicker, like the client.
-	const gameTick = Math.floor(now / 50);
-	if (gameTick !== state.gameTick) {
-		state.gameTick = gameTick;
-		lighting.tick();
-		if (world.assets) world.assets.tick(gameTick);
-	}
+	// Environment at the camera.
+	const bx = Math.floor(c.x), by = Math.floor(c.y), bz = Math.floor(c.z);
+	const cameraBlock = world.infoAt(bx, by, bz);
+	const inWater = !!(cameraBlock && cameraBlock.water);
+	const skyLight = world.lightAt(bx, by, bz)[0];
+	environment.update(now, { x: c.x, y: c.y, z: c.z, forward: dir }, range, skyLight, inWater, deltaTicks);
+	renderer.setLightmap(environment.lightmap(settings.mode === 'night' ? 1 : 0));
+	const fog = environment.fog;
+	const skyState = environment.sky;
 
-	meshDirty(eye, state.ready ? 6 : 12);
+	const cloudRadius = settings.clouds === 'off' ? 0 : Math.min(fog.cloudEnd, settings.graphics === 'shaders' || settings.shaderQuality === 'ultra' ? 2048 : 1024);
+	const far = Math.max(range * 2 + 64, cloudRadius + 64, 600);
+	const projection = perspective(fov, aspect, 0.05, far);
+	const viewRotation = lookDir([0, 0, 0], dir);
+	const viewProj = multiply(projection, viewRotation);
+	const frustum = frustumFrom(viewProj);
 
-	const sky = lighting.sky(state.env, dimension());
-	renderer.setLightmap(lighting.lightmap(state.env, dimension(), settings.mode === 'night' ? 1 : 0));
-	const frameData = {
-		viewProj,
-		invViewProj: invert(viewProj),
-		camPos: eye,
-		origin: o,
-		fogColor: sky.fog,
-		// Minecraft's render distance fog: only the last ~10% of the view distance.
-		fogStart: range - Math.max(4, Math.min(64, range / 10)),
-		fogEnd: range,
-		horizon: sky.horizon,
-		zenith: sky.zenith,
-		sunDir: sky.sunDir,
-		sun: sky.sun,
-		moon: sky.moon,
-		stars: sky.stars,
-		moonPhase: sky.moonPhase,
-		cloudColor: sky.cloud,
-		cloudY: 192.33 - c.y,
-		cloudPos: [((c.x + now / 50 * 0.03) % 3072 + 3072) % 3072, ((c.z + 3.96) % 3072 + 3072) % 3072],
-		environment: world.assets ? { sun: world.assets.sunTexture, moon: world.assets.moonTexture, clouds: world.assets.cloudTexture } : null,
-		time: now / 1000,
-		frustum: frustumFrom(viewProj),
-	};
+	world.update(eye);
 
 	const list = entities.sample(now);
-	renderer.render(frameData, () => entities.draw(frameData, list, now, world));
-	entities.updateLabels(frameData, list, canvas.clientWidth, canvas.clientHeight);
+	if (deltaTicks > 0 && list.some(e => e.type === 'minecraft:lightning_bolt')) environment.lightning();
+
+	const daylight = environment.daylight();
+	const rain = environment.current.rain || 0;
+	const sunColor = skyState.sunrise[3] > 0.05
+		? [lerp(1, skyState.sunrise[0] * 1.2, skyState.sunrise[3]), lerp(0.95, skyState.sunrise[1], skyState.sunrise[3]), lerp(0.85, skyState.sunrise[2] * 0.8, skyState.sunrise[3])]
+		: (Math.cos(skyState.sunAngle) < 0 ? [0.35, 0.42, 0.62] : [1, 0.95, 0.85]);
+	const frameData = {
+		projection, viewRotation, viewProj, frustum,
+		camPos: eye, origin: o, originMod: [((o[0] % 1024) + 1024) % 1024, o[1], ((o[2] % 1024) + 1024) % 1024],
+		fog, fogEnd: range, sky: skyState, now, time: now / 1000, daylight, rain, sunColor,
+	};
+	entities.prepare(frameData, list, world, environment);
+
+	const customName = skyboxFor(environment.dim.id);
+	const customDef = customName ? (viewerInfo.skyboxes || {})[customName] : null;
+	const custom = customDef ? sky.loadCustom(customName, customDef, query) : null;
+
+	const shadow = renderer.render(frameData, {
+		sky: () => sky.render(frameData, skyState, state.assets ? state.assets.environment : null, custom && custom.ready ? custom : null),
+		entities: (pass, shadowInfo) => entities.draw(pass, frameData, shadowInfo),
+		translucent: () => {
+			const showClouds = !(custom && custom.ready && custom.options && custom.options.showClouds === false);
+			if (cloudRadius > 0 && showClouds) {
+				clouds.render(viewProj, { x: c.x, y: c.y, z: c.z }, settings.clouds === 'fast' ? 'fast' : 'fancy', skyState.cloudColor,
+					skyState.cloudHeight, environment.gameTime(now), cloudRadius, fog.cloudEnd);
+			}
+			weather.render({ viewProj, camera: { x: c.x, y: c.y, z: c.z }, fog, lightmap: renderer.lightmap }, rain, environment.gameTime(now),
+				(x, y, z) => world.lightAt(x, y, z), state.assets ? state.assets.environment : null);
+			weather.renderLightning(frameData, entities.bolts);
+		},
+	});
+
+	// Post-processing to the screen.
+	let sunScreen = null;
+	if (skyState.skybox === 'overworld') {
+		const light = renderer.lightDirection(skyState);
+		const p = transformPoint(viewProj, light.dir[0] * 100, light.dir[1] * 100, light.dir[2] * 100);
+		if (p[3] > 0) sunScreen = [p[0] * 0.5 + 0.5, p[1] * 0.5 + 0.5];
+	}
+	post.run(renderer.scene, {
+		shaders: settings.graphics === 'shaders',
+		quality: settings.shaderQuality,
+		sun: sunScreen,
+		sunColor: shadow && shadow.moon ? [0.25, 0.3, 0.45] : sunColor,
+		rays: true,
+		raysStrength: (shadow && shadow.moon ? 0.25 : 0.55) * (1 - rain * 0.8) * Math.max(0.15, daylight),
+		time: now / 1000,
+		daylight,
+		rain,
+		near: 0.05,
+		far,
+	});
+
+	entities.updateLabels(frameData, list, canvas.clientWidth, canvas.clientHeight, world);
 }
 
-connect();
-requestAnimationFrame(frame);
+loadViewerInfo().finally(() => {
+	connect();
+	requestAnimationFrame(frame);
+});
 
 // Handy for debugging from the browser console.
-window.cctv = { world, renderer, entities, state, lighting, settings };
+window.cctv = { world, renderer, entities, state, environment, settings: () => settings, sky, clouds, weather, post };

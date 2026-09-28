@@ -257,7 +257,7 @@ public final class WebServer {
 			byte[] models = assets.entityModels();
 			if (models == null) {
 				headers.add("Cache-Control", "no-store");
-				sendText(exchange, assets.state() == ClientAssets.State.LOADING ? 503 : 404, "application/json", "{}");
+				sendText(exchange, assets.state() == ClientAssets.State.LOADING || assets.entityModelsPending() ? 503 : 404, "application/json", "{}");
 				return;
 			}
 			headers.add("ETag", assets.entityModelsEtag());
@@ -270,8 +270,9 @@ public final class WebServer {
 		} else if (path.equals("entities.json")) {
 			headers.add("Cache-Control", "no-cache");
 			sendText(exchange, 200, "application/json", assets.entityListJson());
-		} else if (path.startsWith("entity/") && path.endsWith(".png")) {
-			byte[] png = assets.entityTexture(path.substring("entity/".length(), path.length() - ".png".length()));
+		} else if ((path.startsWith("entity/") || path.startsWith("painting/")) && path.endsWith(".png")) {
+			String name = path.substring(path.indexOf('/') + 1, path.length() - ".png".length());
+			byte[] png = path.startsWith("entity/") ? assets.entityTexture(name) : assets.paintingTexture(name);
 			if (png == null) {
 				sendText(exchange, 404, "text/plain", "Not found");
 				return;

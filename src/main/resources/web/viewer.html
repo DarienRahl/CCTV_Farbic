@@ -30,15 +30,71 @@
 		</div>
 		<div class="hud bottom-center" id="assets-status"></div>
 		<div id="message" hidden></div>
+
+		<form id="settings" class="panel" hidden onsubmit="return false">
+			<header>
+				<strong>Ustawienia obrazu</strong>
+				<button type="button" id="close-settings" title="Zamknij">✕</button>
+			</header>
+			<label>Grafika
+				<select data-setting="graphics">
+					<option value="vanilla">Minecraft (vanilla)</option>
+					<option value="shaders">Shadery (cienie, fale, poświata)</option>
+				</select>
+			</label>
+			<label>Jakość shaderów
+				<select data-setting="shaderQuality">
+					<option value="low">Niska</option>
+					<option value="medium">Średnia</option>
+					<option value="high">Wysoka</option>
+					<option value="ultra">Ultra</option>
+				</select>
+			</label>
+			<label>Efekt końcowy (shader)
+				<select data-setting="postShader">
+					<option value="">Brak</option>
+				</select>
+			</label>
+			<label>Niebo
+				<select data-setting="skybox">
+					<option value="default">Domyślne serwera</option>
+					<option value="none">Minecraft</option>
+				</select>
+			</label>
+			<label>Chmury
+				<select data-setting="clouds">
+					<option value="fancy">Ozdobne</option>
+					<option value="fast">Szybkie</option>
+					<option value="off">Wyłączone</option>
+				</select>
+			</label>
+			<label>Tryb kamery
+				<select data-setting="mode">
+					<option value="color">Kolor</option>
+					<option value="mono">Czarno-biały</option>
+					<option value="night">Noktowizor</option>
+				</select>
+			</label>
+			<label>Rozdzielczość renderowania
+				<select data-setting="renderScale">
+					<option value="0.5">50% (słabe GPU)</option>
+					<option value="0.75">75%</option>
+					<option value="1">100%</option>
+				</select>
+			</label>
+			<label class="check"><input type="checkbox" data-setting="labels"> Nazwy graczy (tylko widoczne)</label>
+			<label class="check"><input type="checkbox" data-setting="mobLabels"> Podpisy mobów</label>
+			<label class="check"><input type="checkbox" data-setting="cctvEffect"> Efekt CCTV (skanlinie)</label>
+			<footer>
+				<button type="button" id="settings-reset">Przywróć domyślne serwera</button>
+			</footer>
+		</form>
 	</div>
 
 	<nav id="toolbar">
 		<a href="/" id="back" class="button">◀ Wszystkie kamery</a>
 		<span class="spacer"></span>
-		<button type="button" data-toggle="labels" title="Nazwy graczy nad głowami">Nazwy</button>
-		<button type="button" data-toggle="allLabels" title="Podpisy nad wszystkimi mobami">Podpisy mobów</button>
-		<button type="button" id="mode" title="Kolor / czarno-biały / noktowizor">Tryb</button>
-		<button type="button" data-toggle="fx" title="Skanlinie i winieta">Efekt CCTV</button>
+		<button type="button" id="open-settings" class="unlocked-only" title="Grafika, shadery, niebo, podpisy">⚙ Ustawienia</button>
 		<button type="button" id="reset-view" title="Przeciągnij myszą, aby rozejrzeć się; kółko = zoom">Reset widoku</button>
 		<button type="button" id="fullscreen">Pełny ekran</button>
 	</nav>

@@ -1,458 +1,164 @@
-// Live entities: interpolation between server snapshots, simple Minecraft-like
-// models (players with their real skins, mobs as coloured box models) and labels.
+// Live entities: interpolation between server snapshots, the game's own
+// entity models and textures (see mobs.js / entity-models.js), items,
+// block entities, shadows and name tags that only show when the entity is
+// really visible (not through walls).
 
 import {
-	multiply, translation, rotationX, rotationY, rotationZ, scaling,
-	lerp, lerpAngle, wrapDegrees, transformPoint,
-} from './math.js';
-import { itemColor } from './blocks.js';
-import { DIR_VECTORS } from './assets.js';
-import { MOB_MODELS, buildMobTemplate, animateMob, blockEntityModel, armorPiece } from './mobs.js';
+	ModelLibrary, VertexSink, FLOATS, emitModel, emitQuads, partMatrix, mat4, mul, translate, rotate, scale, DEG,
+} from './entity-models.js';
+import { describeMob, blockEntityModel, dyeRgb } from './mobs.js';
+import { collectParts } from './models.js';
+import { JavaRandom } from './rng.js';
+import { program, FOG_GLSL, setFog } from './gl.js';
+import { SHADOW_GLSL, SHADER_LIGHT_GLSL } from './renderer.js';
+import { lerp, lerpAngle, wrapDegrees, transformPoint } from './math.js';
 
-const FLOATS = 11; // pos3 normal3 uv2 color3
-const DEG = Math.PI / 180;
+const MODE_CUTOUT = 0, MODE_NOCULL = 1, MODE_TRANSLUCENT = 2, MODE_EYES = 3, MODE_ENERGY = 4;
+const MODES = { cutout: MODE_CUTOUT, cutout_nocull: MODE_NOCULL, translucent: MODE_TRANSLUCENT, eyes: MODE_EYES, energy: MODE_ENERGY };
 
-// --- geometry -------------------------------------------------------------
+const ENTITY_VS = `
+layout(location = 0) in vec3 aPos;
+layout(location = 1) in vec3 aNormal;
+layout(location = 2) in vec2 aUv;
+layout(location = 3) in vec4 aColor;
+layout(location = 4) in vec2 aLight;
+layout(location = 5) in vec2 aOverlay;
+uniform mat4 uViewProj;
+uniform sampler2D uLightmap;
+uniform int uMode;
+uniform float uTime;
+uniform vec3 uLight0;
+uniform vec3 uLight1;
+out float vSph;
+out float vCyl;
+out vec4 vColor;
+out vec4 vLightColor;
+out vec2 vUv;
+out vec4 vOverlay;
+#ifdef SHADERS
+out vec3 vPos;
+out vec3 vNormal;
+out float vSky;
+#endif
+void main() {
+	gl_Position = uViewProj * vec4(aPos, 1.0);
+	vSph = length(aPos);
+	vCyl = max(length(aPos.xz), abs(aPos.y));
+	vec3 n = normalize(aNormal);
+	float light = min(1.0, (max(0.0, dot(uLight0, n)) + max(0.0, dot(uLight1, n))) * 0.6 + 0.4);
+	vColor = (uMode == 3 || uMode == 4) ? aColor : vec4(aColor.rgb * light, aColor.a);
+	vLightColor = uMode == 3 ? vec4(1.0) : texture(uLightmap, clamp(aLight / 256.0 + 0.5 / 16.0, vec2(0.5 / 16.0), vec2(15.5 / 16.0)));
+	vUv = uMode == 4 ? aUv + vec2(uTime * 0.01) : aUv;
+	// OverlayTexture: hurt = red at 0.7 alpha, white flash fades the picture to white.
+	vOverlay = aOverlay.x > 0.5 ? vec4(1.0, 0.0, 0.0, 0.7) : vec4(1.0, 1.0, 1.0, 1.0 - aOverlay.y * 0.75);
+#ifdef SHADERS
+	vPos = aPos;
+	vNormal = n;
+	vSky = aLight.y / 240.0;
+#endif
+}`;
 
-const BOX_FACES = [
-	{ n: [0, 1, 0], c: [[0, 1, 0], [0, 1, 1], [1, 1, 1], [1, 1, 0]], shade: 1.0 },
-	{ n: [0, -1, 0], c: [[0, 0, 0], [1, 0, 0], [1, 0, 1], [0, 0, 1]], shade: 0.7 },
-	{ n: [0, 0, -1], c: [[1, 0, 0], [0, 0, 0], [0, 1, 0], [1, 1, 0]], shade: 0.85 },
-	{ n: [0, 0, 1], c: [[0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1]], shade: 0.95 },
-	{ n: [-1, 0, 0], c: [[0, 0, 0], [0, 0, 1], [0, 1, 1], [0, 1, 0]], shade: 0.9 },
-	{ n: [1, 0, 0], c: [[1, 0, 1], [1, 0, 0], [1, 1, 0], [1, 1, 1]], shade: 0.9 },
-];
+const ENTITY_FS = `
+in float vSph;
+in float vCyl;
+in vec4 vColor;
+in vec4 vLightColor;
+in vec2 vUv;
+in vec4 vOverlay;
+uniform sampler2D uTexture;
+uniform int uMode;
+${FOG_GLSL}
+#ifdef SHADERS
+in vec3 vPos;
+in vec3 vNormal;
+in float vSky;
+${SHADOW_GLSL}
+${SHADER_LIGHT_GLSL}
+#endif
+out vec4 outColor;
+void main() {
+	vec4 color = texture(uTexture, vUv);
+	if (uMode <= 1 && color.a < 0.1) discard;
+	if (uMode == 2 && color.a < 0.004) discard;
+	color *= vColor;
+	if (uMode >= 3) {
+		outColor = vec4(color.rgb * color.a * (1.0 - total_fog_value(vSph, vCyl)), 1.0);
+		return;
+	}
+	color.rgb = mix(vOverlay.rgb, color.rgb, vOverlay.a);
+	color *= vLightColor;
+#ifdef SHADERS
+	color.rgb = shaderLight(color.rgb, vPos, vNormal, vSky, false);
+#endif
+	outColor = apply_fog(color, vSph, vCyl);
+}`;
 
-/** UV rectangles (pixels) for Minecraft's box unwrap, in BOX_FACES order. */
-function boxUv(u, v, w, h, d) {
-	return [
-		[u + d, v, u + d + w, v + d],
-		[u + d + w, v, u + d + 2 * w, v + d],
-		[u + 2 * d + w, v + d, u + 2 * d + 2 * w, v + d + h],
-		[u + d, v + d, u + d + w, v + d + h],
-		[u, v + d, u + d, v + d + h],
-		[u + d + w, v + d, u + 2 * d + w, v + d + h],
-	];
+const DEPTH_VS = `
+layout(location = 0) in vec3 aPos;
+layout(location = 2) in vec2 aUv;
+uniform mat4 uMatrix;
+out vec2 vUv;
+void main() {
+	vUv = aUv;
+	gl_Position = uMatrix * vec4(aPos, 1.0);
+}`;
+
+const DEPTH_FS = `
+in vec2 vUv;
+uniform sampler2D uTexture;
+void main() {
+	if (texture(uTexture, vUv).a < 0.1) discard;
+}`;
+
+const BLOB_VS = `
+const vec2 C[4] = vec2[4](vec2(-1.0, -1.0), vec2(1.0, -1.0), vec2(1.0, 1.0), vec2(-1.0, 1.0));
+uniform mat4 uViewProj;
+uniform vec3 uCenter;
+uniform float uRadius;
+out vec2 vCorner;
+out float vSph;
+out float vCyl;
+void main() {
+	vCorner = C[gl_VertexID];
+	vec3 p = uCenter + vec3(vCorner.x, 0.0, vCorner.y) * uRadius;
+	vSph = length(p);
+	vCyl = max(length(p.xz), abs(p.y));
+	gl_Position = uViewProj * vec4(p, 1.0);
+}`;
+
+const BLOB_FS = `
+in vec2 vCorner;
+in float vSph;
+in float vCyl;
+uniform float uAlpha;
+${FOG_GLSL}
+out vec4 outColor;
+void main() {
+	float d = length(vCorner);
+	if (d > 1.0) discard;
+	float a = uAlpha * (1.0 - smoothstep(0.35, 1.0, d)) * (1.0 - total_fog_value(vSph, vCyl));
+	outColor = vec4(0.0, 0.0, 0.0, a);
+}`;
+
+const LIGHT0 = normalize3([0.2, 1, -0.7]);
+const LIGHT1 = normalize3([-0.2, 1, 0.7]);
+
+function normalize3(v) {
+	const l = Math.hypot(v[0], v[1], v[2]);
+	return [v[0] / l, v[1] / l, v[2] / l];
 }
 
-// Per face: which uv corner each geometric corner uses (0 = u0/v0, 1 = u1/v1).
-const UV_CORNERS = [
-	[[0, 0], [0, 1], [1, 1], [1, 0]],
-	[[0, 0], [1, 0], [1, 1], [0, 1]],
-	[[0, 1], [1, 1], [1, 0], [0, 0]],
-	[[0, 1], [1, 1], [1, 0], [0, 0]],
-	[[0, 1], [1, 1], [1, 0], [0, 0]],
-	[[0, 1], [1, 1], [1, 0], [0, 0]],
-];
-
-/**
- * Appends a box to `out` (array of numbers). Coordinates in model pixels relative to the part pivot.
- * opts: {uv: [u, v], inflate, color: [r,g,b] or per-face array}
- */
-function addBox(out, from, size, opts = {}) {
-	const inflate = opts.inflate || 0;
-	const x0 = from[0] - inflate, y0 = from[1] - inflate, z0 = from[2] - inflate;
-	const x1 = from[0] + size[0] + inflate, y1 = from[1] + size[1] + inflate, z1 = from[2] + size[2] + inflate;
-	const uvRects = opts.uv ? boxUv(opts.uv[0], opts.uv[1], size[0], size[1], size[2]) : null;
-	const tw = opts.texWidth || 64, th = opts.texHeight || 64;
-	const inset = 0.02;
-
-	for (let f = 0; f < 6; f++) {
-		const face = BOX_FACES[f];
-		const base = opts.faceColors ? opts.faceColors[f] : (opts.color || [1, 1, 1]);
-		const color = opts.uv ? [1, 1, 1] : [base[0] * face.shade, base[1] * face.shade, base[2] * face.shade];
-		const verts = [];
-		for (let k = 0; k < 4; k++) {
-			const c = face.c[k];
-			let u = 0, v = 0;
-			if (uvRects) {
-				const r = uvRects[f];
-				const uc = UV_CORNERS[f][k];
-				u = (uc[0] ? r[2] - inset : r[0] + inset) / tw;
-				v = (uc[1] ? r[3] - inset : r[1] + inset) / th;
-			}
-			verts.push([c[0] ? x1 : x0, c[1] ? y1 : y0, c[2] ? z1 : z0, u, v]);
-		}
-		for (const k of [0, 1, 2, 0, 2, 3]) {
-			const p = verts[k];
-			out.push(p[0], p[1], p[2], face.n[0], face.n[1], face.n[2], p[3], p[4], color[0], color[1], color[2]);
-		}
-	}
+function tokenSuffix(sep) {
+	const token = new URLSearchParams(location.search).get('token');
+	return token ? sep + 'token=' + encodeURIComponent(token) : '';
 }
 
-function hex(h) {
-	const v = parseInt(h.replace('#', ''), 16);
-	return [(v >> 16) / 255, ((v >> 8) & 255) / 255, (v & 255) / 255];
-}
+const strip = id => (id || '').replace(/^minecraft:/, '');
 
-function darker(c, f = 0.7) {
-	return [c[0] * f, c[1] * f, c[2] * f];
-}
-
-// --- model templates ------------------------------------------------------
-
-/**
- * A template is {parts: {name: {pivot, data: number[]}}, height (px), family, textured}.
- * Parts are drawn at pivot with an animated rotation.
- */
-function humanoid(o = {}) {
-	const head = o.head ?? 8, bodyW = o.bodyW ?? 8, bodyH = o.bodyH ?? 12, bodyD = o.bodyD ?? 4;
-	const armW = o.armW ?? 4, armLen = o.armLen ?? 12, legW = o.legW ?? 4, legLen = o.legLen ?? 12;
-	const c = o.colors;
-	const neck = legLen + bodyH;
-	const parts = {};
-
-	const headData = [];
-	addBox(headData, [-head / 2, 0, -head / 2], [head, head, head], { color: c.head, faceColors: c.hair ? hairFaces(c.head, c.hair) : null });
-	if (o.eyes !== false) {
-		const eye = c.eyes || [0.1, 0.1, 0.12];
-		addBox(headData, [-head / 2 + 1, head * 0.4, head / 2], [2, 1, 0.3], { color: eye });
-		addBox(headData, [head / 2 - 3, head * 0.4, head / 2], [2, 1, 0.3], { color: eye });
-	}
-	if (o.nose) addBox(headData, [-1, head * 0.1, head / 2], [2, 4, 2], { color: darker(c.head, 0.85) });
-	if (o.hat) addBox(headData, [-head / 2 - 1, head - 1, -head / 2 - 1], [head + 2, 3, head + 2], { color: o.hat });
-	parts.head = { pivot: [0, neck, 0], data: headData };
-
-	const bodyData = [];
-	addBox(bodyData, [-bodyW / 2, -bodyH, -bodyD / 2], [bodyW, bodyH, bodyD], { color: c.body });
-	if (o.robe) addBox(bodyData, [-bodyW / 2 - 0.5, -bodyH - legLen * 0.8, -bodyD / 2 - 0.5], [bodyW + 1, legLen * 0.8, bodyD + 1], { color: o.robe });
-	parts.body = { pivot: [0, neck, 0], data: bodyData };
-
-	const shoulderY = neck - 2;
-	const armX = bodyW / 2 + armW / 2;
-	for (const side of [-1, 1]) {
-		const data = [];
-		addBox(data, [-armW / 2, -armLen + 2, -armW / 2], [armW, armLen, armW], { color: c.arms || c.body });
-		parts[side < 0 ? 'rightArm' : 'leftArm'] = { pivot: [side * armX, shoulderY, 0], data };
-	}
-	for (const side of [-1, 1]) {
-		const data = [];
-		addBox(data, [-legW / 2, -legLen, -legW / 2], [legW, legLen, legW], { color: c.legs || c.body });
-		parts[side < 0 ? 'rightLeg' : 'leftLeg'] = { pivot: [side * legW / 2 * 0.95, legLen, 0], data };
-	}
-
-	return { family: 'humanoid', parts, height: neck + head };
-}
-
-function hairFaces(skin, hair) {
-	return [hair, skin, hair, skin, skin, skin];
-}
-
-/** Player model with the real skin layout (64x64). */
-function playerModel(slim) {
-	const parts = {};
-	const t = { texWidth: 64, texHeight: 64 };
-	const head = [];
-	addBox(head, [-4, 0, -4], [8, 8, 8], { ...t, uv: [0, 0] });
-	addBox(head, [-4, 0, -4], [8, 8, 8], { ...t, uv: [32, 0], inflate: 0.5 });
-	parts.head = { pivot: [0, 24, 0], data: head };
-
-	const body = [];
-	addBox(body, [-4, -12, -2], [8, 12, 4], { ...t, uv: [16, 16] });
-	addBox(body, [-4, -12, -2], [8, 12, 4], { ...t, uv: [16, 32], inflate: 0.25 });
-	parts.body = { pivot: [0, 24, 0], data: body };
-
-	const aw = slim ? 3 : 4;
-	const right = [];
-	addBox(right, [slim ? -2 : -3, -10, -2], [aw, 12, 4], { ...t, uv: [40, 16] });
-	addBox(right, [slim ? -2 : -3, -10, -2], [aw, 12, 4], { ...t, uv: [40, 32], inflate: 0.25 });
-	parts.rightArm = { pivot: [-5, slim ? 21.5 : 22, 0], data: right };
-
-	const left = [];
-	addBox(left, [-1, -10, -2], [aw, 12, 4], { ...t, uv: [32, 48] });
-	addBox(left, [-1, -10, -2], [aw, 12, 4], { ...t, uv: [48, 48], inflate: 0.25 });
-	parts.leftArm = { pivot: [5, slim ? 21.5 : 22, 0], data: left };
-
-	const rightLeg = [];
-	addBox(rightLeg, [-2, -12, -2], [4, 12, 4], { ...t, uv: [0, 16] });
-	addBox(rightLeg, [-2, -12, -2], [4, 12, 4], { ...t, uv: [0, 32], inflate: 0.25 });
-	parts.rightLeg = { pivot: [-1.9, 12, 0], data: rightLeg };
-
-	const leftLeg = [];
-	addBox(leftLeg, [-2, -12, -2], [4, 12, 4], { ...t, uv: [16, 48] });
-	addBox(leftLeg, [-2, -12, -2], [4, 12, 4], { ...t, uv: [0, 48], inflate: 0.25 });
-	parts.leftLeg = { pivot: [1.9, 12, 0], data: leftLeg };
-
-	return { family: 'humanoid', parts, height: 32, textured: true };
-}
-
-function quadruped(o) {
-	const legH = o.legH ?? 6, legW = o.legW ?? 4;
-	const bodyW = o.bodyW ?? 10, bodyH = o.bodyH ?? 8, bodyL = o.bodyL ?? 16;
-	const head = o.headSize ?? [8, 8, 6];
-	const c = o.colors;
-	const parts = {};
-
-	const body = [];
-	addBox(body, [-bodyW / 2, 0, -bodyL / 2], [bodyW, bodyH, bodyL], { color: c.body, faceColors: c.back ? [c.back, c.body, c.body, c.body, c.body, c.body] : null });
-	if (o.spots) {
-		addBox(body, [-bodyW / 2 - 0.1, bodyH * 0.3, -bodyL * 0.2], [bodyW + 0.2, bodyH * 0.45, bodyL * 0.35], { color: o.spots });
-	}
-	if (o.hump) addBox(body, [-3, bodyH, -3], [6, o.hump, 8], { color: c.body });
-	parts.body = { pivot: [0, legH, 0], data: body };
-
-	const headData = [];
-	const neckY = legH + bodyH * (o.headRaise ?? 0.75);
-	addBox(headData, [-head[0] / 2, -head[1] / 2, 0], head, { color: c.head || c.body });
-	const eye = [0.08, 0.08, 0.08];
-	addBox(headData, [-head[0] / 2 + 0.5, head[1] * 0.1, head[2]], [1.5, 1.5, 0.3], { color: eye });
-	addBox(headData, [head[0] / 2 - 2, head[1] * 0.1, head[2]], [1.5, 1.5, 0.3], { color: eye });
-	if (o.snout) addBox(headData, [-o.snout[0] / 2, -head[1] / 2, head[2]], o.snout, { color: o.snoutColor || darker(c.head || c.body, 0.85) });
-	if (o.horns) {
-		addBox(headData, [-head[0] / 2 - 1, head[1] / 2 - 1, 1], [1, 3, 1], { color: o.horns });
-		addBox(headData, [head[0] / 2, head[1] / 2 - 1, 1], [1, 3, 1], { color: o.horns });
-	}
-	if (o.ears) {
-		addBox(headData, [-head[0] / 2, head[1] / 2, 1], [2, 2, 1], { color: c.head || c.body });
-		addBox(headData, [head[0] / 2 - 2, head[1] / 2, 1], [2, 2, 1], { color: c.head || c.body });
-	}
-	let neckData = null;
-	if (o.neck) {
-		neckData = [];
-		addBox(neckData, [-o.neck[0] / 2, 0, -o.neck[2] / 2], o.neck, { color: c.body });
-	}
-	if (neckData) {
-		parts.neck = { pivot: [0, neckY, bodyL / 2 - 2], data: neckData };
-		parts.head = { pivot: [0, neckY + o.neck[1], bodyL / 2 - 2], data: headData };
-	} else {
-		parts.head = { pivot: [0, neckY, bodyL / 2 - 1], data: headData };
-	}
-
-	if (o.tail) {
-		const tail = [];
-		addBox(tail, [-o.tail[0] / 2, -o.tail[1], -o.tail[2]], o.tail, { color: o.tailColor || c.body });
-		parts.tail = { pivot: [0, legH + bodyH - 1, -bodyL / 2], data: tail };
-	}
-
-	const lx = bodyW / 2 - legW / 2;
-	const lz = bodyL / 2 - legW / 2 - 1;
-	const legColor = c.legs || c.body;
-	for (const [name, x, z] of [['frontRight', -lx, lz], ['frontLeft', lx, lz], ['hindRight', -lx, -lz], ['hindLeft', lx, -lz]]) {
-		const data = [];
-		addBox(data, [-legW / 2, -legH, -legW / 2], [legW, legH, legW], { color: legColor });
-		parts[name] = { pivot: [x, legH, z], data };
-	}
-
-	const top = Math.max(legH + bodyH, neckY + (o.neck ? o.neck[1] : 0) + head[1] / 2);
-	return { family: 'quadruped', parts, height: top };
-}
-
-function creeper(color) {
-	const parts = {};
-	const head = [];
-	addBox(head, [-4, 0, -4], [8, 8, 8], { color });
-	const face = [0.05, 0.1, 0.05];
-	addBox(head, [-3, 4, 4], [2, 2, 0.3], { color: face });
-	addBox(head, [1, 4, 4], [2, 2, 0.3], { color: face });
-	addBox(head, [-1, 1, 4], [2, 3, 0.3], { color: face });
-	parts.head = { pivot: [0, 18, 0], data: head };
-	const body = [];
-	addBox(body, [-4, 0, -2], [8, 12, 4], { color });
-	parts.body = { pivot: [0, 6, 0], data: body };
-	for (const [name, x, z] of [['frontRight', -2, 4], ['frontLeft', 2, 4], ['hindRight', -2, -4], ['hindLeft', 2, -4]]) {
-		const data = [];
-		addBox(data, [-2, -6, -2], [4, 6, 4], { color: darker(color, 0.85) });
-		parts[name] = { pivot: [x, 6, z], data };
-	}
-	return { family: 'quadruped', parts, height: 26 };
-}
-
-function spider(color, eyes) {
-	const parts = {};
-	const body = [];
-	addBox(body, [-3, 0, -3], [6, 6, 6], { color });
-	addBox(body, [-5, -1, -15], [10, 8, 12], { color: darker(color, 0.9) });
-	parts.body = { pivot: [0, 6, 0], data: body };
-	const head = [];
-	addBox(head, [-4, -4, 0], [8, 8, 8], { color });
-	addBox(head, [-3, 1, 8], [2, 1, 0.3], { color: eyes });
-	addBox(head, [1, 1, 8], [2, 1, 0.3], { color: eyes });
-	parts.head = { pivot: [0, 9, 3], data: head };
-	for (let i = 0; i < 8; i++) {
-		const side = i < 4 ? -1 : 1;
-		const data = [];
-		addBox(data, [side < 0 ? -16 : 0, -1, -1], [16, 2, 2], { color: darker(color, 0.8) });
-		parts['leg' + i] = { pivot: [side * 4, 9, 2 - (i % 4) * 2], data };
-	}
-	return { family: 'spider', parts, height: 12 };
-}
-
-function blob(color, inner) {
-	const parts = {};
-	const body = [];
-	addBox(body, [-4, 0, -4], [8, 8, 8], { color });
-	if (inner) addBox(body, [-3, 1, -3], [6, 6, 6.2], { color: inner });
-	parts.body = { pivot: [0, 0, 0], data: body };
-	return { family: 'blob', parts, height: 8 };
-}
-
-function fish(o) {
-	const parts = {};
-	const body = [];
-	addBox(body, [-o.w / 2, 0, -o.l / 2], [o.w, o.h, o.l], { color: o.color, faceColors: o.belly ? [o.color, o.belly, o.color, o.color, o.color, o.color] : null });
-	addBox(body, [-o.w / 2 - 0.1, o.h * 0.55, o.l / 2 - 2], [0.3, 1, 1], { color: [0.05, 0.05, 0.05] });
-	addBox(body, [o.w / 2 - 0.2, o.h * 0.55, o.l / 2 - 2], [0.3, 1, 1], { color: [0.05, 0.05, 0.05] });
-	if (o.fin) addBox(body, [-0.5, o.h, -o.l / 4], [1, o.fin, o.l / 2], { color: darker(o.color, 0.8) });
-	parts.body = { pivot: [0, 0, 0], data: body };
-	const tail = [];
-	addBox(tail, [-0.5, -o.h * 0.1, -o.l * 0.45], [1, o.h * 1.2, o.l * 0.45], { color: darker(o.color, 0.85) });
-	parts.tail = { pivot: [0, 0, -o.l / 2], data: tail };
-	if (o.tentacles) {
-		for (let i = 0; i < 8; i++) {
-			const data = [];
-			const a = i / 8 * Math.PI * 2;
-			addBox(data, [-0.75, -o.tentacles, -0.75], [1.5, o.tentacles, 1.5], { color: darker(o.color, 0.9) });
-			parts['t' + i] = { pivot: [Math.cos(a) * o.w * 0.35, 0, Math.sin(a) * o.l * 0.35], data };
-		}
-	}
-	return { family: 'fish', parts, height: o.h };
-}
-
-function flyer(o) {
-	const parts = {};
-	const body = [];
-	addBox(body, [-o.w / 2, 0, -o.l / 2], [o.w, o.h, o.l], { color: o.color, faceColors: o.stripes ? [o.color, o.color, o.stripes, o.stripes, o.stripes, o.stripes] : null });
-	addBox(body, [-o.w / 2 + 0.5, o.h * 0.55, o.l / 2], [1.2, 1.2, 0.3], { color: [0.05, 0.05, 0.05] });
-	addBox(body, [o.w / 2 - 1.7, o.h * 0.55, o.l / 2], [1.2, 1.2, 0.3], { color: [0.05, 0.05, 0.05] });
-	parts.body = { pivot: [0, o.y ?? 0, 0], data: body };
-	for (const side of [-1, 1]) {
-		const data = [];
-		addBox(data, [side < 0 ? -o.wing : 0, 0, -o.l * 0.35], [o.wing, 0.5, o.l * 0.7], { color: o.wingColor || o.color });
-		parts[side < 0 ? 'rightWing' : 'leftWing'] = { pivot: [side * o.w / 2, (o.y ?? 0) + o.h - 0.5, 0], data };
-	}
-	return { family: 'flyer', parts, height: (o.y ?? 0) + o.h };
-}
-
-function block(color, size = 16, family = 'box') {
-	const parts = {};
-	const data = [];
-	addBox(data, [-size / 2, 0, -size / 2], [size, size, size], { color });
-	parts.body = { pivot: [0, 0, 0], data };
-	return { family, parts, height: size };
-}
-
-/** Generic entity: a box matching its hitbox, drawn in model pixels (1 px = 1/16 block). */
-function hitbox(color, w, h) {
-	const parts = {};
-	const data = [];
-	addBox(data, [-w * 8, 0, -w * 8], [w * 16, h * 16, w * 16], { color, faceColors: [darker(color, 1.1), darker(color, 0.8), color, color, color, color] });
-	parts.body = { pivot: [0, 0, 0], data };
-	return { family: 'box', parts, height: h * 16, fixedScale: true };
-}
-
-const C = hex;
-const MOBS = {
-	zombie: () => humanoid({ colors: { head: C('#5e8c4a'), body: C('#2f8e8e'), arms: C('#5e8c4a'), legs: C('#3b3a8f') } }),
-	husk: () => humanoid({ colors: { head: C('#9f8f5e'), body: C('#7a6a45'), arms: C('#9f8f5e'), legs: C('#5a4a35') } }),
-	drowned: () => humanoid({ colors: { head: C('#4e8c84'), body: C('#5a9e7e'), arms: C('#4e8c84'), legs: C('#3f6f6a') } }),
-	zombie_villager: () => humanoid({ nose: true, colors: { head: C('#5e8c4a'), body: C('#6a4a2a'), arms: C('#5e8c4a'), legs: C('#4a3420') } }),
-	skeleton: () => humanoid({ armW: 2, legW: 2, colors: { head: C('#c4c4c4'), body: C('#b0b0b0'), arms: C('#c4c4c4'), legs: C('#c4c4c4') } }),
-	stray: () => humanoid({ armW: 2, legW: 2, colors: { head: C('#9db1b1'), body: C('#7f9a9a'), arms: C('#9db1b1'), legs: C('#9db1b1') } }),
-	bogged: () => humanoid({ armW: 2, legW: 2, colors: { head: C('#8f9a6a'), body: C('#6f7a4a'), arms: C('#8f9a6a'), legs: C('#8f9a6a') } }),
-	wither_skeleton: () => humanoid({ armW: 2, legW: 2, colors: { head: C('#2a2a2a'), body: C('#1f1f1f'), arms: C('#2a2a2a'), legs: C('#2a2a2a'), eyes: C('#555555') } }),
-	pillager: () => humanoid({ nose: true, colors: { head: C('#8e8e8e'), body: C('#3f3f4a'), arms: C('#3f3f4a'), legs: C('#2c2c34') } }),
-	vindicator: () => humanoid({ nose: true, colors: { head: C('#8e8e8e'), body: C('#2e3c3f'), arms: C('#2e3c3f'), legs: C('#1e2a2c') } }),
-	evoker: () => humanoid({ nose: true, robe: C('#1e1e1e'), colors: { head: C('#8e8e8e'), body: C('#1e1e1e'), arms: C('#1e1e1e'), legs: C('#1e1e1e') } }),
-	illusioner: () => humanoid({ nose: true, robe: C('#2a3f7a'), colors: { head: C('#8e8e8e'), body: C('#2a3f7a'), arms: C('#2a3f7a'), legs: C('#2a3f7a') } }),
-	witch: () => humanoid({ nose: true, robe: C('#3d2a4a'), hat: C('#1f1f1f'), colors: { head: C('#a07a5a'), body: C('#3d2a4a'), arms: C('#a07a5a'), legs: C('#3d2a4a') } }),
-	villager: () => humanoid({ nose: true, robe: C('#6a4a2a'), head: 9, colors: { head: C('#b78a6a'), body: C('#6a4a2a'), arms: C('#6a4a2a'), legs: C('#4a3420') } }),
-	wandering_trader: () => humanoid({ nose: true, robe: C('#2f4a8a'), colors: { head: C('#b78a6a'), body: C('#2f4a8a'), arms: C('#2f4a8a'), legs: C('#223666') } }),
-	piglin: () => humanoid({ nose: true, colors: { head: C('#e8a0a0'), body: C('#6a4a2a'), arms: C('#e8a0a0'), legs: C('#4a3420') } }),
-	piglin_brute: () => humanoid({ nose: true, colors: { head: C('#e8a0a0'), body: C('#2a2a2a'), arms: C('#e8a0a0'), legs: C('#1f1f1f') } }),
-	zombified_piglin: () => humanoid({ nose: true, colors: { head: C('#e8a0a0'), body: C('#6baa5a'), arms: C('#e8a0a0'), legs: C('#4a3420') } }),
-	enderman: () => humanoid({ armW: 2, legW: 2, armLen: 30, legLen: 30, colors: { head: C('#161616'), body: C('#111111'), eyes: C('#cc66ff') } }),
-	iron_golem: () => humanoid({ head: 10, bodyW: 18, bodyH: 12, bodyD: 10, armW: 6, armLen: 30, legW: 6, legLen: 16, nose: true, colors: { head: C('#d8d2c8'), body: C('#cfc8bc'), arms: C('#d8d2c8'), legs: C('#bdb6aa') } }),
-	snow_golem: () => humanoid({ armW: 1, armLen: 10, legLen: 0, bodyH: 18, bodyW: 10, bodyD: 10, head: 8, colors: { head: C('#e3901d'), body: C('#f2f2f2'), arms: C('#6a4a2a') } }),
-	armor_stand: () => humanoid({ armW: 2, legW: 2, eyes: false, colors: { head: C('#a2834f'), body: C('#8a6a3d'), arms: C('#a2834f'), legs: C('#a2834f') } }),
-	giant: () => MOBS.zombie(),
-	creaking: () => humanoid({ armW: 3, legW: 3, armLen: 18, legLen: 18, colors: { head: C('#4a3a30'), body: C('#3a2e26'), eyes: C('#ff8a2a') } }),
-	vex: () => humanoid({ armW: 2, legW: 2, legLen: 6, colors: { head: C('#9aaac8'), body: C('#8a9ab8') } }),
-	allay: () => humanoid({ armW: 2, legW: 2, legLen: 5, colors: { head: C('#6ac8e8'), body: C('#5ab8d8') } }),
-	blaze: () => humanoid({ armW: 2, legW: 2, armLen: 8, legLen: 8, colors: { head: C('#f2b01d'), body: C('#d88a10') } }),
-	breeze: () => humanoid({ armW: 2, legW: 3, legLen: 10, colors: { head: C('#9aa8e8'), body: C('#8a98d8') } }),
-
-	creeper: () => creeper(C('#4faf3a')),
-	spider: () => spider(C('#342e28'), C('#b01818')),
-	cave_spider: () => spider(C('#1f3a40'), C('#b01818')),
-	slime: () => blob(C('#6fbf4f'), C('#4f9f3f')),
-	magma_cube: () => blob(C('#5a1a0a'), C('#e0741a')),
-
-	cow: () => quadruped({ legH: 12, bodyW: 12, bodyH: 10, bodyL: 18, headSize: [8, 8, 6], horns: C('#d8d2c8'), colors: { body: C('#443626'), head: C('#3a2e22') }, spots: C('#eaeaea') }),
-	mooshroom: () => quadruped({ legH: 12, bodyW: 12, bodyH: 10, bodyL: 18, headSize: [8, 8, 6], horns: C('#d8d2c8'), colors: { body: C('#a0241a'), head: C('#8a1f16') }, spots: C('#d8d0c8') }),
-	pig: () => quadruped({ legH: 6, bodyW: 10, bodyH: 8, bodyL: 16, headSize: [8, 8, 8], snout: [4, 3, 1], snoutColor: C('#e98a8a'), colors: { body: C('#f0a5a2') } }),
-	sheep: () => quadruped({ legH: 12, bodyW: 10, bodyH: 8, bodyL: 16, headSize: [6, 6, 8], colors: { body: C('#eaeaea'), head: C('#d8b89a'), legs: C('#d8b89a') } }),
-	goat: () => quadruped({ legH: 10, bodyW: 9, bodyH: 9, bodyL: 16, headSize: [5, 7, 8], horns: C('#a09a8a'), colors: { body: C('#d8d2c8') } }),
-	horse: () => quadruped({ legH: 11, legW: 4, bodyW: 10, bodyH: 10, bodyL: 22, headSize: [6, 6, 11], neck: [4, 10, 7], ears: true, tail: [3, 14, 4], colors: { body: C('#8a5a30') }, tailColor: C('#3a2414') }),
-	donkey: () => quadruped({ legH: 10, bodyW: 10, bodyH: 9, bodyL: 20, headSize: [6, 6, 10], neck: [4, 8, 6], ears: true, tail: [3, 12, 3], colors: { body: C('#7a6a5a') } }),
-	mule: () => quadruped({ legH: 11, bodyW: 10, bodyH: 10, bodyL: 21, headSize: [6, 6, 10], neck: [4, 9, 6], ears: true, tail: [3, 12, 3], colors: { body: C('#5a3a2a') } }),
-	skeleton_horse: () => quadruped({ legH: 11, legW: 3, bodyW: 9, bodyH: 9, bodyL: 22, headSize: [6, 6, 11], neck: [4, 10, 7], colors: { body: C('#c4c4c4') } }),
-	zombie_horse: () => quadruped({ legH: 11, bodyW: 10, bodyH: 10, bodyL: 22, headSize: [6, 6, 11], neck: [4, 10, 7], colors: { body: C('#4a6a3a') } }),
-	llama: () => quadruped({ legH: 14, bodyW: 12, bodyH: 10, bodyL: 18, headSize: [6, 6, 7], neck: [6, 14, 6], ears: true, colors: { body: C('#d8c8a8') } }),
-	trader_llama: () => MOBS.llama(),
-	camel: () => quadruped({ legH: 20, bodyW: 12, bodyH: 12, bodyL: 26, headSize: [6, 6, 10], neck: [5, 10, 6], hump: 5, colors: { body: C('#c89a5a') } }),
-	wolf: () => quadruped({ legH: 8, legW: 2, bodyW: 6, bodyH: 6, bodyL: 14, headSize: [6, 6, 5], snout: [3, 3, 3], ears: true, tail: [2, 8, 2], colors: { body: C('#d8d0c8') } }),
-	fox: () => quadruped({ legH: 6, legW: 2, bodyW: 6, bodyH: 6, bodyL: 12, headSize: [8, 6, 5], snout: [4, 2, 3], snoutColor: C('#f0f0f0'), ears: true, tail: [4, 9, 4], colors: { body: C('#e07a28') }, tailColor: C('#f0f0f0') }),
-	cat: () => quadruped({ legH: 6, legW: 2, bodyW: 4, bodyH: 5, bodyL: 14, headSize: [5, 4, 5], ears: true, tail: [1, 8, 1], colors: { body: C('#d8a86a') } }),
-	ocelot: () => MOBS.cat(),
-	polar_bear: () => quadruped({ legH: 10, legW: 5, bodyW: 14, bodyH: 12, bodyL: 22, headSize: [7, 7, 8], snout: [5, 3, 3], ears: true, colors: { body: C('#f2f2f2') } }),
-	panda: () => quadruped({ legH: 9, legW: 6, bodyW: 15, bodyH: 13, bodyL: 20, headSize: [10, 9, 8], ears: true, colors: { body: C('#f2f2f2'), legs: C('#1f1f1f') }, spots: C('#1f1f1f') }),
-	hoglin: () => quadruped({ legH: 10, legW: 5, bodyW: 16, bodyH: 14, bodyL: 22, headSize: [12, 10, 12], horns: C('#e8e0c8'), colors: { body: C('#c88a6a') } }),
-	zoglin: () => quadruped({ legH: 10, legW: 5, bodyW: 16, bodyH: 14, bodyL: 22, headSize: [12, 10, 12], horns: C('#e8e0c8'), colors: { body: C('#d88a8a') } }),
-	strider: () => quadruped({ legH: 16, legW: 3, bodyW: 16, bodyH: 14, bodyL: 16, headSize: [0.1, 0.1, 0.1], colors: { body: C('#9a3a3a') } }),
-	sniffer: () => quadruped({ legH: 8, legW: 6, bodyW: 22, bodyH: 18, bodyL: 30, headSize: [10, 10, 10], snout: [8, 4, 4], colors: { body: C('#8a3a2a'), head: C('#6a8a3a') } }),
-	armadillo: () => quadruped({ legH: 3, legW: 2, bodyW: 7, bodyH: 6, bodyL: 9, headSize: [3, 4, 4], colors: { body: C('#a06a5a') } }),
-	turtle: () => quadruped({ legH: 2, legW: 3, bodyW: 16, bodyH: 5, bodyL: 18, headSize: [5, 4, 5], colors: { body: C('#4a8a3a'), head: C('#5aa04a') } }),
-	frog: () => quadruped({ legH: 2, legW: 3, bodyW: 7, bodyH: 5, bodyL: 9, headSize: [7, 3, 5], colors: { body: C('#c88a3a') } }),
-	rabbit: () => quadruped({ legH: 3, legW: 2, bodyW: 5, bodyH: 5, bodyL: 7, headSize: [4, 4, 4], ears: true, colors: { body: C('#9a7a5a') } }),
-	chicken: () => quadruped({ legH: 5, legW: 1, bodyW: 6, bodyH: 6, bodyL: 7, headSize: [4, 6, 3], headRaise: 1.1, snout: [2, 2, 2], snoutColor: C('#e8a020'), colors: { body: C('#f2f2f2'), legs: C('#e8a020') } }),
-	ravager: () => quadruped({ legH: 14, legW: 7, bodyW: 20, bodyH: 16, bodyL: 28, headSize: [14, 16, 12], horns: C('#b8b0a0'), colors: { body: C('#5a5a5a') } }),
-	happy_ghast: () => block(C('#f2f2f2'), 64, 'blob'),
-	ghast: () => block(C('#f2f2f2'), 64, 'blob'),
-
-	cod: () => fish({ w: 2, h: 4, l: 10, color: C('#b89a6a'), belly: C('#d8c8a8'), fin: 2 }),
-	salmon: () => fish({ w: 3, h: 5, l: 12, color: C('#a0302a'), belly: C('#c8a8a0'), fin: 2 }),
-	tropical_fish: () => fish({ w: 2, h: 5, l: 6, color: C('#e08a2a'), fin: 2 }),
-	pufferfish: () => fish({ w: 5, h: 5, l: 5, color: C('#e0c83a') }),
-	squid: () => fish({ w: 12, h: 16, l: 12, color: C('#2a3a5a'), tentacles: 12 }),
-	glow_squid: () => fish({ w: 12, h: 16, l: 12, color: C('#2a8a8a'), tentacles: 12 }),
-	dolphin: () => fish({ w: 8, h: 7, l: 20, color: C('#6a8aa0'), belly: C('#c8d0d8'), fin: 4 }),
-	axolotl: () => fish({ w: 7, h: 4, l: 12, color: C('#e8a0c8') }),
-	tadpole: () => fish({ w: 2, h: 2, l: 4, color: C('#5a3a2a') }),
-	guardian: () => fish({ w: 12, h: 12, l: 12, color: C('#6aa090'), fin: 3 }),
-	elder_guardian: () => fish({ w: 24, h: 24, l: 24, color: C('#c8c8b0'), fin: 5 }),
-
-	bat: () => flyer({ w: 4, h: 5, l: 3, wing: 8, color: C('#3a2a1a'), y: 4 }),
-	bee: () => flyer({ w: 5, h: 5, l: 8, wing: 5, color: C('#e8c83a'), stripes: C('#2a2016'), wingColor: C('#dfe8f0'), y: 2 }),
-	parrot: () => flyer({ w: 3, h: 6, l: 3, wing: 4, color: C('#e02020'), wingColor: C('#2060e0'), y: 2 }),
-	phantom: () => flyer({ w: 5, h: 3, l: 9, wing: 14, color: C('#3a4a8a'), wingColor: C('#4a5a9a') }),
-
-	item: null,
-	experience_orb: null,
-};
-
-// --- skins ----------------------------------------------------------------
-
-function defaultSkinCanvas() {
-	const canvas = document.createElement('canvas');
-	canvas.width = 64;
-	canvas.height = 64;
-	const g = canvas.getContext('2d');
-	const fill = (color, x, y, w, h) => { g.fillStyle = color; g.fillRect(x, y, w, h); };
-	// head
-	fill('#c69c6d', 0, 0, 32, 16);
-	fill('#4a3222', 8, 0, 8, 8);
-	fill('#4a3222', 0, 8, 32, 2);
-	fill('#4a3222', 24, 8, 8, 8);
-	fill('#ffffff', 9, 12, 2, 1); fill('#3a52a0', 10, 12, 1, 1);
-	fill('#ffffff', 13, 12, 2, 1); fill('#3a52a0', 13, 12, 1, 1);
-	fill('#8a5a3a', 11, 14, 2, 1);
-	// body, arms, legs
-	fill('#00a8a8', 16, 16, 24, 16);
-	fill('#c69c6d', 40, 16, 16, 16); fill('#00a8a8', 40, 20, 16, 3);
-	fill('#c69c6d', 32, 48, 16, 16); fill('#00a8a8', 32, 52, 16, 3);
-	fill('#3b3b9b', 0, 16, 16, 16); fill('#555555', 0, 29, 16, 3);
-	fill('#3b3b9b', 16, 48, 16, 16); fill('#555555', 16, 61, 16, 3);
-	return canvas;
+function hashColor(text) {
+	let h = 0;
+	for (let i = 0; i < text.length; i++) h = (h * 31 + text.charCodeAt(i)) | 0;
+	return [((h >> 16) & 255) / 255 * 0.5 + 0.35, ((h >> 8) & 255) / 255 * 0.5 + 0.35, (h & 255) / 255 * 0.5 + 0.35, 1];
 }
 
 function normalizeSkin(image) {
@@ -462,32 +168,63 @@ function normalizeSkin(image) {
 	const g = canvas.getContext('2d');
 	g.drawImage(image, 0, 0);
 	if (image.height === 32) {
-		// Legacy 64x32 skins: the left limbs reuse the right ones.
+		// Legacy 64x32 skins: the left limbs mirror the right ones.
 		g.drawImage(image, 0, 16, 16, 16, 16, 48, 16, 16);
 		g.drawImage(image, 40, 16, 16, 16, 32, 48, 16, 16);
 	}
 	return canvas;
 }
 
-// --- renderer -------------------------------------------------------------
+// Thrown items drawn as sprites (ThrownItemRenderer) and what item they show.
+const THROWN = {
+	snowball: 'snowball', egg: 'egg', blue_egg: 'blue_egg', brown_egg: 'brown_egg', ender_pearl: 'ender_pearl', potion: 'splash_potion',
+	splash_potion: 'splash_potion', lingering_potion: 'lingering_potion', experience_bottle: 'experience_bottle',
+	eye_of_ender: 'ender_eye', fireball: 'fire_charge', small_fireball: 'fire_charge', firework_rocket: 'firework_rocket',
+	wind_charge: 'wind_charge', breeze_wind_charge: 'wind_charge',
+};
 
 export class EntityRenderer {
 	constructor(renderer, labelContainer) {
 		this.renderer = renderer;
 		this.gl = renderer.gl;
 		this.labels = labelContainer;
-		this.templates = new Map();
-		this.meshes = new Map();
+		this.library = new ModelLibrary();
+		this.sink = new VertexSink();
+		this.batches = [];
+		this.textures = new Map();
 		this.skins = new Map();
 		this.states = new Map();
+		this.itemMeshes = new Map();
 		this.frames = [];
 		this.offset = null;
-		this.typeHeights = new Map();
 		this.showLabels = true;
-		this.showAllLabels = false;
-		this.showInvisible = false;
-		this.defaultSkin = this.createTexture(defaultSkinCanvas());
+		this.showMobLabels = false;
 		this.visibleCount = 0;
+		this.bolts = [];
+		this.shadows = [];
+		this.programs = {};
+		this.depthProgram = program(this.gl, DEPTH_VS, DEPTH_FS);
+		this.blobProgram = program(this.gl, BLOB_VS, BLOB_FS);
+		const gl = this.gl;
+		this.vao = gl.createVertexArray();
+		this.vbo = gl.createBuffer();
+		gl.bindVertexArray(this.vao);
+		gl.bindBuffer(gl.ARRAY_BUFFER, this.vbo);
+		const stride = FLOATS * 4;
+		const attrib = (index, size, offset) => {
+			gl.enableVertexAttribArray(index);
+			gl.vertexAttribPointer(index, size, gl.FLOAT, false, stride, offset * 4);
+		};
+		attrib(0, 3, 0); attrib(1, 3, 3); attrib(2, 2, 6); attrib(3, 4, 8); attrib(4, 2, 12); attrib(5, 2, 14);
+		gl.bindVertexArray(null);
+		this.blobVao = gl.createVertexArray();
+		this.white = this.createTexture(new ImageData(new Uint8ClampedArray([255, 255, 255, 255]), 1, 1));
+	}
+
+	entityProgram(shaders) {
+		const key = shaders ? 'shaders' : 'vanilla';
+		if (!this.programs[key]) this.programs[key] = program(this.gl, ENTITY_VS, ENTITY_FS, shaders ? '#define SHADERS 1' : '');
+		return this.programs[key];
 	}
 
 	reset() {
@@ -497,6 +234,18 @@ export class EntityRenderer {
 		for (const label of this.labels.querySelectorAll('.label')) label.remove();
 	}
 
+	setAssets(assets) {
+		this.assets = assets;
+		const query = tokenSuffix('?');
+		fetch('/assets/entities.json' + query, { credentials: 'same-origin' })
+			.then(r => (r.ok ? r.json() : []))
+			.then(list => { this.entityList = new Set(list); })
+			.catch(() => { this.entityList = new Set(); });
+		this.library.load(query).then(ok => {
+			if (!ok) console.warn('CCTV: entity models unavailable, entities are drawn as boxes');
+		});
+	}
+
 	createTexture(source) {
 		const gl = this.gl;
 		const texture = gl.createTexture();
@@ -504,15 +253,41 @@ export class EntityRenderer {
 		gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source);
 		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
 		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
 		return texture;
+	}
+
+	/** Texture below textures/entity (loaded once); null while loading or missing. */
+	texture(path, folder = 'entity') {
+		if (!path) return null;
+		if (typeof path === 'object' && path.skin) return this.skin(path.skin).texture;
+		const key = folder + '/' + path;
+		let entry = this.textures.get(key);
+		if (!entry) {
+			entry = { texture: null };
+			this.textures.set(key, entry);
+			if (folder === 'entity' && this.entityList && this.entityList.size && !this.entityList.has(path)) {
+				entry.failed = true;
+				return null;
+			}
+			fetch('/assets/' + folder + '/' + path + '.png' + tokenSuffix('?'), { credentials: 'same-origin' })
+				.then(r => { if (!r.ok) throw new Error('missing'); return r.blob(); })
+				.then(blob => createImageBitmap(blob, { premultiplyAlpha: 'none', colorSpaceConversion: 'none' }))
+				.then(image => {
+					entry.texture = this.createTexture(image);
+					entry.width = image.width;
+					entry.height = image.height;
+				})
+				.catch(() => { entry.failed = true; });
+		}
+		return entry.texture;
 	}
 
 	skin(uuid, name) {
 		let skin = this.skins.get(uuid);
 		if (skin) return skin;
-		skin = { texture: this.defaultSkin, slim: false };
+		skin = { texture: null, slim: false };
 		this.skins.set(uuid, skin);
 		const url = '/skin/' + encodeURIComponent(uuid) + '?name=' + encodeURIComponent(name || '') + tokenSuffix('&');
 		fetch(url, { credentials: 'same-origin' })
@@ -522,45 +297,12 @@ export class EntityRenderer {
 				return response.blob();
 			})
 			.then(blob => createImageBitmap(blob))
-			.then(image => {
-				skin.texture = this.createTexture(normalizeSkin(image));
-			})
-			.catch(() => {});
+			.then(image => { skin.texture = this.createTexture(normalizeSkin(image)); })
+			.catch(() => { skin.texture = this.texture('player/wide/steve'); skin.fallback = true; });
 		return skin;
 	}
 
-	template(key, build) {
-		let template = this.templates.get(key);
-		if (!template) {
-			template = build();
-			for (const part of Object.values(template.parts)) {
-				part.mesh = this.upload(part.data);
-				part.data = null;
-			}
-			this.templates.set(key, template);
-		}
-		return template;
-	}
-
-	upload(data) {
-		const gl = this.gl;
-		const vao = gl.createVertexArray();
-		const vbo = gl.createBuffer();
-		gl.bindVertexArray(vao);
-		gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
-		gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(data), gl.STATIC_DRAW);
-		const stride = FLOATS * 4;
-		gl.enableVertexAttribArray(0);
-		gl.vertexAttribPointer(0, 3, gl.FLOAT, false, stride, 0);
-		gl.enableVertexAttribArray(1);
-		gl.vertexAttribPointer(1, 3, gl.FLOAT, false, stride, 12);
-		gl.enableVertexAttribArray(2);
-		gl.vertexAttribPointer(2, 2, gl.FLOAT, false, stride, 24);
-		gl.enableVertexAttribArray(3);
-		gl.vertexAttribPointer(3, 3, gl.FLOAT, false, stride, 32);
-		gl.bindVertexArray(null);
-		return { vao, count: data.length / FLOATS };
-	}
+	// --- snapshots -------------------------------------------------------------------------------
 
 	/** Called for every "entities" message. */
 	push(frame, entityTicks) {
@@ -588,11 +330,10 @@ export class EntityRenderer {
 				break;
 			}
 		}
-		if (renderTick > frames[frames.length - 1].t) {
-			a = b = frames[frames.length - 1];
-		}
+		if (renderTick > frames[frames.length - 1].t) a = b = frames[frames.length - 1];
 		const span = b.t - a.t;
 		const t = span > 0 ? Math.max(0, Math.min(1, (renderTick - a.t) / span)) : 0;
+		this.tick = lerp(a.t, b.t, t);
 
 		const result = [];
 		for (const [id, ea] of a.map) {
@@ -601,15 +342,13 @@ export class EntityRenderer {
 				if (t < 1 || a === b) result.push(ea);
 				continue;
 			}
+			const angle = (key, fallback) => (ea[key] !== undefined && eb[key] !== undefined ? lerpAngle(ea[key], eb[key], t) : (eb[key] ?? fallback));
+			const num = key => (ea[key] !== undefined && eb[key] !== undefined ? lerp(ea[key], eb[key], t) : eb[key]);
 			result.push({
 				...eb,
-				x: lerp(ea.x, eb.x, t),
-				y: lerp(ea.y, eb.y, t),
-				z: lerp(ea.z, eb.z, t),
-				yaw: lerpAngle(ea.yaw, eb.yaw, t),
-				pitch: lerp(ea.pitch, eb.pitch, t),
-				body: ea.body !== undefined && eb.body !== undefined ? lerpAngle(ea.body, eb.body, t) : eb.body,
-				head: ea.head !== undefined && eb.head !== undefined ? lerpAngle(ea.head, eb.head, t) : eb.head,
+				x: lerp(ea.x, eb.x, t), y: lerp(ea.y, eb.y, t), z: lerp(ea.z, eb.z, t),
+				yaw: angle('yaw'), pitch: lerp(ea.pitch, eb.pitch, t), body: angle('body'), head: angle('head'),
+				walk: num('walk'), walkSpeed: num('walkSpeed'), age: num('age'), deathTime: num('deathTime'),
 			});
 		}
 		for (const [id, eb] of b.map) {
@@ -618,521 +357,872 @@ export class EntityRenderer {
 		return result;
 	}
 
-	modelFor(e) {
-		const type = e.type.startsWith('minecraft:') ? e.type.slice(10) : e.type;
-		if (e.type === 'minecraft:player') {
-			const skin = this.skin(e.uuid, e.name);
-			return { template: this.template(skin.slim ? 'player:slim' : 'player', () => playerModel(skin.slim)), texture: skin.texture, standing: 1.875 };
-		}
-
-		const mc = this.mcModelFor(e, type);
-		if (mc) return mc;
-
-		const builder = MOBS[type];
-		if (builder) {
-			return { template: this.template(type, builder), standing: this.standingHeight(type, e) };
-		}
-		if (type === 'item') {
-			const item = this.itemModel(e.item);
-			if (item) {
-				// Dropped blocks are drawn at 1/4 size, item sprites at 1/2 (like the game).
-				return { template: item.template, texture: this.assets.texture, standing: 0.25, fixed: true, itemScale: item.kind === 'block' ? 0.25 : 0.5 };
-			}
-			return { template: this.template('item:' + e.item, () => block(itemColor(e.item), 4, 'item')), standing: 0.25, fixed: true };
-		}
-		if (type === 'experience_orb') {
-			return { template: this.template('xp', () => block(C('#b8f040'), 3, 'item')), standing: 0.2, fixed: true, emissive: true };
-		}
-		if (type === 'tnt') {
-			return { template: this.template('tnt', () => block(C('#db4b2e'), 16)), standing: 1, fixed: true };
-		}
-		if (type.endsWith('arrow') || type === 'trident') {
-			return { template: this.template('arrow', () => hitbox(C('#8a6a3d'), 0.08, 0.08)), standing: 0.1, fixed: true, arrow: true };
-		}
-		if (type.includes('minecart')) {
-			return { template: this.template(type, () => hitbox(C('#6e6e6e'), 0.98, 0.7)), standing: 0.7, fixed: true };
-		}
-		if (type.endsWith('boat') || type.endsWith('raft')) {
-			return { template: this.template(type, () => hitbox(C('#8a6a3d'), 1.375, 0.5)), standing: 0.56, fixed: true };
-		}
-		const color = hashColor(type);
-		return { template: this.template('box:' + type + ':' + e.w + ':' + e.h, () => hitbox(color, e.w, e.h)), standing: e.h, fixed: true };
-	}
-
-	standingHeight(type, e) {
-		if (!e.pose && !e.baby) {
-			this.typeHeights.set(type, e.h);
-			return e.h;
-		}
-		const known = this.typeHeights.get(type);
-		if (known) return e.baby ? known * 0.5 : known;
-		return e.baby ? e.h : e.h;
-	}
-
-	/** Advances per-entity animation state (limb swing, swing timers). */
-	animate(e, now) {
+	/** Swing and hurt timers kept per entity. */
+	animState(e, now) {
 		let s = this.states.get(e.id);
 		if (!s) {
-			s = { x: e.x, z: e.z, limbPos: 0, limbAmp: 0, last: now, swingStart: -1, deadStart: -1, seen: now };
+			s = { swingStart: -1, seen: now, lastWalk: e.walk || 0 };
 			this.states.set(e.id, s);
 		}
-		const dt = Math.min(0.25, (now - s.last) / 1000);
-		s.last = now;
 		s.seen = now;
-		const ticks = dt * 20;
-		const dist = Math.hypot(e.x - s.x, e.z - s.z);
-		s.x = e.x;
-		s.z = e.z;
-		const speed = ticks > 0 ? dist / ticks : 0;
-		const target = Math.min(1, speed * 4);
-		s.limbAmp += (target - s.limbAmp) * Math.min(1, 0.4 * ticks);
-		s.limbPos += s.limbAmp * ticks;
-
 		if (e.swing && (s.swingStart < 0 || now - s.swingStart > 300)) s.swingStart = now;
-		s.swingProgress = s.swingStart >= 0 && now - s.swingStart < 300 ? (now - s.swingStart) / 300 : 0;
-		if (e.dead) {
-			if (s.deadStart < 0) s.deadStart = now;
-		} else {
-			s.deadStart = -1;
-		}
+		s.attack = s.swingStart >= 0 && now - s.swingStart < 300 ? (now - s.swingStart) / 300 : 0;
 		return s;
 	}
 
-	/** Part rotations [x, y, z] in radians, keyed by part name. */
-	pose(template, e, s, time) {
-		const r = {};
-		const swing = Math.cos(s.limbPos * 0.6662) * 1.4 * s.limbAmp;
-		const netHead = wrapDegrees((e.head ?? e.yaw) - (e.body ?? e.yaw));
-		const headRot = [Math.max(-80, Math.min(80, e.pitch)) * DEG, -netHead * DEG, 0];
-
-		if (template.family === 'humanoid') {
-			r.head = headRot;
-			r.rightLeg = [swing, 0, 0];
-			r.leftLeg = [-swing, 0, 0];
-			r.rightArm = [-swing * 0.7, 0, 0];
-			r.leftArm = [swing * 0.7, 0, 0];
-			if (e.type === 'minecraft:zombie' || e.type === 'minecraft:husk' || e.type === 'minecraft:drowned' || e.type === 'minecraft:zombie_villager' || e.type === 'minecraft:zombified_piglin') {
-				r.rightArm = [-1.4 + Math.sin(time * 3) * 0.05, 0, 0];
-				r.leftArm = [-1.4 - Math.sin(time * 3) * 0.05, 0, 0];
-			}
-			if (s.swingProgress > 0) {
-				const p = Math.sin(s.swingProgress * Math.PI);
-				r.rightArm = [-1.2 * p - 0.4 * Math.sin(s.swingProgress * Math.PI * 2), -0.3 * p, 0];
-			}
-			if (e.riding) {
-				r.rightLeg = [-1.41, -0.31, 0];
-				r.leftLeg = [-1.41, 0.31, 0];
-				r.rightArm = [-0.63, 0, 0];
-				r.leftArm = [-0.63, 0, 0];
-			}
-			if (e.sneak || e.pose === 'crouching') {
-				r.body = [0.5, 0, 0];
-				r.rightArm = [r.rightArm[0] + 0.4, r.rightArm[1], 0];
-				r.leftArm = [r.leftArm[0] + 0.4, r.leftArm[1], 0];
-			}
-		} else if (template.family === 'quadruped') {
-			r.head = headRot;
-			r.frontRight = [swing, 0, 0];
-			r.hindLeft = [swing, 0, 0];
-			r.frontLeft = [-swing, 0, 0];
-			r.hindRight = [-swing, 0, 0];
-			r.tail = [0.3 + Math.sin(time * 2) * 0.05, Math.sin(time * 1.3) * 0.2, 0];
-		} else if (template.family === 'spider') {
-			r.head = headRot;
-			for (let i = 0; i < 8; i++) {
-				const side = i < 4 ? -1 : 1;
-				const phase = (i % 2 === 0 ? 1 : -1) * swing * 0.4;
-				r['leg' + i] = [0, ((i % 4) - 1.5) * 0.35 * side + phase, -side * 0.6];
-			}
-		} else if (template.family === 'flyer') {
-			const flap = Math.sin(time * 18) * 0.8;
-			r.rightWing = [0, 0, flap];
-			r.leftWing = [0, 0, -flap];
-		} else if (template.family === 'fish') {
-			r.tail = [0, Math.sin(time * 8) * 0.4, 0];
-			for (let i = 0; i < 8; i++) r['t' + i] = [Math.sin(time * 3 + i) * 0.2, 0, 0];
-		}
-		return r;
+	cleanupStates(now) {
+		if (this.states.size < 64) return;
+		for (const [id, s] of this.states) if (now - s.seen > 5000) this.states.delete(id);
 	}
 
-	setAssets(assets) {
-		this.assets = assets;
-		this.entityTextures = new Map();
-		fetch('/assets/entities.json' + tokenSuffix('?'), { credentials: 'same-origin' })
-			.then(r => (r.ok ? r.json() : []))
-			.then(list => { this.entityList = new Set(list); })
-			.catch(() => { this.entityList = new Set(); });
+	// --- building the frame ------------------------------------------------------------------------
+
+	begin() {
+		this.sink.reset();
+		this.batches = [];
 	}
 
-	/** Loads (once) the first available texture from `candidates` (paths below textures/entity). */
-	entityTexture(candidates) {
-		if (!this.entityList) return null;
-		const path = candidates.find(p => this.entityList.has(p));
-		if (!path) return null;
-		let entry = this.entityTextures.get(path);
-		if (!entry) {
-			entry = { ready: false };
-			this.entityTextures.set(path, entry);
-			fetch('/assets/entity/' + path + '.png' + tokenSuffix('?'), { credentials: 'same-origin' })
-				.then(r => { if (!r.ok) throw new Error('missing'); return r.blob(); })
-				.then(blob => createImageBitmap(blob))
-				.then(image => {
-					entry.texture = this.createTexture(image);
-					entry.width = image.width;
-					entry.height = image.height;
-					entry.ready = true;
-				})
-				.catch(() => { entry.failed = true; });
+	/** Records that the vertices emitted since `start` use this texture / mode. */
+	batch(texture, mode, start, cull = true) {
+		const count = this.sink.count - start;
+		if (count <= 0) return;
+		const last = this.batches[this.batches.length - 1];
+		if (last && last.texture === texture && last.mode === mode && last.cull === cull && last.start + last.count === start) {
+			last.count += count;
+			return;
 		}
-		return entry.ready ? entry : null;
+		this.batches.push({ texture, mode, start, count, cull });
 	}
 
 	/**
-	 * Item model from the block atlas: a small block for block items (like dropped blocks in game),
-	 * otherwise the flat item sprite. Returns {template, kind} or null.
+	 * Builds all entity geometry for this frame (camera relative).
+	 * frame: {origin, camPos, frustum, now, fogEnd}; world: World; env: Environment
 	 */
-	itemModel(itemId) {
-		const assets = this.assets;
-		if (!assets || !itemId) return null;
-		if (!this.itemModels) this.itemModels = new Map();
-		if (this.itemModels.has(itemId)) return this.itemModels.get(itemId);
+	prepare(frame, list, world, env) {
+		this.begin();
+		this.world = world;
+		this.bolts = [];
+		this.shadows = [];
+		const now = frame.now;
+		const o = frame.origin, cam = frame.camPos;
+		let visible = 0;
+		for (const e of list) {
+			const rx = e.x - o[0] - cam[0], ry = e.y - o[1] - cam[1], rz = e.z - o[2] - cam[2];
+			const type = strip(e.type);
+			if (type === 'lightning_bolt') {
+				this.bolts.push({ x: rx, y: ry, z: rz, seed: e.seed || '0' });
+				continue;
+			}
+			if (e.invisible) continue;
+			const radius = Math.max(e.w || 1, e.h || 1) + 1;
+			if (!frame.frustum(rx, ry + (e.h || 1) / 2, rz, radius * (type === 'happy_ghast' || type === 'ghast' ? 2 : 1))) continue;
+			if (Math.hypot(rx, rz) > frame.fogEnd + 8) continue;
+			visible++;
+			const light = this.lightFor(e, world);
+			try {
+				this.drawEntity(e, type, [rx, ry, rz], light, now, world);
+			} catch (error) {
+				console.warn('CCTV: could not draw', e.type, error);
+			}
+		}
+		this.visibleCount = visible;
+		if (this.assets) this.prepareBlockEntities(frame, world);
+		this.upload();
+		this.cleanupStates(now);
+	}
 
+	/** Packed light at the entity's eyes (EntityRenderer.getPackedLightCoords), in smooth units. */
+	lightFor(e, world) {
+		const eye = (e.h || 1) * 0.85;
+		const [sky, block] = world.lightAt(Math.floor(e.x), Math.floor(e.y + eye), Math.floor(e.z));
+		return [(e.burning ? 15 : block) * 16, sky * 16];
+	}
+
+	upload() {
+		const gl = this.gl;
+		gl.bindBuffer(gl.ARRAY_BUFFER, this.vbo);
+		gl.bufferData(gl.ARRAY_BUFFER, this.sink.data.subarray(0, this.sink.count * FLOATS), gl.STREAM_DRAW);
+	}
+
+	drawEntity(e, type, pos, light, now, world) {
+		const style = { color: [1, 1, 1, 1], light, overlay: [e.hurt || e.dead ? 1 : 0, 0] };
+		switch (type) {
+			case 'item': return this.drawDroppedItem(e, pos, style);
+			case 'experience_orb': return this.drawOrb(e, pos, style, now);
+			case 'arrow': case 'spectral_arrow': return this.drawProjectile(e, pos, style, 'arrow#main', type === 'spectral_arrow' ? 'projectiles/arrow_spectral' : 'projectiles/arrow', -90, 0);
+			case 'trident': return this.drawProjectile(e, pos, style, 'trident#main', 'trident/trident', -90, 90);
+			case 'tnt': return this.drawBlockEntity(e, pos, style, 'minecraft:tnt', 1);
+			case 'falling_block': return this.drawFallingBlock(e, pos, style, world);
+			case 'painting': return this.drawPainting(e, pos, style);
+			case 'item_frame': case 'glow_item_frame': return this.drawItemFrame(e, type, pos, style);
+			case 'leash_knot': return this.drawSimple(pos, style, 'leash_knot#main', 'lead_knot/lead_knot', 0);
+			case 'end_crystal': return this.drawEndCrystal(e, pos, style);
+			case 'wither_skull': return this.drawSimple(pos, style, 'wither_skull#main', 'wither/wither', e.yaw);
+			case 'shulker_bullet': return this.drawSimple(pos, { ...style, light: [240, 240] }, 'shulker_bullet#main', 'shulker/spark', now / 50 * 9);
+			case 'llama_spit': return this.drawSimple(pos, style, 'llama_spit#main', 'llama/llama_spit', e.yaw);
+			default: break;
+		}
+		if (THROWN[type]) return this.drawThrown(pos, style, THROWN[type]);
+		if (type.endsWith('_boat') || type.endsWith('_raft')) return this.drawBoat(e, type, pos, style);
+		if (type === 'minecart' || type.endsWith('_minecart')) return this.drawMinecart(e, type, pos, style);
+
+		if (type === 'player') {
+			const skin = this.skin(e.uuid, e.name);
+			e.slim = skin.slim;
+		}
+		const mob = describeMob(e);
+		if (!mob || !this.library.layers) return this.drawBox(e, pos, style);
+		if (mob.special === 'endCrystal') return this.drawEndCrystal(e, pos, style);
+		const s = this.animState(e, now);
+		const def = mob.def;
+		const age = e.age || 0;
+		const anim = {
+			walk: e.walk || 0,
+			walkSpeed: Math.min(1, e.walkSpeed || 0),
+			age,
+			attack: s.attack,
+			netHeadYaw: wrapDegrees((e.head ?? e.yaw) - (e.body ?? e.yaw)),
+			headPitch: e.pitch || 0,
+			flap: e.id * 3 + age,
+		};
+		if (def.fullBright) style.light = [240, style.light[1]];
+
+		// LivingEntityRenderer.submit / setupRotations
+		const m = mat4();
+		translate(m, pos[0], pos[1], pos[2]);
+		const entityScale = e.scale || 1;
+		scale(m, entityScale);
+		const body = e.body ?? e.yaw ?? 0;
+		if (def.squid) {
+			translate(m, 0, e.baby ? 0.25 : 0.5, 0);
+			rotate(m, 1, (180 - body) * DEG);
+			translate(m, 0, e.baby ? -0.6 : -1.2, 0);
+		} else if (e.pose !== 'sleeping') {
+			rotate(m, 1, (180 - body) * DEG);
+		}
+		if (e.dead && e.deathTime > 0) {
+			const fall = Math.min(1, Math.sqrt(Math.max(0, (e.deathTime - 1) / 20 * 1.6)));
+			rotate(m, 2, fall * 90 * DEG);
+		} else if (e.pose === 'sleeping') {
+			rotate(m, 2, 90 * DEG);
+			rotate(m, 1, 270 * DEG);
+		} else if (e.name === 'Dinnerbone' || e.name === 'Grumm') {
+			translate(m, 0, ((e.h || 1) + 0.1) / entityScale, 0);
+			rotate(m, 2, Math.PI);
+		}
+		if (def.fish) {
+			const inWater = world.infoAt(Math.floor(e.x), Math.floor(e.y + 0.1), Math.floor(e.z));
+			rotate(m, 1, 4.3 * Math.sin(0.6 * age) * DEG);
+			if (!(inWater && inWater.water)) {
+				translate(m, 0.2, 0.1, 0);
+				rotate(m, 2, 90 * DEG);
+			}
+		}
+		if (def.puffer) translate(m, 0, Math.cos(age * 0.05) * 0.08, 0);
+		if (def.phantom) rotate(m, 0, (e.pitch || 0) * DEG);
+		scale(m, -1, -1, 1);
+		// Renderer specific scale()
+		if (def.creeper && e.d && e.d.swelling) {
+			let g = e.d.swelling;
+			const wobble = 1 + Math.sin(g * 100) * g * 0.01;
+			g = Math.min(1, Math.max(0, g));
+			g = g * g * g * g;
+			scale(m, (1 + g * 0.4) * wobble, (1 + g * 0.1) / wobble, (1 + g * 0.4) * wobble);
+			const step = e.d.swelling;
+			style.overlay[1] = Math.floor(step * 10) % 2 === 0 ? 0 : Math.min(1, Math.max(0.5, step));
+		}
+		if (def.slime) {
+			const size = Number(e.d && e.d.size) || 1;
+			scale(m, 0.999);
+			translate(m, 0, 0.001, 0);
+			scale(m, size);
+		}
+		if (def.phantom) {
+			const size = Number(e.d && e.d.size) || 0;
+			scale(m, 1 + 0.15 * size);
+			translate(m, 0, 1.3125, 0.1875);
+		}
+		if (def.wither) {
+			const invulnerable = Number(e.d && e.d.invulnerable) || 0;
+			scale(m, 2 - (invulnerable > 0 ? invulnerable / 220 * 0.5 : 0));
+		}
+		translate(m, 0, -1.501, 0);
+
+		let base = null;
+		for (const layer of mob.layers) {
+			const model = this.library.get(layer.layer);
+			if (!model) continue;
+			const texture = this.texture(layer.texture);
+			if (!texture) continue;
+			model.reset();
+			if (base && model !== base) {
+				mob.anim(model.parts, anim, e);
+				model.copyPose(base);
+			} else {
+				mob.anim(model.parts, anim, e);
+			}
+			if (!base) base = model;
+			const start = this.sink.count;
+			emitModel(this.sink, model, m, { ...style, color: layer.color || [1, 1, 1, 1] });
+			const mode = MODES[layer.mode] ?? MODE_CUTOUT;
+			this.batch(texture, mode, start, mode !== MODE_NOCULL && mode !== MODE_TRANSLUCENT);
+		}
+		if (!base) return this.drawBox(e, pos, style);
+
+		// Held items (ItemInHandLayer).
+		if (e.hand && base.parts.right_arm && base.parts.right_arm.visible) this.drawHeld(base, m, 'right_arm', e.hand, style, 1);
+		if (e.offhand && base.parts.left_arm && base.parts.left_arm.visible) this.drawHeld(base, m, 'left_arm', e.offhand, style, -1);
+
+		this.shadowFor(e, pos, typeof mob.shadow === 'number' ? mob.shadow * entityScale : 0.5, world);
+	}
+
+	/** Round shadow on the first solid block below, fading with height (EntityRenderer shadow). */
+	shadowFor(e, pos, radius, world) {
+		if (!radius) return;
+		const fx = Math.floor(e.x), fz = Math.floor(e.z);
+		for (let y = Math.floor(e.y + 0.01); y >= Math.floor(e.y) - 2; y--) {
+			const info = world.infoAt(fx, y - 1, fz);
+			if (info && info.fullCollision) {
+				const height = e.y - y;
+				const alpha = 0.5 * Math.max(0, 1 - height / 2.5);
+				if (alpha > 0.02) this.shadows.push({ center: [pos[0], pos[1] - height + 0.002, pos[2]], radius: Math.min(32, radius), alpha });
+				return;
+			}
+		}
+	}
+
+	drawBox(e, pos, style) {
+		// Unknown entity: its hitbox as a plain box, so it is at least visible.
+		const w = (e.w || 0.6) / 2, h = e.h || 0.6;
+		const q = [];
+		const corners = [[-w, 0, -w], [w, 0, -w], [w, h, -w], [-w, h, -w], [-w, 0, w], [w, 0, w], [w, h, w], [-w, h, w]];
+		const faces = [[0, 3, 2, 1], [4, 5, 6, 7], [0, 4, 7, 3], [1, 2, 6, 5], [3, 7, 6, 2], [0, 1, 5, 4]];
+		for (const f of faces) for (const i of f) q.push(...corners[i], 0.5, 0.5);
+		const m = mat4();
+		translate(m, pos[0], pos[1], pos[2]);
+		const start = this.sink.count;
+		this.sink.ensure(36);
+		emitQuads(this.sink, new Float32Array(q), m, { ...style, color: hashColor(e.type) });
+		this.batch(this.white, MODE_CUTOUT, start);
+	}
+
+	drawSimple(pos, style, layer, texturePath, yaw) {
+		const model = this.library.get('minecraft:' + layer);
+		const texture = this.texture(texturePath);
+		if (!model || !texture) return;
+		model.reset();
+		const m = mat4();
+		translate(m, pos[0], pos[1], pos[2]);
+		rotate(m, 1, -(yaw || 0) * DEG);
+		scale(m, -1, -1, 1);
+		const start = this.sink.count;
+		emitModel(this.sink, model, m, style);
+		this.batch(texture, MODE_CUTOUT, start);
+	}
+
+	drawProjectile(e, pos, style, layer, texturePath, yawOffset, pitchOffset) {
+		const model = this.library.get('minecraft:' + layer);
+		const texture = this.texture(texturePath);
+		if (!model || !texture) return;
+		model.reset();
+		const m = mat4();
+		translate(m, pos[0], pos[1], pos[2]);
+		rotate(m, 1, ((e.yaw || 0) + yawOffset) * DEG);
+		rotate(m, 2, ((e.pitch || 0) + pitchOffset) * DEG);
+		const start = this.sink.count;
+		emitModel(this.sink, model, m, style);
+		this.batch(texture, MODE_NOCULL, start, false);
+	}
+
+	drawBoat(e, type, pos, style) {
+		const chest = type.includes('_chest_');
+		const wood = type.replace(/_chest_(boat|raft)$/, '').replace(/_(boat|raft)$/, '');
+		const folder = chest ? 'chest_boat' : 'boat';
+		const model = this.library.get('minecraft:' + folder + '/' + wood + '#main');
+		const texture = this.texture(folder + '/' + wood);
+		if (!model || !texture) return this.drawBox(e, pos, style);
+		model.reset();
+		const m = mat4();
+		translate(m, pos[0], pos[1] + 0.375, pos[2]);
+		rotate(m, 1, (180 - (e.yaw || 0)) * DEG);
+		scale(m, -1, -1, 1);
+		rotate(m, 1, 90 * DEG);
+		const start = this.sink.count;
+		emitModel(this.sink, model, m, style);
+		this.batch(texture, MODE_CUTOUT, start);
+		this.shadowFor(e, pos, 0.8, this.world);
+	}
+
+	drawMinecart(e, type, pos, style) {
+		const layer = type === 'minecart' ? 'minecart#main' : type + '#main';
+		const model = this.library.get('minecraft:' + layer) || this.library.get('minecraft:minecart#main');
+		const texture = this.texture('minecart/minecart');
+		if (!model || !texture) return this.drawBox(e, pos, style);
+		model.reset();
+		const m = mat4();
+		translate(m, pos[0], pos[1] + 0.375, pos[2]);
+		rotate(m, 1, (180 - (e.yaw || 0)) * DEG);
+		rotate(m, 2, -(e.pitch || 0) * DEG);
+		const inside = { chest_minecart: 'minecraft:chest', furnace_minecart: 'minecraft:furnace', tnt_minecart: 'minecraft:tnt', hopper_minecart: 'minecraft:hopper', spawner_minecart: 'minecraft:spawner', command_block_minecart: 'minecraft:command_block' }[type];
+		if (inside) {
+			const b = new Float32Array(m);
+			scale(b, 0.75);
+			translate(b, -0.5, (6 - 8) / 16, 0.5);
+			rotate(b, 1, 90 * DEG);
+			this.emitBlock(inside === 'minecraft:chest' ? null : inside, b, style, inside === 'minecraft:chest');
+		}
+		scale(m, -1, -1, 1);
+		const start = this.sink.count;
+		emitModel(this.sink, model, m, style);
+		this.batch(texture, MODE_CUTOUT, start);
+	}
+
+	drawEndCrystal(e, pos, style) {
+		const model = this.library.get('minecraft:end_crystal#main');
+		const texture = this.texture('end_crystal/end_crystal');
+		if (!model || !texture) return this.drawBox(e, pos, style);
+		model.reset();
+		const t = (e.age || 0);
+		const p = model.parts;
+		const spin = t * 3 * DEG;
+		const bob = Math.sin(t * 0.2) / 2 + 0.5;
+		const y = (bob * bob + bob) * 0.4 - 1.4;
+		if (p.outer_glass) { p.outer_glass.y += y * 16 * -1; p.outer_glass.yRot = spin; }
+		if (p.inner_glass) { p.inner_glass.yRot = spin; }
+		if (p.cube) { p.cube.yRot = spin; }
+		const m = mat4();
+		translate(m, pos[0], pos[1], pos[2]);
+		scale(m, 2);
+		translate(m, 0, -0.5, 0);
+		scale(m, -1, -1, 1);
+		const start = this.sink.count;
+		emitModel(this.sink, model, m, { ...style, light: [240, 240] });
+		this.batch(texture, MODE_NOCULL, start, false);
+	}
+
+	drawPainting(e, pos, style) {
+		const d = e.d || {};
+		const asset = strip(d.asset || d.variant);
+		const w = Number(d.pw) || 1, h = Number(d.ph) || 1;
+		const front = asset ? this.texture(asset, 'painting') : null;
+		if (!front) return;
+		const angle = { south: 0, west: -90, north: 180, east: 90 }[d.facing || 'south'] ?? 0;
+		const m = mat4();
+		translate(m, pos[0], pos[1], pos[2]);
+		rotate(m, 1, angle * DEG);
+		const z = 1 / 32;
+		const quad = new Float32Array([
+			-w / 2, -h / 2, z, 0, 1, w / 2, -h / 2, z, 1, 1,
+			w / 2, h / 2, z, 1, 0, -w / 2, h / 2, z, 0, 0,
+		]);
+		const start = this.sink.count;
+		this.sink.ensure(6);
+		emitQuads(this.sink, quad, m, style);
+		this.batch(front, MODE_CUTOUT, start);
+	}
+
+	// --- items -------------------------------------------------------------------------------------
+
+	/** Item geometry in item model space (0..1 box): extruded sprite, or a block model. Cached. */
+	itemMesh(itemId) {
+		if (!this.assets || !itemId) return null;
+		let mesh = this.itemMeshes.get(itemId);
+		if (mesh !== undefined) return mesh;
+		mesh = null;
 		const id = itemId.includes(':') ? itemId : 'minecraft:' + itemId;
-		const ns = id.slice(0, id.indexOf(':'));
-		const name = id.slice(id.indexOf(':') + 1);
-		const data = [];
-		let kind = null;
-		const sprite = assets.sprites.get(ns + ':item/' + name);
+		const colon = id.indexOf(':');
+		const ns = id.slice(0, colon), name = id.slice(colon + 1);
+		const models = this.assets.models;
+		const sprite = this.assets.sprites.get(ns + ':item/' + name);
 		if (sprite) {
-			kind = 'sprite';
-			const v = [[-8, 0, sprite.u0, sprite.v1], [8, 0, sprite.u1, sprite.v1], [8, 16, sprite.u1, sprite.v0], [-8, 16, sprite.u0, sprite.v0]];
-			for (const k of [0, 1, 2, 0, 2, 3]) data.push(v[k][0], v[k][1], 0.01, 0, 0, 1, v[k][2], v[k][3], 1, 1, 1);
-			for (const k of [2, 1, 0, 3, 2, 0]) data.push(v[k][0], v[k][1], -0.01, 0, 0, -1, v[k][2], v[k][3], 1, 1, 1);
-		} else if (assets.bundle.blockstates[id]) {
-			const baked = assets.bake(id, { __item: true });
-			if (baked) {
-				kind = 'block';
-				const shade = [1, 0.5, 0.8, 0.8, 0.6, 0.6];
-				for (const q of baked.alternatives[0]) {
-					const n = DIR_VECTORS[q.dir];
-					const tint = q.tint >= 0 ? [0.57, 0.74, 0.35] : [1, 1, 1];
-					const f = q.shade ? shade[q.dir] : 1;
-					for (const k of [0, 1, 2, 0, 2, 3]) {
-						data.push((q.pos[k * 3] - 0.5) * 16, q.pos[k * 3 + 1] * 16, (q.pos[k * 3 + 2] - 0.5) * 16,
-							n[0], n[1], n[2], q.uvs[k * 2], q.uvs[k * 2 + 1], tint[0] * f, tint[1] * f, tint[2] * f);
+			mesh = { kind: 'sprite', quads: this.extrude(sprite) };
+		} else if (models && this.assets.bundle.blockstates[id]) {
+			const dispatch = models.dispatch(id, { __item: true });
+			if (dispatch) {
+				const parts = [];
+				const random = new JavaRandom();
+				random.setSeedNumber(42);
+				collectParts(dispatch, random, parts);
+				const quads = [];
+				for (const part of parts) {
+					for (const list of part.quads) {
+						for (const q of list) {
+							const tint = q.tint >= 0 ? this.itemTint(name) : [1, 1, 1];
+							quads.push({ q, tint });
+						}
 					}
 				}
+				if (quads.length) mesh = { kind: 'block', quads: this.blockQuads(quads) };
 			}
 		}
-
-		let model = null;
-		if (kind && data.length) {
-			model = {
-				kind,
-				template: this.template('item-model:' + id, () => ({ family: 'item', parts: { body: { pivot: [0, 0, 0], data } }, fixedScale: true, height: 16 })),
-			};
-		}
-		this.itemModels.set(itemId, model);
-		return model;
+		this.itemMeshes.set(itemId, mesh);
+		return mesh;
 	}
 
-	/** Minecraft model + real texture for this mob, or null while unavailable. */
-	mcModelFor(e, type) {
-		const def = this.assets && MOB_MODELS[type];
-		if (!def) return null;
-		const texture = this.entityTexture(def.textures);
-		if (!texture) return null;
-		const template = this.template('mc:' + type, () => buildMobTemplate(def.model(), texture.width, texture.height));
-		let overlay = null;
-		if (def.overlay) {
-			const t2 = this.entityTexture(def.overlay.textures);
-			if (t2) {
-				overlay = {
-					template: this.template('mc:' + type + ':overlay', () => buildMobTemplate(def[def.overlay.parts](), t2.width, t2.height)),
-					texture: t2.texture,
-				};
+	itemTint(name) {
+		const grass = this.assets.colormap('grass', 0.5, 1.0, 0x7cbd6b);
+		const foliage = this.assets.colormap('foliage', 0.5, 1.0, 0x48b518);
+		const c = /leaves|vine/.test(name) ? (name.startsWith('spruce') ? 0x619961 : name.startsWith('birch') ? 0x80a755 : foliage) : grass;
+		return [(c >> 16 & 255) / 255, (c >> 8 & 255) / 255, (c & 255) / 255];
+	}
+
+	/** Block model quads as {data: Float32Array (x y z u v per vertex), tints}. */
+	blockQuads(list) {
+		const data = new Float32Array(list.length * 20);
+		const tints = [];
+		list.forEach(({ q, tint }, i) => {
+			for (let k = 0; k < 4; k++) {
+				data.set([q.pos[k * 3], q.pos[k * 3 + 1], q.pos[k * 3 + 2], q.uvs[k * 2], q.uvs[k * 2 + 1]], i * 20 + k * 5);
+			}
+			tints.push(tint);
+		});
+		return { data, tints };
+	}
+
+	/** ItemModelGenerator: front and back faces plus side faces along the sprite's opaque pixel edges. */
+	extrude(sprite) {
+		const size = this.assets.cell;
+		const atlas = this.assets.atlasPixels;
+		const w = this.assets.atlasSize;
+		const alpha = (x, y) => (x < 0 || y < 0 || x >= size || y >= size ? 0 : atlas[((sprite.y + y) * w + sprite.x + x) * 4 + 3]);
+		const quads = [];
+		const u = x => sprite.u0 + (sprite.u1 - sprite.u0) * x / size;
+		const v = y => sprite.v0 + (sprite.v1 - sprite.v0) * y / size;
+		const z0 = 7.5 / 16, z1 = 8.5 / 16;
+		// Front (+z) and back (-z) of the whole sprite; transparent pixels are cut out by the shader.
+		quads.push([0, 0, z1, u(0), v(size)], [1, 0, z1, u(size), v(size)], [1, 1, z1, u(size), v(0)], [0, 1, z1, u(0), v(0)]);
+		quads.push([1, 0, z0, u(size), v(size)], [0, 0, z0, u(0), v(size)], [0, 1, z0, u(0), v(0)], [1, 1, z0, u(size), v(0)]);
+		for (let y = 0; y < size; y++) {
+			for (let x = 0; x < size; x++) {
+				if (alpha(x, y) === 0) continue;
+				const x0 = x / size, x1 = (x + 1) / size, yb = 1 - (y + 1) / size, yt = 1 - y / size;
+				const pu = u(x + 0.5), pv = v(y + 0.5);
+				if (alpha(x, y - 1) === 0) quads.push([x0, yt, z0, pu, pv], [x0, yt, z1, pu, pv], [x1, yt, z1, pu, pv], [x1, yt, z0, pu, pv]);
+				if (alpha(x, y + 1) === 0) quads.push([x0, yb, z1, pu, pv], [x0, yb, z0, pu, pv], [x1, yb, z0, pu, pv], [x1, yb, z1, pu, pv]);
+				if (alpha(x - 1, y) === 0) quads.push([x0, yb, z0, pu, pv], [x0, yb, z1, pu, pv], [x0, yt, z1, pu, pv], [x0, yt, z0, pu, pv]);
+				if (alpha(x + 1, y) === 0) quads.push([x1, yb, z1, pu, pv], [x1, yb, z0, pu, pv], [x1, yt, z0, pu, pv], [x1, yt, z1, pu, pv]);
 			}
 		}
-		// Glowing eyes (spiders, endermen) are drawn again at full brightness, like the game's eyes layer.
-		const eyes = def.eyes ? this.entityTexture(def.eyes) : null;
-		return { template, texture: texture.texture, mc: def, overlay, eyes: eyes ? eyes.texture : null, mcScale: (def.scale || 1) * (e.baby ? 0.5 : 1) };
+		const data = new Float32Array(quads.length * 5);
+		quads.forEach((p, i) => data.set(p, i * 5));
+		return { data, tints: null };
 	}
 
-	drawParts(template, m, rotations, e) {
+	/** Emits an item mesh with the given transform (model space 0..1). */
+	emitItem(mesh, m, style) {
+		const start = this.sink.count;
+		const data = mesh.quads.data;
+		this.sink.ensure(data.length / 20 * 6);
+		if (mesh.quads.tints) {
+			for (let i = 0; i < mesh.quads.tints.length; i++) {
+				const t = mesh.quads.tints[i];
+				emitQuads(this.sink, data.subarray(i * 20, i * 20 + 20), m, { ...style, color: [t[0], t[1], t[2], 1] });
+			}
+		} else {
+			emitQuads(this.sink, data, m, style);
+		}
+		this.batch(this.assets.texture, MODE_NOCULL, start, false);
+	}
+
+	drawDroppedItem(e, pos, style) {
+		const mesh = this.itemMesh(e.item);
+		if (!mesh) return this.drawBox(e, pos, style);
+		const age = e.age || 0;
+		const bobOffset = (e.id * 0.618) % (Math.PI * 2);
+		const bob = Math.sin(age / 10 + bobOffset) * 0.1 + 0.1;
+		const m = mat4();
+		// ItemEntityRenderer: bob, spin, then the model's "ground" transform resting on its lowest point.
+		translate(m, pos[0], pos[1] + bob + (mesh.kind === 'block' ? 0.0625 : 0.125), pos[2]);
+		rotate(m, 1, age / 20 + bobOffset);
+		const fallback = mesh.kind === 'block'
+			? { translation: [0, 3, 0], scale: [0.25, 0.25, 0.25] }
+			: { translation: [0, 2, 0], scale: [0.5, 0.5, 0.5] };
+		this.applyDisplay(m, this.displayTransform(e.item, 'ground', fallback), false);
+		this.emitItem(mesh, m, style);
+		this.shadowFor(e, pos, 0.15, this.world);
+	}
+
+	drawThrown(pos, style, item) {
+		const mesh = this.itemMesh('minecraft:' + item);
+		if (!mesh) return;
+		const m = mat4();
+		translate(m, pos[0], pos[1], pos[2]);
+		// Face the camera like ThrownItemRenderer (camera is at the origin of this space).
+		rotate(m, 1, Math.atan2(-pos[0], -pos[2]));
+		scale(m, 0.5);
+		translate(m, -0.5, -0.25, -0.5);
+		this.emitItem(mesh, m, style);
+	}
+
+	drawOrb(e, pos, style, now) {
+		const texture = this.texture('experience/experience_orb');
+		if (!texture) return;
+		const icon = Number(e.d && e.d.icon) || 0;
+		const u0 = (icon % 4 * 16) / 64, v0 = (Math.floor(icon / 4) * 16) / 64, u1 = u0 + 16 / 64, v1 = v0 + 16 / 64;
+		const t = (e.age || 0) / 2;
+		const r = (Math.sin(t) + 1) * 0.5, b = (Math.sin(t + 4.1887903) + 1) * 0.1;
+		const m = mat4();
+		translate(m, pos[0], pos[1] + 0.1, pos[2]);
+		rotate(m, 1, Math.atan2(-pos[0], -pos[2]));
+		scale(m, 0.3);
+		const q = new Float32Array([-0.5, -0.25, 0, u0, v1, 0.5, -0.25, 0, u1, v1, 0.5, 0.75, 0, u1, v0, -0.5, 0.75, 0, u0, v0]);
+		const start = this.sink.count;
+		this.sink.ensure(6);
+		emitQuads(this.sink, q, m, { ...style, light: [240, style.light[1]], color: [r, 1, b, 0.5] });
+		this.batch(texture, MODE_NOCULL, start, false);
+		void now;
+	}
+
+	/** An item model's display transform ("ground", "thirdperson_righthand"...) from its parent chain. */
+	displayTransform(itemId, slot, fallback) {
+		const models = this.assets && this.assets.bundle.models;
+		if (!models) return fallback;
+		const id = itemId.includes(':') ? itemId : 'minecraft:' + itemId;
+		const colon = id.indexOf(':');
+		let current = id.slice(0, colon) + ':item/' + id.slice(colon + 1);
+		if (!models[current]) current = id.slice(0, colon) + ':block/' + id.slice(colon + 1);
+		for (let depth = 0; current && depth < 16; depth++) {
+			const model = models[current];
+			if (!model) break;
+			if (model.display && model.display[slot]) return model.display[slot];
+			const parent = model.parent;
+			current = parent ? (parent.includes(':') ? parent : 'minecraft:' + parent) : null;
+		}
+		return fallback;
+	}
+
+	/** ItemTransform.apply: translate (pixels), rotate XYZ, scale; then centre the 0..1 model. */
+	applyDisplay(m, t, mirror) {
+		const tr = t.translation || [0, 0, 0], rot = t.rotation || [0, 0, 0], sc = t.scale || [1, 1, 1];
+		translate(m, (mirror ? -tr[0] : tr[0]) / 16, tr[1] / 16, tr[2] / 16);
+		rotate(m, 0, rot[0] * DEG);
+		rotate(m, 1, (mirror ? -rot[1] : rot[1]) * DEG);
+		rotate(m, 2, (mirror ? -rot[2] : rot[2]) * DEG);
+		scale(m, sc[0], sc[1], sc[2]);
+		translate(m, -0.5, -0.5, -0.5);
+	}
+
+	drawHeld(model, m, arm, item, style, side) {
+		const mesh = this.itemMesh(item);
+		if (!mesh) return;
+		const pm = partMatrix(model, arm, m);
+		if (!pm) return;
+		// ItemInHandLayer: from the arm (block units), rotate -90 X and 180 Y, move into the fist.
+		scale(pm, 16);
+		rotate(pm, 0, -90 * DEG);
+		rotate(pm, 1, 180 * DEG);
+		translate(pm, side / 16, 0.125, -0.625);
+		const fallback = mesh.kind === 'block'
+			? { rotation: [75, 45, 0], translation: [0, 2.5, 0], scale: [0.375, 0.375, 0.375] }
+			: { rotation: [0, 0, 0], translation: [0, 3, 1], scale: [0.55, 0.55, 0.55] };
+		this.applyDisplay(pm, this.displayTransform(item, side > 0 ? 'thirdperson_righthand' : 'thirdperson_lefthand', fallback), false);
+		this.emitItem(mesh, pm, style);
+	}
+
+	drawItemFrame(e, type, pos, style) {
+		const d = e.d || {};
+		const facing = d.facing || 'south';
+		const rot = { south: [0, 0], north: [0, 180], west: [0, 90], east: [0, 270], up: [-90, 0], down: [90, 0] }[facing] || [0, 0];
+		const m = mat4();
+		translate(m, pos[0], pos[1], pos[2]);
+		rotate(m, 1, -rot[1] * DEG);
+		rotate(m, 0, -rot[0] * DEG);
+		const frame = new Float32Array(m);
+		translate(frame, -0.5, -0.5, -0.5);
+		this.emitBlock(type === 'glow_item_frame' ? 'minecraft:glow_item_frame' : 'minecraft:item_frame', frame, style, false, true);
+		if (e.item) {
+			const mesh = this.itemMesh(e.item);
+			if (mesh) {
+				const im = new Float32Array(m);
+				translate(im, 0, 0, 0.4375);
+				rotate(im, 2, -(Number(d.rotation) || 0) * 45 * DEG);
+				scale(im, 0.5);
+				if (mesh.kind === 'block') scale(im, 0.5);
+				translate(im, -0.5, -0.5, -0.5);
+				this.emitItem(mesh, im, type === 'glow_item_frame' ? { ...style, light: [240, 240] } : style);
+			}
+		}
+	}
+
+	/** Emits a block model (by block name with default state) with the atlas texture. */
+	emitBlock(name, m, style, chestFallback = false, frameModel = false) {
+		if (!this.assets) return;
+		if (!name) {
+			if (chestFallback) {
+				const model = this.library.get('minecraft:chest#main');
+				const texture = this.texture('chest/normal');
+				if (model && texture) {
+					model.reset();
+					const start = this.sink.count;
+					emitModel(this.sink, model, m, style);
+					this.batch(texture, MODE_CUTOUT, start);
+				}
+			}
+			return;
+		}
+		const key = 'block:' + name + (frameModel ? ':frame' : '');
+		let mesh = this.itemMeshes.get(key);
+		if (mesh === undefined) {
+			mesh = null;
+			const models = this.assets.models;
+			const dispatch = models && models.dispatch(name, frameModel ? { map: 'false' } : { __item: true });
+			if (dispatch) {
+				const parts = [];
+				const random = new JavaRandom();
+				random.setSeedNumber(42);
+				collectParts(dispatch, random, parts);
+				const quads = [];
+				for (const part of parts) for (const list of part.quads) for (const q of list) quads.push({ q, tint: [1, 1, 1] });
+				if (quads.length) mesh = { kind: 'block', quads: this.blockQuads(quads) };
+			}
+			this.itemMeshes.set(key, mesh);
+		}
+		if (mesh) this.emitItem(mesh, m, style);
+	}
+
+	drawBlockEntity(e, pos, style, name, size) {
+		const m = mat4();
+		translate(m, pos[0] - 0.5 * size, pos[1], pos[2] - 0.5 * size);
+		scale(m, size);
+		const fuse = Number(e.d && e.d.fuse) || 0;
+		if (fuse > 0 && fuse < 10) scale(m, 1 + (1 - fuse / 10) * 0.3);
+		this.emitBlock(name, m, { ...style, overlay: [0, fuse > 0 && Math.floor(fuse / 5) % 2 === 0 ? 1 : 0] });
+	}
+
+	drawFallingBlock(e, pos, style, world) {
+		const id = e.d && e.d.block;
+		const info = id !== undefined ? world.infos[id] : null;
+		const m = mat4();
+		translate(m, pos[0] - 0.5, pos[1], pos[2] - 0.5);
+		if (info && this.assets) {
+			const dispatch = this.assets.models.dispatch(info.name, info.props);
+			if (dispatch) {
+				const parts = [];
+				const random = new JavaRandom();
+				random.setSeedNumber(42);
+				collectParts(dispatch, random, parts);
+				const quads = [];
+				for (const part of parts) for (const list of part.quads) for (const q of list) quads.push({ q, tint: [1, 1, 1] });
+				if (quads.length) return this.emitItem({ kind: 'block', quads: this.blockQuads(quads) }, m, style);
+			}
+		}
+		return this.drawBox(e, pos, style);
+	}
+
+	// --- block entities (chests, shulker boxes, heads, banners, bells, pots) ---------------------------
+
+	prepareBlockEntities(frame, world) {
+		const o = frame.origin, cam = frame.camPos;
+		for (const section of world.sections.values()) {
+			if (!section.blockEntities || section.blockEntities.length === 0) continue;
+			for (const be of section.blockEntities) {
+				if (!be.info) continue;
+				const bx = be.x - o[0] - cam[0], by = be.y - o[1] - cam[1], bz = be.z - o[2] - cam[2];
+				if (Math.hypot(bx, by, bz) > Math.min(frame.fogEnd, 96)) continue;
+				if (!frame.frustum(bx + 0.5, by + 0.5, bz + 0.5, 1.5)) continue;
+				const def = blockEntityModel(be.info);
+				if (!def) continue;
+				const [sky, block] = world.lightAt(be.x, be.y, be.z);
+				const style = { color: [1, 1, 1, 1], light: [block * 16, sky * 16], overlay: [0, 0] };
+				this.drawBlockEntityModel(def, [bx, by, bz], style);
+			}
+		}
+	}
+
+	drawBlockEntityModel(def, p, style) {
+		const m = mat4();
+		translate(m, p[0], p[1], p[2]);
+		const emit = (layer, texturePath, matrix, color, mode = MODE_CUTOUT) => {
+			const model = this.library.get(layer);
+			const texture = this.texture(texturePath);
+			if (!model || !texture) return null;
+			model.reset();
+			const start = this.sink.count;
+			emitModel(this.sink, model, matrix, color ? { ...style, color } : style);
+			this.batch(texture, mode, start);
+			return model;
+		};
+		switch (def.kind) {
+			case 'chest': {
+				translate(m, 0.5, 0.5, 0.5);
+				rotate(m, 1, -def.yRot * DEG);
+				translate(m, -0.5, -0.5, -0.5);
+				emit(def.layer, def.texture, m);
+				break;
+			}
+			case 'shulker_box': {
+				translate(m, 0.5, 0.5, 0.5);
+				scale(m, 0.9995);
+				const f = { up: null, down: [0, 180], north: [0, 90], south: [0, -90], west: [2, -90], east: [2, 90] }[def.facing];
+				if (f) rotate(m, f[0], f[1] * DEG);
+				scale(m, 1, -1, -1);
+				translate(m, 0, -1, 0);
+				emit(def.layer, def.texture, m);
+				break;
+			}
+			case 'head': {
+				if (def.wall) {
+					const d = { north: [0, 1], south: [0, -1], west: [1, 0], east: [-1, 0] }[def.facing] || [0, 1];
+					translate(m, 0.5 + d[0] * 0.25, 0.25, 0.5 + d[1] * 0.25);
+				} else {
+					translate(m, 0.5, 0, 0.5);
+				}
+				scale(m, -1, -1, 1);
+				const yaw = def.wall ? { north: 180, south: 0, west: 270, east: 90 }[def.facing] ?? 0 : def.rotation * 22.5;
+				const model = this.library.get(def.layer);
+				const texture = this.texture(def.texture);
+				if (model && texture) {
+					model.reset();
+					if (model.parts.head) model.parts.head.yRot = yaw * DEG;
+					const start = this.sink.count;
+					emitModel(this.sink, model, m, style);
+					this.batch(texture, MODE_NOCULL, start, false);
+				}
+				break;
+			}
+			case 'banner': {
+				translate(m, 0.5, 0, 0.5);
+				if (def.wall) {
+					rotate(m, 1, -({ north: 180, south: 0, west: 90, east: 270 }[def.facing] ?? 0) * DEG);
+				} else {
+					rotate(m, 1, -def.rotation * 22.5 * DEG);
+				}
+				scale(m, 2 / 3, -2 / 3, -2 / 3);
+				const base = def.wall ? 'minecraft:wall_banner' : 'minecraft:standing_banner';
+				emit(base + '#main', 'banner/banner_base', m);
+				emit(base + '#flag', 'banner/banner_base', m);
+				emit(base + '#flag', 'banner/base', m, dyeRgb(def.color));
+				break;
+			}
+			case 'bell':
+				emit(def.layer, def.texture, m);
+				break;
+			case 'pot': {
+				translate(m, 0.5, 0, 0.5);
+				rotate(m, 1, -({ north: 180, south: 0, west: 90, east: 270 }[def.facing] ?? 0) * DEG);
+				translate(m, -0.5, 0, -0.5);
+				emit('minecraft:decorated_pot_base#main', 'decorated_pot/decorated_pot_base', m);
+				emit('minecraft:decorated_pot_sides#main', 'decorated_pot/decorated_pot_side', m);
+				break;
+			}
+			default:
+				break;
+		}
+	}
+
+	// --- drawing -------------------------------------------------------------------------------------
+
+	/** pass 'opaque': the scene; 'shadow': depth only into the sun shadow map. */
+	draw(pass, frame, shadow) {
+		if (!this.batches.length && !this.shadows.length) return;
 		const gl = this.gl;
-		const u = this.renderer.entityProgram.u;
-		for (const [name, part] of Object.entries(template.parts)) {
-			let rot = rotations[name];
-			if (part.rot) {
-				rot = rot ? [part.rot[0] + rot[0], part.rot[1] + rot[1], part.rot[2] + rot[2]] : part.rot;
+		gl.bindVertexArray(this.vao);
+		if (pass === 'shadow') {
+			const p = this.depthProgram;
+			gl.useProgram(p.program);
+			gl.uniformMatrix4fv(p.u.uMatrix, false, shadow.matrix);
+			gl.uniform1i(p.u.uTexture, 0);
+			gl.activeTexture(gl.TEXTURE0);
+			for (const b of this.batches) {
+				if (b.mode >= MODE_EYES || b.mode === MODE_TRANSLUCENT) continue;
+				gl.bindTexture(gl.TEXTURE_2D, b.texture);
+				gl.drawArrays(gl.TRIANGLES, b.start, b.count);
 			}
-			let pm = multiply(m, translation(part.pivot[0], part.pivot[1], part.pivot[2]));
-			if (!template.mc && name === 'body' && (e.sneak || e.pose === 'crouching') && template.family === 'humanoid') {
-				pm = multiply(m, translation(part.pivot[0], part.pivot[1] - 1, part.pivot[2]));
-			}
-			if (rot) {
-				if (rot[2]) pm = multiply(pm, rotationZ(rot[2]));
-				if (rot[1]) pm = multiply(pm, rotationY(rot[1]));
-				if (rot[0]) pm = multiply(pm, rotationX(rot[0]));
-			}
-			gl.uniformMatrix4fv(u.uModel, false, pm);
-			gl.bindVertexArray(part.mesh.vao);
-			gl.drawArrays(gl.TRIANGLES, 0, part.mesh.count);
+			gl.bindVertexArray(null);
+			return;
 		}
-	}
 
-	draw(frame, entities, now, world) {
-		const gl = this.gl;
-		const prog = this.renderer.entityProgram;
-		const u = prog.u;
-		gl.useProgram(prog.program);
+		const shaders = this.renderer.shaders;
+		const p = this.entityProgram(shaders);
+		const u = p.u;
+		gl.useProgram(p.program);
 		gl.uniformMatrix4fv(u.uViewProj, false, frame.viewProj);
-		gl.uniform3fv(u.uCamPos, frame.camPos);
-		gl.uniform3fv(u.uFogColor, frame.fogColor);
-		gl.uniform1f(u.uFogStart, frame.fogStart);
-		gl.uniform1f(u.uFogEnd, frame.fogEnd);
+		setFog(gl, u, frame.fog);
+		gl.uniform3fv(u.uLight0, LIGHT0);
+		gl.uniform3fv(u.uLight1, LIGHT1);
+		gl.uniform1f(u.uTime, frame.time * 20);
 		gl.activeTexture(gl.TEXTURE1);
 		gl.bindTexture(gl.TEXTURE_2D, this.renderer.lightmap);
 		gl.uniform1i(u.uLightmap, 1);
 		gl.activeTexture(gl.TEXTURE0);
 		gl.uniform1i(u.uTexture, 0);
-		gl.enable(gl.CULL_FACE);
+		if (shaders) this.renderer.bindShaderUniforms(u, frame, shadow);
+		gl.enable(gl.DEPTH_TEST);
 
-		const time = now / 1000;
-		const origin = frame.origin;
-		let visible = 0;
-		const shadows = [];
-
-		for (const e of entities) {
-			if (e.invisible && !this.showInvisible) continue;
-			const ex = e.x - origin[0], ey = e.y - origin[1], ez = e.z - origin[2];
-			if (!frame.frustum(ex, ey + e.h / 2, ez, Math.max(e.w, e.h) + 1)) continue;
-			visible++;
-
-			const model = this.modelFor(e);
-			const template = model.template;
-			const s = this.animate(e, now);
-
-			// Shadow on the first solid block below (up to 2 blocks down), fading with height.
-			if (!e.invisible && e.type !== 'minecraft:experience_orb' && world) {
-				const fx = Math.floor(e.x), fz = Math.floor(e.z);
-				for (let y = Math.floor(e.y + 0.01); y >= Math.floor(e.y) - 2; y--) {
-					const id = world.getBlockId(fx, y - 1, fz);
-					const info = id >= 0 ? world.infos[id] : null;
-					if (info && info.fullCollision) {
-						const height = e.y - y;
-						const alpha = 0.55 * Math.max(0, 1 - height / 2.5);
-						if (alpha > 0.02) {
-							const radius = Math.min(1.2, Math.max(0.25, e.w * (e.type === 'minecraft:item' ? 0.6 : 0.75)));
-							shadows.push({ center: [ex, y - origin[1] + 0.002, ez], radius, alpha });
-						}
-						break;
-					}
-				}
+		const drawBatches = filter => {
+			for (const b of this.batches) {
+				if (!filter(b)) continue;
+				gl.uniform1i(u.uMode, b.mode);
+				if (b.cull) gl.enable(gl.CULL_FACE); else gl.disable(gl.CULL_FACE);
+				gl.bindTexture(gl.TEXTURE_2D, b.texture);
+				gl.drawArrays(gl.TRIANGLES, b.start, b.count);
 			}
-			const rotations = template.mc ? animateMob(template, e, s, time, model.mc) : this.pose(template, e, s, time);
-
-			// Minecraft models are drawn at their real size; generic ones are scaled to the hitbox height.
-			const scale = template.mc ? model.mcScale / 16
-				: template.fixedScale ? (model.itemScale || 1) / 16 : (model.standing * 16 / template.height) / 16;
-			const bodyYaw = e.body ?? e.yaw;
-			let m = translation(ex, ey, ez);
-
-			if (model.fixed && template.family === 'item') {
-				m = multiply(m, translation(0, 0.1 + Math.sin(time * 2 + e.id) * 0.05, 0));
-				m = multiply(m, rotationY(time + e.id));
-			} else if (model.arrow) {
-				m = multiply(m, rotationY(-e.yaw * DEG));
-				m = multiply(m, rotationX(e.pitch * DEG));
-				m = multiply(m, scaling(1, 1, 6));
-			} else {
-				m = multiply(m, rotationY(-bodyYaw * DEG));
-			}
-
-			if (e.pose === 'swimming' || e.pose === 'fall_flying' || e.pose === 'spin_attack') {
-				m = multiply(m, translation(0, 0.3, -0.9));
-				m = multiply(m, rotationX((90 + e.pitch) * DEG));
-			} else if (e.pose === 'sleeping') {
-				m = multiply(m, translation(0, 0.3, 0.9));
-				m = multiply(m, rotationX(-90 * DEG));
-			} else if (e.sneak || e.pose === 'crouching') {
-				m = multiply(m, translation(0, -0.2, 0));
-			}
-			if (s.deadStart >= 0) {
-				const k = Math.min(1, (now - s.deadStart) / 1000);
-				m = multiply(m, rotationZ(Math.sqrt(k) * 90 * DEG));
-			}
-			m = multiply(m, scaling(scale, scale, scale));
-
-			gl.uniform1i(u.uUseTexture, model.texture ? 1 : 0);
-			if (model.texture) gl.bindTexture(gl.TEXTURE_2D, model.texture);
-			gl.uniform3f(u.uTint, 1, 1, 1);
-			gl.uniform1f(u.uHurt, e.hurt || s.deadStart >= 0 ? 1 : 0);
-			// Entities are lit by the light at their eyes, through the same lightmap as blocks.
-			const light = model.emissive ? [15, 15] : world.lightAt(Math.floor(e.x), Math.floor(e.y + e.h * 0.85), Math.floor(e.z));
-			gl.uniform2f(u.uLight, light[1] / 16, light[0] / 16);
-
-			this.drawParts(template, m, rotations, e);
-			if (model.overlay) {
-				gl.bindTexture(gl.TEXTURE_2D, model.overlay.texture);
-				this.drawParts(model.overlay.template, m, rotations, e);
-			}
-			if (e.armor && this.assets && template.family === 'humanoid') {
-				this.drawArmor(e, template, m, rotations);
-				gl.uniform3f(u.uTint, 1, 1, 1);
-			}
-			if (model.eyes) {
-				gl.bindTexture(gl.TEXTURE_2D, model.eyes);
-				gl.uniform2f(u.uLight, 15 / 16, 15 / 16);
-				gl.enable(gl.POLYGON_OFFSET_FILL);
-				gl.polygonOffset(-1, -1);
-				this.drawParts(template, m, rotations, e);
-				gl.disable(gl.POLYGON_OFFSET_FILL);
-			}
-
-			if (e.hand && template.family === 'humanoid' && (template.parts.rightArm || template.parts.right_arm)) {
-				this.drawHeldItem(m, template, rotations, e);
-			}
-		}
-
-		this.drawBlockEntities(frame, world);
-		this.renderer.drawShadows(frame.viewProj, shadows);
-		gl.bindVertexArray(null);
-		this.visibleCount = visible;
-		this.cleanupStates(now);
-	}
-
-	/** Worn armor on players and humanoid mobs, with the real equipment textures. */
-	drawArmor(e, template, m, rotations) {
-		const gl = this.gl;
-		const u = this.renderer.entityProgram.u;
-		// The player template uses camelCase part names; armor templates use Minecraft's names.
-		const r = template.mc ? rotations : {
-			head: rotations.head, body: rotations.body,
-			right_arm: rotations.rightArm, left_arm: rotations.leftArm,
-			right_leg: rotations.rightLeg, left_leg: rotations.leftLeg,
 		};
-		for (const item of e.armor) {
-			const piece = item ? armorPiece(item) : null;
-			if (!piece) continue;
-			const texture = this.entityTexture(piece.textures);
-			if (!texture) continue;
-			const armor = this.template(piece.key, () => buildMobTemplate(piece.model(), texture.width, texture.height));
-			gl.bindTexture(gl.TEXTURE_2D, texture.texture);
-			gl.uniform1i(u.uUseTexture, 1);
-			const tint = piece.tint || [1, 1, 1];
-			gl.uniform3f(u.uTint, tint[0], tint[1], tint[2]);
-			this.drawParts(armor, m, r, e);
-		}
+		gl.disable(gl.BLEND);
+		gl.depthMask(true);
+		drawBatches(b => b.mode <= MODE_NOCULL);
+		gl.enable(gl.BLEND);
+		gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+		gl.depthMask(false);
+		drawBatches(b => b.mode === MODE_TRANSLUCENT);
+		gl.blendFunc(gl.ONE, gl.ONE);
+		drawBatches(b => b.mode >= MODE_EYES);
+		gl.depthMask(true);
+		gl.enable(gl.CULL_FACE);
+		gl.bindVertexArray(null);
+		this.drawShadows(frame);
+		gl.disable(gl.BLEND);
 	}
 
-	/** Chests and other block entities collected by the mesher. */
-	drawBlockEntities(frame, world) {
-		if (!this.assets) return;
+	drawShadows(frame) {
+		if (!this.shadows.length) return;
 		const gl = this.gl;
-		const u = this.renderer.entityProgram.u;
-		const origin = frame.origin;
-		gl.uniform1f(u.uHurt, 0);
-		gl.uniform3f(u.uTint, 1, 1, 1);
-		for (const section of world.sections.values()) {
-			if (!section.blockEntities || section.blockEntities.length === 0) continue;
-			for (const be of section.blockEntities) {
-				const def = blockEntityModel(be.info.shortName, be.info.props);
-				if (!def) continue;
-				const bx = be.x - origin[0], by = be.y - origin[1], bz = be.z - origin[2];
-				if (!frame.frustum(bx + 0.5, by + 0.5, bz + 0.5, 1.5)) continue;
-				const texture = this.entityTexture(def.textures);
-				let template, useTexture = true;
-				if (texture) {
-					template = this.template('be:' + def.key, () => buildMobTemplate(def.model(), texture.width, texture.height));
-					gl.bindTexture(gl.TEXTURE_2D, texture.texture);
-				} else {
-					template = this.template('be:box', () => hitbox(be.info.colors ? be.info.colors[2] : [0.6, 0.45, 0.25], 14 / 16, 14 / 16));
-					useTexture = false;
-				}
-				gl.uniform1i(u.uUseTexture, useTexture ? 1 : 0);
-				let m = translation(bx + 0.5, by + 0.5, bz + 0.5);
-				m = multiply(m, rotationY(-def.yRot * DEG));
-				m = multiply(m, translation(-0.5, -0.5, -0.5));
-				if (useTexture) {
-					// Model space is y-up (block entity models are not flipped like mobs).
-					m = multiply(m, scaling(1 / 16, 1 / 16, 1 / 16));
-					m = multiply(m, translation(0, 24, 0));
-					m = multiply(m, rotationX(Math.PI));
-				} else {
-					m = multiply(m, translation(0.5, 0, 0.5));
-					m = multiply(m, scaling(1 / 16, 1 / 16, 1 / 16));
-				}
-				const light = world.lightAt(be.x, be.y, be.z);
-				gl.uniform2f(u.uLight, light[1] / 16, light[0] / 16);
-				this.drawParts(template, m, {}, {});
-			}
+		const p = this.blobProgram;
+		gl.useProgram(p.program);
+		gl.uniformMatrix4fv(p.u.uViewProj, false, frame.viewProj);
+		setFog(gl, p.u, frame.fog);
+		gl.enable(gl.BLEND);
+		gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ZERO, gl.ONE);
+		gl.depthMask(false);
+		gl.disable(gl.CULL_FACE);
+		gl.enable(gl.POLYGON_OFFSET_FILL);
+		gl.polygonOffset(-2, -2);
+		gl.bindVertexArray(this.blobVao);
+		for (const s of this.shadows) {
+			gl.uniform3fv(p.u.uCenter, s.center);
+			gl.uniform1f(p.u.uRadius, s.radius);
+			gl.uniform1f(p.u.uAlpha, s.alpha);
+			gl.drawArrays(gl.TRIANGLE_FAN, 0, 4);
 		}
+		gl.disable(gl.POLYGON_OFFSET_FILL);
+		gl.depthMask(true);
+		gl.enable(gl.CULL_FACE);
 		gl.bindVertexArray(null);
 	}
 
-	drawHeldItem(m, template, rotations, e) {
-		const gl = this.gl;
-		const u = this.renderer.entityProgram.u;
-		const arm = template.parts.rightArm || template.parts.right_arm;
-		let rot = rotations.rightArm || rotations.right_arm || [0, 0, 0];
-		if (arm.rot) rot = [arm.rot[0] + rot[0], arm.rot[1] + rot[1], arm.rot[2] + rot[2]];
-		let pm = multiply(m, translation(arm.pivot[0], arm.pivot[1], arm.pivot[2]));
-		if (rot[2]) pm = multiply(pm, rotationZ(rot[2]));
-		if (rot[1]) pm = multiply(pm, rotationY(rot[1]));
-		if (rot[0]) pm = multiply(pm, rotationX(rot[0]));
-		pm = multiply(pm, translation(0, -10, 2));
-		const real = this.itemModel(e.hand);
-		if (real) {
-			// Held like in third person: sprites stand upright pointing forward, blocks sit in the fist.
-			gl.bindTexture(gl.TEXTURE_2D, this.assets.texture);
-			gl.uniform1i(u.uUseTexture, 1);
-			if (real.kind === 'sprite') {
-				pm = multiply(pm, rotationX(Math.PI / 2));
-				pm = multiply(pm, rotationY(Math.PI / 2));
-				pm = multiply(pm, rotationZ(-Math.PI / 4));
-				pm = multiply(pm, scaling(0.7, 0.7, 0.7));
-				pm = multiply(pm, translation(0, -3, 0));
-			} else {
-				pm = multiply(pm, scaling(0.4, 0.4, 0.4));
-				pm = multiply(pm, translation(0, -8, 0));
-			}
-			gl.uniformMatrix4fv(u.uModel, false, pm);
-			gl.bindVertexArray(real.template.parts.body.mesh.vao);
-			gl.drawArrays(gl.TRIANGLES, 0, real.template.parts.body.mesh.count);
-			return;
-		}
-		const item = this.template('held:' + e.hand, () => {
-			const parts = {};
-			const data = [];
-			addBox(data, [-1, -1, 0], [2, 2, 6], { color: itemColor(e.hand) });
-			parts.body = { pivot: [0, 0, 0], data };
-			return { family: 'item', parts, height: 2 };
-		});
-		gl.uniform1i(u.uUseTexture, 0);
-		gl.uniformMatrix4fv(u.uModel, false, pm);
-		gl.bindVertexArray(item.parts.body.mesh.vao);
-		gl.drawArrays(gl.TRIANGLES, 0, item.parts.body.mesh.count);
-	}
+	// --- name tags -----------------------------------------------------------------------------------
 
-	cleanupStates(now) {
-		if (this.states.size < 64) return;
-		for (const [id, s] of this.states) {
-			if (now - s.seen > 5000) this.states.delete(id);
-		}
-	}
-
-	/** Positions the HTML name tags. */
-	updateLabels(frame, entities, width, height) {
+	/** Name tags only for entities on screen with a clear line of sight from the camera. */
+	updateLabels(frame, entities, width, height, world) {
 		const seen = new Set();
+		const o = frame.origin, cam = frame.camPos;
+		const eye = [cam[0] + o[0], cam[1] + o[1], cam[2] + o[2]];
 		for (const e of entities) {
-			const wantLabel = this.showLabels && (e.name || this.showAllLabels) && !(e.invisible && !this.showInvisible) && !e.type.endsWith('item');
-			if (!wantLabel) continue;
-			const origin = frame.origin;
-			const p = transformPoint(frame.viewProj, e.x - origin[0], e.y - origin[1] + e.h + 0.35, e.z - origin[2]);
-			if (p[3] <= 0 || p[0] < -1.2 || p[0] > 1.2 || p[1] < -1.2 || p[1] > 1.2) continue;
-			const dx = e.x - origin[0] - frame.camPos[0], dy = e.y - origin[1] - frame.camPos[1], dz = e.z - origin[2] - frame.camPos[2];
-			if (Math.hypot(dx, dy, dz) > frame.fogEnd) continue;
+			if (!this.showLabels || e.invisible) continue;
+			const type = strip(e.type);
+			if (type === 'item' || type === 'experience_orb' || type === 'lightning_bolt' || type.endsWith('arrow')) continue;
+			const named = !!e.name;
+			if (!named && !this.showMobLabels) continue;
+			const top = e.y + (e.h || 1) + 0.5;
+			const dx = e.x - eye[0], dy = top - eye[1], dz = e.z - eye[2];
+			const distance = Math.hypot(dx, dy, dz);
+			if (distance > (named ? 64 : 32) || distance > frame.fogEnd) continue;
+			const p = transformPoint(frame.viewProj, e.x - o[0] - cam[0], top - o[1] - cam[1], e.z - o[2] - cam[2]);
+			if (p[3] <= 0 || p[0] < -1.05 || p[0] > 1.05 || p[1] < -1.05 || p[1] > 1.1) continue;
+			// Visible if the head or the middle of the body can be seen.
+			const mid = [e.x, e.y + (e.h || 1) * 0.5, e.z];
+			const head = [e.x, e.y + (e.h || 1) * 0.9, e.z];
+			if (world.occluded(eye, head) && world.occluded(eye, mid)) continue;
 
 			const key = 'label-' + e.id;
 			seen.add(key);
@@ -1143,9 +1233,10 @@ export class EntityRenderer {
 				label.id = key;
 				this.labels.appendChild(label);
 			}
-			const text = e.name || e.type.replace('minecraft:', '').replace(/_/g, ' ');
+			const text = e.name || type.replace(/_/g, ' ');
 			if (label.textContent !== text) label.textContent = text;
-			label.classList.toggle('player', e.type === 'minecraft:player');
+			label.classList.toggle('player', type === 'player');
+			label.classList.toggle('sneaking', !!e.sneak);
 			const x = (p[0] * 0.5 + 0.5) * width;
 			const y = (1 - (p[1] * 0.5 + 0.5)) * height;
 			label.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) translate(-50%, -100%)`;
@@ -1154,15 +1245,4 @@ export class EntityRenderer {
 			if (!seen.has(label.id)) label.remove();
 		}
 	}
-}
-
-function hashColor(text) {
-	let h = 0;
-	for (let i = 0; i < text.length; i++) h = (h * 31 + text.charCodeAt(i)) | 0;
-	return [((h >> 16) & 255) / 255 * 0.5 + 0.35, ((h >> 8) & 255) / 255 * 0.5 + 0.35, (h & 255) / 255 * 0.5 + 0.35];
-}
-
-function tokenSuffix(sep) {
-	const token = new URLSearchParams(location.search).get('token');
-	return token ? sep + 'token=' + encodeURIComponent(token) : '';
 }

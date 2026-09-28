@@ -4,11 +4,13 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.BitSet;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Queue;
+import java.util.Set;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.Executor;
 
@@ -277,8 +279,14 @@ final class CameraSession {
 		syncViewers(tick);
 
 		if (tick % config.entityUpdateTicks == 0) {
+			entityBlockStates.clear();
 			String entities = entitiesJson(level, tick);
+			int[] states = entityBlockStates.stream().mapToInt(Integer::intValue).toArray();
 			for (ViewerState state : viewers) {
+				if (states.length > 0) {
+					// Falling blocks and carried blocks need their block states in the viewer's palette.
+					sendPalette(state, states);
+				}
 				state.viewer.sendEntities(entities);
 			}
 		}
@@ -799,6 +807,9 @@ final class CameraSession {
 		return json.toString();
 	}
 
+	/** Block states shown by entities in the current frame (falling blocks, carried blocks). */
+	private final Set<Integer> entityBlockStates = new HashSet<>();
+
 	private String entitiesJson(ServerLevel level, long tick) {
 		Camera c = camera;
 		double range = Math.min(c.range(), config.entityRange);
@@ -810,7 +821,7 @@ final class CameraSession {
 		for (Entity entity : entities) {
 			String type = BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType()).toString();
 			if (EntityEncoder.shouldSend(entity, type)) {
-				EntityEncoder.write(json, entity, type);
+				EntityEncoder.write(json, entity, type, entityBlockStates::add);
 			}
 		}
 		json.endArray().endObject();

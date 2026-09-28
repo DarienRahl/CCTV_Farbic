@@ -9,6 +9,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.IntConsumer;
 
 import org.jspecify.annotations.Nullable;
 
@@ -121,7 +122,13 @@ final class EntityEncoder {
 			{"isShaking", "shaking"},
 			{"isFullyFrozen", "frozen"},
 			{"isDrinkingPotion", "drinking"},
+			{"getIcon", "icon"},
+			{"getRotation", "rotation"},
+			{"isAggressive", "aggressive"},
 	};
+
+	/** Entities that hang on a block face (their direction is the face they are on). */
+	private static final Set<String> HANGING = Set.of("minecraft:painting", "minecraft:item_frame", "minecraft:glow_item_frame");
 
 	private static final Map<Class<?>, List<Map.Entry<Method, String>>> PROBE_CACHE = new ConcurrentHashMap<>();
 	private static final Map<Class<?>, Optional<Method>> SWELLING_CACHE = new ConcurrentHashMap<>();
@@ -138,7 +145,7 @@ final class EntityEncoder {
 		return !(entity instanceof Player player) || !player.isSpectator();
 	}
 
-	static void write(Json json, Entity entity, String type) {
+	static void write(Json json, Entity entity, String type, IntConsumer blockStates) {
 		json.beginObject()
 				.field("id", entity.getId())
 				.field("type", type)
@@ -190,6 +197,12 @@ final class EntityEncoder {
 
 		if (entity instanceof ItemEntity item) {
 			writeItem(json, "item", item.getItem());
+		} else {
+			// Item frames and thrown items (snowballs, potions, eyes of ender...) show an item too.
+			ItemStack shown = shownItem(entity);
+			if (shown != null) {
+				writeItem(json, "item", shown);
+			}
 		}
 		if (entity instanceof LightningBolt bolt) {
 			json.field("seed", Long.toString(bolt.seed));
@@ -212,7 +225,7 @@ final class EntityEncoder {
 			json.field("burning", true);
 		}
 
-		writeState(json, entity);
+		writeState(json, entity, blockStates);
 		json.endObject();
 	}
 
@@ -243,9 +256,37 @@ final class EntityEncoder {
 		json.endArray();
 	}
 
+	private static final Map<Class<?>, Optional<Method>> ITEM_CACHE = new ConcurrentHashMap<>();
+
+	private static @Nullable ItemStack shownItem(Entity entity) {
+		Method method = ITEM_CACHE.computeIfAbsent(entity.getClass(), cls -> {
+			try {
+				Method m = cls.getMethod("getItem");
+				return ItemStack.class.isAssignableFrom(m.getReturnType()) ? Optional.of(m) : Optional.empty();
+			} catch (NoSuchMethodException | SecurityException e) {
+				return Optional.empty();
+			}
+		}).orElse(null);
+		if (method == null) {
+			return null;
+		}
+		try {
+			return (ItemStack) method.invoke(entity);
+		} catch (ReflectiveOperationException | RuntimeException e) {
+			return null;
+		}
+	}
+
 	/** Variants and render state in a {@code "d"} object; only non-default values. */
-	private static void writeState(Json json, Entity entity) {
+	private static void writeState(Json json, Entity entity, IntConsumer blockStates) {
 		boolean open = false;
+		String type = BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType()).toString();
+		if (HANGING.contains(type)) {
+			json.name("d").beginObject();
+			open = true;
+			json.field("facing", entity.getDirection().getSerializedName());
+			writePainting(json, entity);
+		}
 		for (Map.Entry<String, DataComponentType<?>> variant : VARIANTS) {
 			Object value;
 			try {
@@ -277,7 +318,7 @@ final class EntityEncoder {
 				json.name("d").beginObject();
 				open = true;
 			}
-			writeValue(json, probe.getValue(), value);
+			writeValue(json, probe.getValue(), value, blockStates);
 		}
 
 		Method swelling = SWELLING_CACHE.computeIfAbsent(entity.getClass(), EntityEncoder::findSwelling).orElse(null);
@@ -301,7 +342,31 @@ final class EntityEncoder {
 		}
 	}
 
-	private static void writeValue(Json json, String key, Object value) {
+	/** Painting size and texture from its variant (read through accessors, the class moved between versions). */
+	private static void writePainting(Json json, Entity entity) {
+		Object holder;
+		try {
+			holder = entity.get(DataComponents.PAINTING_VARIANT);
+		} catch (RuntimeException e) {
+			return;
+		}
+		if (!(holder instanceof Holder<?> variant)) {
+			return;
+		}
+		Object value = variant.value();
+		try {
+			json.field("pw", ((Number) value.getClass().getMethod("width").invoke(value)).intValue());
+			json.field("ph", ((Number) value.getClass().getMethod("height").invoke(value)).intValue());
+			Object asset = value.getClass().getMethod("assetId").invoke(value);
+			if (asset != null) {
+				json.field("asset", asset.toString());
+			}
+		} catch (ReflectiveOperationException | RuntimeException ignored) {
+			// Unknown layout: the viewer skips the picture.
+		}
+	}
+
+	private static void writeValue(Json json, String key, Object value, IntConsumer blockStates) {
 		if (value instanceof Boolean flag) {
 			json.field(key, flag);
 		} else if (value instanceof Float || value instanceof Double) {
@@ -309,7 +374,9 @@ final class EntityEncoder {
 		} else if (value instanceof Number number) {
 			json.field(key, number.longValue());
 		} else if (value instanceof BlockState state) {
-			json.field(key, Block.getId(state));
+			int id = Block.getId(state);
+			blockStates.accept(id);
+			json.field(key, id);
 		} else if (key.equals("villager")) {
 			writeVillager(json, value);
 		} else {

@@ -215,6 +215,17 @@ export function classify(entry) {
 	return info;
 }
 
+/**
+ * Flat face colours for blocks drawn without textures, in Minecraft's direction order
+ * (down, up, north, south, west, east).
+ */
+export function blockFaceColors(entry) {
+	const fullName = entry.n || 'minecraft:air';
+	const name = fullName.startsWith('minecraft:') ? fullName.slice(10) : fullName.replace(':', '_');
+	const c = colorFor(name, entry.c, parseProps(entry.s));
+	return [c[1], c[0], c[2], c[3], c[4], c[5]];
+}
+
 export const WATER_COLOR = hexToRgb(COLORS.water);
 export const LAVA_COLOR = hexToRgb(COLORS.lava);
 
