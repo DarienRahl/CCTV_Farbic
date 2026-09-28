@@ -198,6 +198,10 @@ Stream events:
 
 ## Development
 
+- The plan: [docs/ROADMAP.md](docs/ROADMAP.md). Moving to a new Minecraft version:
+  [docs/UPDATING.md](docs/UPDATING.md).
+- `GET /api/status` shows the live camera sessions (how far each viewer got, queued messages) when
+  something does not stream as expected.
 - New release: bump `version` in `gradle.properties`, add notes in `docs/release-notes/v<version>.md`
   and push the tag `v<version>` or run the `release` workflow by hand in the Actions tab. The
   workflow builds the mod, creates the tag and publishes the release with the jar.
