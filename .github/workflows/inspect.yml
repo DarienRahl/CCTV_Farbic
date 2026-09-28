@@ -19,6 +19,9 @@ on:
       decompile:
         description: Space separated class paths to decompile, e.g. net/minecraft/client/renderer/LightTexture (inner classes included)
         default: ''
+      extract:
+        description: Regex of client jar entries to attach as the "extracted" artifact, e.g. ^assets/minecraft/font/
+        default: ''
 
 jobs:
   inspect:
@@ -73,3 +76,24 @@ jobs:
             echo "=================== $file"
             cat "$file"
           done
+      - name: extract
+        if: inputs.extract != ''
+        env:
+          PATTERN: ${{ inputs.extract }}
+        run: |
+          mkdir -p extracted
+          unzip -Z1 client.jar | grep -E "$PATTERN" | head -n 5000 > entries.txt
+          wc -l entries.txt
+          (cd extracted && xargs -a ../entries.txt -d '\n' unzip -qo ../client.jar)
+          (cd extracted && zip -qr ../extracted.zip .)
+          ls -l extracted.zip
+          # Small extracts are also printed (base64) so they can be read from the log.
+          if [ "$(stat -c %s extracted.zip)" -lt 300000 ]; then
+            base64 -w 4000 extracted.zip | sed 's/^/EXTRACT:/'
+          fi
+      - name: upload extracted files
+        if: inputs.extract != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: extracted
+          path: extracted.zip
