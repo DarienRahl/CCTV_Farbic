@@ -17,3 +17,5 @@ Optional settings in <name>.json next to it:
 Pick a sky box in the viewer ("Niebo" button) or set it for everybody in
 config/cctv/config.json:  "viewer": { "skyboxes": { "minecraft:overworld": "sunset" } }
 and run /cctv reload.
+
+sunset.jpg is an example panorama: pick "sunset" in the viewer to try it.

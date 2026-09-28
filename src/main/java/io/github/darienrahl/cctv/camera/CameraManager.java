@@ -94,6 +94,8 @@ public final class CameraManager implements CameraDirectory {
 				{"shaders", "sepia.glsl"},
 				{"shaders", "security-camera.glsl"},
 				{"skyboxes", "README.txt"},
+				{"skyboxes", "sunset.jpg"},
+				{"skyboxes", "sunset.json"},
 		};
 		for (String[] example : examples) {
 			Path dir = dataDir.resolve(example[0]);

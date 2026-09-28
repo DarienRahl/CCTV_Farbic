@@ -184,6 +184,34 @@ function endSky() {
 	return quads(list);
 }
 
+/** Average colour of the images' rows around `row` (0..1 from the top): the sky box's horizon, used for fog. */
+function averageHorizon(images, row) {
+	const canvas = new OffscreenCanvas(64, 32);
+	const g = canvas.getContext('2d', { willReadFrequently: true });
+	let r = 0, gr = 0, b = 0, n = 0;
+	for (const img of images) {
+		g.clearRect(0, 0, 64, 32);
+		g.drawImage(img, 0, 0, 64, 32);
+		const y0 = Math.max(0, Math.floor(row * 32) - 2);
+		const data = g.getImageData(0, y0, 64, 3).data;
+		for (let i = 0; i < data.length; i += 4) {
+			r += data[i]; gr += data[i + 1]; b += data[i + 2]; n++;
+		}
+	}
+	return n ? [r / n / 255, gr / n / 255, b / n / 255] : null;
+}
+
+/** Brightness applied to a custom sky box (its options and the time of day). */
+export function customBrightness(custom, sky) {
+	const o = custom.options || {};
+	let brightness = o.brightness ?? 1;
+	if (o.followDaylight !== false && sky.skybox === 'overworld') {
+		const c = sky.skyColor;
+		brightness *= Math.min(1, Math.max(0.08, Math.max(c[0], c[1], c[2])));
+	}
+	return brightness;
+}
+
 export class SkyRenderer {
 	constructor(gl) {
 		this.gl = gl;
@@ -333,13 +361,7 @@ export class SkyRenderer {
 		gl.activeTexture(gl.TEXTURE2);
 		gl.bindTexture(gl.TEXTURE_2D, custom.type === 'cube' ? null : custom.texture);
 		gl.activeTexture(gl.TEXTURE0);
-		let brightness = o.brightness ?? 1;
-		if (o.followDaylight !== false && sky.skybox === 'overworld') {
-			// Darker at night like the vanilla sky (the sky colour's brightness relative to noon).
-			const c = sky.skyColor;
-			brightness *= Math.min(1, Math.max(0.08, Math.max(c[0], c[1], c[2])));
-		}
-		gl.uniform1f(p.u.uBrightness, brightness);
+		gl.uniform1f(p.u.uBrightness, customBrightness(custom, sky));
 		gl.uniform1f(p.u.uRotation, o.rotateWithSun ? sky.sunAngle : 0);
 		gl.bindVertexArray(this.emptyVao);
 		gl.drawArrays(gl.TRIANGLES, 0, 3);
@@ -385,9 +407,13 @@ export class SkyRenderer {
 				gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 				return t;
 			});
-		Promise.all([load, options]).then(([t, o]) => {
+		const horizon = def.type === 'cube'
+			? Promise.all(['px', 'nx', 'pz', 'nz'].map(face => image(def.faces[face]))).then(images => averageHorizon(images, 0.5))
+			: image(def.file).then(img => averageHorizon([img], 0.47));
+		Promise.all([load, options, horizon.catch(() => null)]).then(([t, o, color]) => {
 			entry.texture = t;
 			entry.options = o || {};
+			entry.horizonColor = color;
 			entry.ready = true;
 		}).catch(err => {
 			console.warn('CCTV: sky box "' + name + '" could not be loaded', err);

@@ -7,7 +7,7 @@ import { Renderer } from './renderer.js';
 import { EntityRenderer } from './entities.js';
 import { Assets } from './assets.js';
 import { Environment } from './environment.js';
-import { SkyRenderer } from './sky.js';
+import { SkyRenderer, customBrightness } from './sky.js';
 import { CloudRenderer } from './clouds.js';
 import { WeatherRenderer } from './weather.js';
 import { PostProcessor } from './post.js';
@@ -140,9 +140,12 @@ function skyboxFor(dimension) {
 	return (viewerInfo.defaults.skyboxes || {})[dimension] || '';
 }
 
+let panelBuilt = false;
+
 function buildSettingsPanel() {
 	const panel = $('settings');
-	if (!panel) return;
+	if (!panel || panelBuilt) return;
+	panelBuilt = true;
 	const skyboxSelect = panel.querySelector('[data-setting="skybox"]');
 	for (const name of Object.keys(viewerInfo.skyboxes || {})) skyboxSelect.append(new Option(name, name));
 	const shaderSelect = panel.querySelector('[data-setting="postShader"]');
@@ -442,8 +445,16 @@ function frame(now) {
 	const skyLight = world.lightAt(bx, by, bz)[0];
 	environment.update(now, { x: c.x, y: c.y, z: c.z, forward: dir }, range, skyLight, inWater, deltaTicks);
 	renderer.setLightmap(environment.lightmap(settings.mode === 'night' ? 1 : 0));
-	const fog = environment.fog;
 	const skyState = environment.sky;
+	const customName = skyboxFor(environment.dim.id);
+	const customDef = customName ? (viewerInfo.skyboxes || {})[customName] : null;
+	const custom = customDef ? sky.loadCustom(customName, customDef, query) : null;
+	let fog = environment.fog;
+	if (custom && custom.ready && custom.horizonColor && !inWater) {
+		// Distant terrain fades into the sky box's horizon instead of the vanilla fog colour.
+		const k = customBrightness(custom, skyState);
+		fog = { ...fog, color: custom.horizonColor.map(c => Math.min(1, c * k)) };
+	}
 
 	const cloudRadius = settings.clouds === 'off' ? 0 : Math.min(fog.cloudEnd, settings.graphics === 'shaders' || settings.shaderQuality === 'ultra' ? 2048 : 1024);
 	const far = Math.max(range * 2 + 64, cloudRadius + 64, 600);
@@ -469,9 +480,6 @@ function frame(now) {
 	};
 	entities.prepare(frameData, list, world, environment);
 
-	const customName = skyboxFor(environment.dim.id);
-	const customDef = customName ? (viewerInfo.skyboxes || {})[customName] : null;
-	const custom = customDef ? sky.loadCustom(customName, customDef, query) : null;
 
 	const shadow = renderer.render(frameData, {
 		sky: () => sky.render(frameData, skyState, state.assets ? state.assets.environment : null, custom && custom.ready ? custom : null),

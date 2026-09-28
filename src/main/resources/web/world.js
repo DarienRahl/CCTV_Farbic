@@ -15,6 +15,9 @@ export const BLOCK_ENTITY_BLOCKS = BLOCK_ENTITY_NAMES;
 
 const EMPTY_BIOMES = new Uint16Array(64);
 
+/** Beyond this distance sections are meshed with less detail (no small plants, "fast" leaves). */
+const LOD_DISTANCE = 112;
+
 function decodeRuns(b64, fill) {
 	const binary = atob(b64);
 	let pos = 0, i = 0;
@@ -387,10 +390,13 @@ export class World {
 		}
 
 		const o = this.origin;
+		const base = [section.x * 16 - o[0], section.y * 16 - o[1], section.z * 16 - o[2]];
+		const distance = Math.hypot(base[0] + 8 - this.eye[0], base[1] + 8 - this.eye[1], base[2] + 8 - this.eye[2]);
 		return {
 			sx: section.x, sy: section.y, sz: section.z,
-			base: [section.x * 16 - o[0], section.y * 16 - o[1], section.z * 16 - o[2]],
+			base,
 			eye: this.eye,
+			lod: distance > LOD_DISTANCE ? 1 : 0,
 			pad, light, biomes,
 		};
 	}

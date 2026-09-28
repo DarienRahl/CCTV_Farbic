@@ -177,6 +177,8 @@ export function describeState(entry, parseProps, classifyColors) {
 		boxes: entry.b || [],
 		mapColor: entry.c || 0,
 		tints: TINTS.get(name) || null,
+		leaves: shortName.endsWith('_leaves'),
+		decoration: (flags & F_NO_COLLISION) !== 0 && !(flags & (F_WATER | F_LAVA)) && !(entry.l > 0),
 		vertexFlags: (WAVING_LEAVES.test(shortName) ? VF_WAVING_LEAVES : 0) | (WAVING_PLANT.test(shortName) ? VF_WAVING_PLANT : 0)
 			| ((entry.l || 0) > 0 || (flags & F_EMISSIVE) ? VF_EMISSIVE : 0),
 		dispatch: undefined,
@@ -332,6 +334,7 @@ export class Mesher {
 		this.pad = job.pad;
 		this.light = job.light;
 		this.job = job;
+		this.lod = job.lod || 0;
 		this.biomeGrid = job.biomes;
 		this.blockBiomes = null;
 		this.tintCache = new Map();
@@ -352,6 +355,8 @@ export class Mesher {
 					const bx = x + job.base[0], by = y + job.base[1], bz = z + job.base[2];
 					const wx = wx0 + x, wy = wy0 + y, wz = wz0 + z;
 
+					// Far away (level of detail 1): grass, flowers and other small decorations are left out.
+					if (this.lod && info.decoration) continue;
 					if (info.water || info.lava) {
 						this.tesselateFluid(info, p, bx, by, bz, wx, wy, wz, info.water ? translucent : opaque);
 					}
@@ -436,6 +441,8 @@ export class Mesher {
 		if (!neighbor || neighbor.air) return true;
 		if (neighbor.occludes & (1 << OPPOSITE[d])) return false;
 		if ((info.skip & (1 << d)) && (nid === id || neighbor.name === info.name)) return false;
+		// Far away, leaves hide each other like the "fast" leaves setting.
+		if (this.lod && info.leaves && neighbor.leaves) return false;
 		return true;
 	}
 
