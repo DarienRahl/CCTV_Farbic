@@ -39,13 +39,13 @@ to the milestone it belongs to.
 
 ## 1.2 — easy updates
 
-- [ ] `docs/UPDATING.md`: the step-by-step update procedure and the list of game touch points
-- [ ] **Update workflow** (`update-minecraft.yml`): for a given game version it resolves Fabric
+- [x] `docs/UPDATING.md`: the step-by-step update procedure and the list of game touch points
+- [x] **Update workflow** (`update-minecraft.yml`): for a given game version it resolves Fabric
       Loader, Fabric API and Loom, bumps `gradle.properties` and `fabric.mod.json`, builds, runs
       the server test and pushes an `update/<version>` branch with a report
-- [ ] **Ported-classes diff**: `docs/ported-classes.txt` lists the game classes the viewer ports;
+- [x] **Ported-classes diff**: `docs/ported-classes.txt` lists the game classes the viewer ports;
       the inspect workflow decompiles them for two versions and prints the diff
-- [ ] **Soft failures**: every feature that touches the game API catches `LinkageError`, logs once
+- [x] **Soft failures**: every feature that touches the game API catches `LinkageError`, logs once
       and switches itself off, so a newer game version degrades instead of crashing
 - [ ] **Automatic entity mapping**: read `EntityRenderers` from `client.jar` (bytecode) to map each
       entity type to its model layers and textures; the hand-written table only overrides. New

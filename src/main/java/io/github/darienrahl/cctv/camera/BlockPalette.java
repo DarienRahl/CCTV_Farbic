@@ -55,7 +55,23 @@ final class BlockPalette {
 	private final Map<Integer, String> cache = new HashMap<>();
 
 	String describe(int id) {
-		return cache.computeIfAbsent(id, BlockPalette::compute);
+		return cache.computeIfAbsent(id, BlockPalette::computeSafely);
+	}
+
+	/** A state the table cannot describe (changed game API, unusual modded block) still gets its name. */
+	private static String computeSafely(int id) {
+		try {
+			return compute(id);
+		} catch (RuntimeException | LinkageError e) {
+			Problems.report(null, "block state " + id, e);
+			BlockState state = Block.stateById(id);
+			return new Json(96).beginObject()
+					.field("id", id)
+					.field("n", BuiltInRegistries.BLOCK.getKey(state.getBlock()).toString())
+					.field("f", 0)
+					.name("b").raw("[[0,0,0,1,1,1]]")
+					.endObject().toString();
+		}
 	}
 
 	private static String compute(int id) {

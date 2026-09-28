@@ -11,6 +11,7 @@ import net.minecraft.world.level.block.state.BlockState;
 
 import io.github.darienrahl.cctv.CctvMod;
 import io.github.darienrahl.cctv.camera.CameraManager;
+import io.github.darienrahl.cctv.camera.Problems;
 
 /**
  * Forwards block changes (the same ones vanilla sends to players) to the
@@ -27,7 +28,12 @@ public abstract class ServerLevelMixin {
 	private void cctv$onBlockUpdated(BlockPos pos, BlockState oldState, BlockState newState, int flags, CallbackInfo ci) {
 		CameraManager manager = CctvMod.manager();
 		if (manager != null) {
-			manager.onBlockChanged((ServerLevel) (Object) this, pos, newState);
+			try {
+				manager.onBlockChanged((ServerLevel) (Object) this, pos, newState);
+			} catch (RuntimeException | LinkageError e) {
+				// Never break block updates of the game; the periodic re-scan catches up.
+				Problems.report(null, "block update tracking", e);
+			}
 		}
 	}
 }

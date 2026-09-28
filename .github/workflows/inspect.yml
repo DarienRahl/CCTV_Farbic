@@ -22,11 +22,18 @@ on:
       extract:
         description: Regex of client jar entries to attach as the "extracted" artifact, e.g. ^assets/minecraft/font/
         default: ''
+      compare_with:
+        description: Older version; decompiles the game classes the viewer ports (docs/ported-classes.txt) in both versions and prints the differences
+        default: ''
 
 jobs:
   inspect:
     runs-on: ubuntu-24.04
     steps:
+      - name: checkout repository
+        uses: actions/checkout@v6
+        with:
+          path: repo
       - name: setup jdk
         uses: actions/setup-java@v5
         with:
@@ -36,17 +43,7 @@ jobs:
         env:
           MC_VERSION: ${{ inputs.version }}
         run: |
-          python3 - <<'PY'
-          import json, os, urllib.request
-          version = os.environ["MC_VERSION"]
-          manifest = json.load(urllib.request.urlopen("https://piston-meta.mojang.com/mc/game/version_manifest_v2.json"))
-          url = next(v["url"] for v in manifest["versions"] if v["id"] == version)
-          downloads = json.load(urllib.request.urlopen(url))["downloads"]
-          urllib.request.urlretrieve(downloads["client"]["url"], "client.jar")
-          urllib.request.urlretrieve(downloads["server"]["url"], "server-bundle.jar")
-          PY
-          mkdir bundle && (cd bundle && unzip -q ../server-bundle.jar 'META-INF/versions/*')
-          cp bundle/META-INF/versions/*/*.jar server.jar
+          python3 repo/.github/scripts/fetch_minecraft.py "$MC_VERSION" client.jar server.jar
           curl -sSfL -o vineflower.jar https://repo1.maven.org/maven2/org/vineflower/vineflower/1.11.1/vineflower-1.11.1.jar
       - name: list classes
         if: inputs.list != ''
@@ -97,3 +94,21 @@ jobs:
         with:
           name: extracted
           path: extracted.zip
+      - name: diff ported classes
+        if: inputs.compare_with != ''
+        env:
+          OLD: ${{ inputs.compare_with }}
+          NEW: ${{ inputs.version }}
+        run: |
+          python3 repo/.github/scripts/fetch_minecraft.py "$OLD" old-client.jar
+          decompile() {
+            rm -rf "cls-$2" "src-$2" && mkdir -p "cls-$2" "src-$2"
+            grep -vE '^\s*(#|$)' repo/docs/ported-classes.txt | while read -r cls; do
+              (cd "cls-$2" && unzip -qo "../$1" "$cls.class" "$cls\$*.class" 2>/dev/null || true)
+            done
+            java -jar vineflower.jar -dgs=1 -rsy=1 -log=WARN -e="$1" "cls-$2" "src-$2" > /dev/null 2>&1 || true
+          }
+          decompile old-client.jar "$OLD"
+          decompile client.jar "$NEW"
+          echo "Changes in the ported game classes from $OLD to $NEW:"
+          diff -ru "src-$OLD" "src-$NEW" || true

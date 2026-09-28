@@ -3,7 +3,15 @@
 # mod and checks the camera stream end to end.
 
 name: build
-on: [pull_request, push]
+on:
+  pull_request:
+  push:
+  workflow_call:
+    inputs:
+      ref:
+        description: Branch or commit to build (used by update-minecraft)
+        type: string
+        default: ''
 
 jobs:
   build:
@@ -11,6 +19,8 @@ jobs:
     steps:
       - name: checkout repository
         uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref }}
       - name: validate gradle wrapper
         uses: gradle/actions/wrapper-validation@v6
       - name: setup jdk
@@ -35,6 +45,8 @@ jobs:
     steps:
       - name: checkout repository
         uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref }}
       - name: setup jdk
         uses: actions/setup-java@v5
         with:

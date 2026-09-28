@@ -156,7 +156,16 @@ public final class CameraManager implements CameraDirectory {
 
 		for (Map.Entry<String, CameraSession> entry : sessions.entrySet()) {
 			CameraSession session = entry.getValue();
-			if (!session.tick(findLevel(session.camera().dimension()), tick)) {
+			boolean alive;
+			try {
+				alive = session.tick(findLevel(session.camera().dimension()), tick);
+			} catch (RuntimeException | LinkageError e) {
+				// Never take the game server down: drop the session, its viewers reconnect to a fresh one.
+				Problems.report(logger, "camera " + session.camera().name(), e);
+				session.fail();
+				alive = false;
+			}
+			if (!alive) {
 				// Conditional remove: a web thread may already have replaced the disposed session.
 				if (sessions.remove(entry.getKey(), session)) {
 					logger.info("CCTV: nobody watched camera '{}' for a minute, its data was released", session.camera().name());

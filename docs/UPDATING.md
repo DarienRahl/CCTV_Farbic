@@ -7,18 +7,21 @@ of game APIs on the server and a set of client classes the viewer ports to JavaS
 
 ## Procedure
 
-1. **Bump the versions** in `gradle.properties` (`minecraft_version`, `loader_version`,
-   `fabric_api_version`, `loom_version`) and the `minecraft` range in
-   `src/main/resources/fabric.mod.json`. Current values are listed on
+1. **Run the `update-minecraft` workflow** with the new version. It finds the matching Fabric
+   Loader and Fabric API, updates `gradle.properties` and `fabric.mod.json`, pushes the branch
+   `update/<version>` and runs the build and the server test on it (steps 2 and 3). By hand: bump
+   `minecraft_version`, `loader_version`, `fabric_api_version` (and `loom_version` if needed) and
+   the `minecraft` range in `fabric.mod.json`; current values are on
    <https://fabricmc.net/develop/>.
 2. **Build** (`./gradlew build`, or push and let the `build` workflow do it). Compile errors point
    at the touch points below; fix them there.
 3. **Run the server test** (the `server-test` job of the `build` workflow). It starts a real
    dedicated server, builds a scene, streams two cameras and saves viewer screenshots. A green run
    with sensible screenshots means the server side works.
-4. **Check the ported client code.** Run the `inspect-minecraft` workflow with `decompile` set to
-   the classes in the table below for the old and the new version and compare. Port the changes
-   into the named viewer files.
+4. **Check the ported client code.** Run the `inspect-minecraft` workflow with `version` set to
+   the new version and `compare_with` set to the old one. It decompiles every class listed in
+   [ported-classes.txt](ported-classes.txt) in both versions and prints the differences; port them
+   into the viewer files named in the table below.
 5. **Look at the screenshots** (vanilla and shader mode, far camera) and at the browser log lines
    in the job output (`[browser] ...`).
 6. Write `docs/release-notes/v<version>.md` and run the `release` workflow.

@@ -221,6 +221,20 @@ final class CameraSession {
 		this.needsRebuild = true;
 	}
 
+	/** Something went wrong: viewers are disconnected without "removed", so they reconnect to a new session. */
+	synchronized void fail() {
+		disposed = true;
+		for (ViewerState state : viewers) {
+			state.viewer.close();
+		}
+		viewers.clear();
+		Viewer viewer;
+		while ((viewer = pending.poll()) != null) {
+			viewer.close();
+		}
+		viewerCount = 0;
+	}
+
 	/** Camera was removed. */
 	synchronized void closeAll() {
 		disposed = true;
@@ -262,7 +276,10 @@ final class CameraSession {
 				viewers.add(new ViewerState(joined));
 				joined.send("init", initJson(tick));
 				if (level != null) {
-					joined.send("env", environment.json(level, camera, tick));
+					String env = sampleEnvironment(level, tick);
+					if (env != null) {
+						joined.send("env", env);
+					}
 				}
 			}
 		}
@@ -315,13 +332,21 @@ final class CameraSession {
 		}
 
 		if (tick % EnvironmentSampler.INTERVAL_TICKS == 0) {
-			String env = environment.json(level, camera, tick);
-			for (ViewerState state : viewers) {
-				state.viewer.send("env", env);
+			String env = sampleEnvironment(level, tick);
+			if (env != null) {
+				for (ViewerState state : viewers) {
+					state.viewer.send("env", env);
+				}
 			}
 		}
 		if (tick % WeatherSampler.INTERVAL_TICKS == 5) {
-			String weather = WeatherSampler.json(level, camera);
+			String weather;
+			try {
+				weather = WeatherSampler.json(level, camera);
+			} catch (RuntimeException | LinkageError e) {
+				Problems.report(null, "weather sampling", e);
+				weather = null;
+			}
 			if (weather != null) {
 				for (ViewerState state : viewers) {
 					state.viewer.send("weather", weather);
@@ -364,6 +389,25 @@ final class CameraSession {
 					.endObject();
 		}
 		json.endArray();
+	}
+
+	private @Nullable String sampleEnvironment(ServerLevel level, long tick) {
+		try {
+			return environment.json(level, camera, tick);
+		} catch (RuntimeException | LinkageError e) {
+			// The viewer keeps its last sky and light instead of losing the camera.
+			Problems.report(null, "environment sampling", e);
+			return null;
+		}
+	}
+
+	private static SectionCapture.@Nullable Snapshot snapshotSafely(ServerLevel level, SectionEntry entry) {
+		try {
+			return SectionCapture.snapshot(level, entry.x, entry.y, entry.z);
+		} catch (RuntimeException | LinkageError e) {
+			Problems.report(null, "reading sections", e);
+			return null;
+		}
 	}
 
 	/** Called by the mixin for every block change in any level. */
@@ -593,7 +637,7 @@ final class CameraSession {
 					entry.status = Status.EMPTY;
 					continue;
 				}
-				SectionCapture.Snapshot snapshot = SectionCapture.snapshot(level, entry.x, entry.y, entry.z);
+				SectionCapture.Snapshot snapshot = snapshotSafely(level, entry);
 				if (snapshot == null) {
 					entry.status = Status.EMPTY;
 				} else {
@@ -739,7 +783,7 @@ final class CameraSession {
 			if (isBuried(entry, minSurface(chunk, entry.x, entry.z))) {
 				continue;
 			}
-			SectionCapture.Snapshot snapshot = SectionCapture.snapshot(level, entry.x, entry.y, entry.z);
+			SectionCapture.Snapshot snapshot = snapshotSafely(level, entry);
 			if (snapshot != null) {
 				if (entry.status != Status.READY) {
 					entry.status = Status.PENDING;
@@ -936,7 +980,14 @@ final class CameraSession {
 		for (Entity entity : entities) {
 			String type = BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType()).toString();
 			if (EntityEncoder.shouldSend(entity, type)) {
-				EntityEncoder.write(json, entity, type, entityBlockStates::add);
+				long mark = json.mark();
+				try {
+					EntityEncoder.write(json, entity, type, entityBlockStates::add);
+				} catch (RuntimeException | LinkageError e) {
+					// One entity the encoder does not understand (mod entity, changed game API) is left out.
+					json.reset(mark);
+					Problems.report(null, "entity " + type, e);
+				}
 			}
 		}
 		json.endArray().endObject();

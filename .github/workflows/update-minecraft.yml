@@ -1,0 +1,44 @@
+# Moves the mod to another Minecraft version: resolves Fabric Loader and Fabric API for it, pushes
+# the change to the branch update/<version> and runs the full build and server test on that
+# branch. A green run means the update works as is; otherwise the build log points at the game
+# APIs that changed (see docs/UPDATING.md). Run it from the Actions tab ("Run workflow").
+
+name: update-minecraft
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Minecraft version, e.g. 26.4
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  bump:
+    runs-on: ubuntu-24.04
+    outputs:
+      branch: ${{ steps.push.outputs.branch }}
+    steps:
+      - name: checkout repository
+        uses: actions/checkout@v6
+      - name: resolve Fabric versions and update the build files
+        run: python3 .github/scripts/bump_minecraft.py "${{ inputs.version }}"
+      - name: push update/${{ inputs.version }}
+        id: push
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          branch="update/$VERSION"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$branch"
+          git commit -am "Update to Minecraft $VERSION"
+          git push -f origin "$branch"
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+
+  test:
+    needs: bump
+    uses: ./.github/workflows/build.yml
+    with:
+      ref: ${{ needs.bump.outputs.branch }}

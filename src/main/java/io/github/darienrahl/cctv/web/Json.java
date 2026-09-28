@@ -18,6 +18,16 @@ public final class Json {
 		this.sb = new StringBuilder(capacity);
 	}
 
+	/** Position to go back to with {@link #reset} (drops a half-written value after an error). */
+	public long mark() {
+		return ((long) sb.length() << 1) | (needComma ? 1 : 0);
+	}
+
+	public void reset(long mark) {
+		sb.setLength((int) (mark >>> 1));
+		needComma = (mark & 1) != 0;
+	}
+
 	public Json beginObject() {
 		comma();
 		sb.append('{');
