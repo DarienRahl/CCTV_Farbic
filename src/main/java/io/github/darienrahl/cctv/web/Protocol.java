@@ -23,7 +23,11 @@ public final class Protocol {
 	}
 
 	public static String section(int sx, int sy, int sz, int[] states) {
-		return section(sx, sy, sz, states, null, null, null, null);
+		return section(sx, sy, sz, states, null, null, null, null, null);
+	}
+
+	public static String section(int sx, int sy, int sz, int[] states, byte[] sky, byte[] block, String[] biomePalette, byte[] biomes) {
+		return section(sx, sy, sz, states, sky, block, biomePalette, biomes, null);
 	}
 
 	/**
@@ -31,8 +35,10 @@ public final class Protocol {
 	 * @param block        block light per block (0-15), or {@code null}
 	 * @param biomePalette biome ids used in the section, or {@code null}
 	 * @param biomes       64 palette indices (4x4x4, YZX order), ignored when the palette has one entry
+	 * @param blockEntities JSON array with what the viewer draws on top of block models (sign text...), or {@code null}
 	 */
-	public static String section(int sx, int sy, int sz, int[] states, byte[] sky, byte[] block, String[] biomePalette, byte[] biomes) {
+	public static String section(int sx, int sy, int sz, int[] states, byte[] sky, byte[] block, String[] biomePalette, byte[] biomes,
+			String blockEntities) {
 		int[] palette = new int[16];
 		int paletteSize = 0;
 		ByteArrayOutputStream runs = new ByteArrayOutputStream(64);
@@ -105,6 +111,9 @@ public final class Protocol {
 			if (biomePalette.length > 1 && biomes != null) {
 				json.field("bi", Base64.getEncoder().encodeToString(biomes));
 			}
+		}
+		if (blockEntities != null) {
+			json.name("be").raw(blockEntities);
 		}
 		return json.endObject().toString();
 	}

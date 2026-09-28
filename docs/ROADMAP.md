@@ -60,8 +60,9 @@ to the milestone it belongs to.
 - [ ] **Reference renders in CI**: a Fabric client game test builds the CI scene in single
       player, takes a screenshot from the camera position with the game, and the viewer takes
       one from the same camera; both are published side by side with a difference score
-- [ ] **Signs and hanging signs** with their text in the game font (text sent by the server)
-- [ ] **Beds**, **banners with patterns**, player heads with skins, conduit, lectern and
+- [x] **Signs and hanging signs** with their text in the game font (text sent by the server; boards and
+      beds are block models in 26.3 and were already drawn)
+- [ ] **Banners with patterns**, player heads with skins, conduit, lectern and
       enchanting table books, beacon beams, end portal and end gateway effect, spawner and
       trial spawner contents, campfire items, brushable blocks, decorated pot patterns
 - [ ] **Particles** from `particles/*.json` and their textures: torch, candle and campfire flames

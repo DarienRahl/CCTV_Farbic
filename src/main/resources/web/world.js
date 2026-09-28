@@ -89,6 +89,8 @@ export class World {
 	reset(origin) {
 		this.origin = origin;
 		this.sections = new Map();
+		/** Sign text by section key (from the "be" list of sections). */
+		this.signs = new Map();
 		this.dirty = new Set();
 		this.generation++;
 		this.pending = new Map();
@@ -174,6 +176,9 @@ export class World {
 		}
 
 		const key = World.key(message.x, message.y, message.z);
+		const signs = (message.be || []).filter(be => be.k === 'sign');
+		if (signs.length) this.signs.set(key, signs);
+		else this.signs.delete(key);
 		this.sections.set(key, {
 			key, x: message.x, y: message.y, z: message.z,
 			states, light, biomes,

@@ -48,7 +48,11 @@ net/minecraft/client/renderer/blockentity/BannerRenderer
 net/minecraft/client/renderer/blockentity/SkullBlockRenderer
 net/minecraft/client/renderer/blockentity/DecoratedPotRenderer
 
-# name tags and text (nametags.js)
+# name tags and text (text.js, entities.js)
 net/minecraft/client/renderer/SubmitNodeCollection
+net/minecraft/client/renderer/feature/TextFeatureRenderer
+net/minecraft/client/renderer/blockentity/AbstractSignRenderer
+net/minecraft/client/renderer/blockentity/StandingSignRenderer
+net/minecraft/client/renderer/blockentity/HangingSignRenderer
 net/minecraft/client/gui/font/providers/BitmapProvider
 net/minecraft/client/gui/font/glyphs/BakedSheetGlyph

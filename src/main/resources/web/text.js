@@ -1,8 +1,7 @@
-// Name tags drawn like the game does (EntityRenderer name tags + Font): Minecraft's own font from the
-// client jar (font/default.json with its bitmap glyph sheets, the same glyph widths and ascents as in the
-// game), 0.025 blocks per font pixel, parallel to the screen, half a block above the entity's head, a 25%
-// black background and text that shows through blocks at half strength (except for sneaking players),
-// lit by the lightmap and fogged like the rest of the world.
+// Text in the world drawn like the game does: Minecraft's own font from the client jar (font/default.json
+// with its bitmap glyph sheets, the same glyph widths and ascents as in the game) and the text render
+// types of TextFeatureRenderer / SubmitNodeCollection: see-through (name tags), normal and polygon offset
+// (sign text), 8x outlines (glowing sign text), backgrounds, lightmap lighting and fog.
 
 import { program, FOG_GLSL, setFog } from './gl.js';
 
@@ -44,10 +43,29 @@ void main() {
 }`;
 
 const FLOATS = 11; // position 3, uv 2, colour 4, light 2
-const SCALE = 0.025;
+const NAME_TAG_SCALE = 0.025; // EntityRenderer.NAMETAG_SCALE
 const SEE_THROUGH_TEXT = [1, 1, 1, 0x80 / 255]; // 0x80FFFFFF
 const BACKGROUND = [0, 0, 0, 0x40 / 255]; // options.getBackgroundOpacity(0.25)
 const WHITE = [1, 1, 1, 1];
+const FULL_BRIGHT = [240, 240];
+
+/** Font.DisplayMode as render settings. */
+const MODES = {
+	see_through: { depth: false, lit: false, fog: false, offset: false },
+	normal: { depth: true, lit: true, fog: true, offset: false },
+	polygon_offset: { depth: true, lit: true, fog: true, offset: true },
+};
+const MODE_ORDER = ['normal', 'polygon_offset', 'see_through'];
+
+/** Colour int (0xRRGGBB, alpha ignored) as floats. */
+export function rgb(color, alpha = 1) {
+	return [(color >> 16 & 255) / 255, (color >> 8 & 255) / 255, (color & 255) / 255, alpha];
+}
+
+/** (fx, fy) in font units -> camera relative position, for a column-major matrix. */
+export function matrixTransform(m) {
+	return (fx, fy) => [m[0] * fx + m[4] * fy + m[12], m[1] * fx + m[5] * fy + m[13], m[2] * fx + m[6] * fy + m[14]];
+}
 
 /** The game's default font: glyphs by code point from the bitmap providers, in provider order. */
 export class GameFont {
@@ -165,6 +183,20 @@ export class GameFont {
 		return glyph;
 	}
 
+	/** The first line of Font.split(text, width): the text broken at the last space (or character) that fits. */
+	clip(text, width) {
+		if (this.width(text) <= width) return text;
+		let used = 0, cut = 0, lastSpace = -1, i = 0;
+		for (const ch of text) {
+			used += this.glyph(ch.codePointAt(0)).advance;
+			if (used > width) break;
+			if (ch === ' ') lastSpace = i;
+			i += ch.length;
+			cut = i;
+		}
+		return lastSpace > 0 ? text.slice(0, lastSpace) : text.slice(0, cut);
+	}
+
 	/** Font.width */
 	width(text) {
 		let width = 0;
@@ -189,7 +221,7 @@ function filterMatches(filter) {
 	return Object.entries(filter).every(([, value]) => value === false);
 }
 
-export class NameTagRenderer {
+export class TextRenderer {
 	constructor(gl) {
 		this.gl = gl;
 		this.font = new GameFont(gl);
@@ -197,6 +229,7 @@ export class NameTagRenderer {
 		this.data = new Float32Array(FLOATS * 6 * 256);
 		this.count = 0;
 		this.draws = [];
+		this.items = [];
 		this.vao = gl.createVertexArray();
 		this.vbo = gl.createBuffer();
 		gl.bindVertexArray(this.vao);
@@ -213,7 +246,7 @@ export class NameTagRenderer {
 	load(query) {
 		if (this.loading) return;
 		this.loading = this.font.load(query).catch(error => {
-			console.warn('CCTV: the Minecraft font is not available, name tags are hidden', error);
+			console.warn('CCTV: the Minecraft font is not available, name tags and sign text are hidden', error);
 		});
 	}
 
@@ -221,42 +254,72 @@ export class NameTagRenderer {
 		return this.font.ready;
 	}
 
-	/**
-	 * tags: [{pos: [x, y, z] camera relative attachment point (entity top), text, discrete, light: [block, sky] (0..240)}]
-	 * right, up: the camera's axes (the tags are parallel to the screen like cameraOrientation()).
-	 */
-	build(tags, right, up) {
-		this.count = 0;
-		this.draws = [];
-		if (!this.font.ready || !tags.length) return;
-		const seeThrough = [], normal = [], discrete = [];
-		for (const tag of tags) {
-			// EntityRenderer.submitNameTag: attachment + 0.5 up, deadmau5 one line higher.
-			const origin = [tag.pos[0], tag.pos[1] + 0.5, tag.pos[2]];
-			const y = tag.text === 'deadmau5' ? -10 : 0;
-			const x = -this.font.width(tag.text) / 2;
-			const lit = [Math.max(tag.light[0], 32), tag.light[1]]; // lightCoordsWithEmission(light, 2)
-			const put = (list, color, light, background) => list.push({ origin, x, y, text: tag.text, color, light, background });
-			if (tag.discrete) {
-				put(discrete, SEE_THROUGH_TEXT, tag.light, true);
-			} else {
-				put(seeThrough, SEE_THROUGH_TEXT, tag.light, true);
-				put(normal, WHITE, lit, false);
-			}
-		}
-		this.font.flush();
-		this.pass(seeThrough, right, up, { depth: false, lit: false, fog: false });
-		this.pass(discrete, right, up, { depth: true, lit: true, fog: true });
-		this.pass(normal, right, up, { depth: true, lit: true, fog: true });
+	/** Starts a frame's text. */
+	begin() {
+		this.items = [];
 	}
 
-	pass(items, right, up, mode) {
-		if (!items.length) return;
+	/**
+	 * One string. transform(fx, fy) maps font units to camera relative coordinates; color [r, g, b, a];
+	 * light [block, sky] (0..240); mode: see_through / normal / polygon_offset; background: RGBA or null.
+	 */
+	add(transform, text, x, y, color, light, mode, background = null) {
+		if (text) this.items.push({ transform, text, x, y, color, light, mode, background });
+	}
+
+	/** Font.prepare8xTextOutline: the text in the outline colour around it, then the text on top. */
+	addOutlined(transform, text, x, y, color, outline, light) {
+		for (let dx = -1; dx <= 1; dx++) {
+			for (let dy = -1; dy <= 1; dy++) {
+				if (dx || dy) this.add(transform, text, x + dx, y + dy, outline, light, 'normal');
+			}
+		}
+		this.add(transform, text, x, y, color, light, 'polygon_offset');
+	}
+
+	/**
+	 * SubmitNodeCollection.submitNameTag. tags: [{pos: [x, y, z] camera relative attachment point (entity top),
+	 * text, discrete, light: [block, sky] (0..240)}]; right, up: the camera's axes (cameraOrientation()).
+	 */
+	nameTags(tags, right, up) {
+		for (const tag of tags) {
+			// Attachment + 0.5 up, deadmau5 one line higher; scale(0.025, -0.025, 0.025).
+			const o = [tag.pos[0], tag.pos[1] + 0.5, tag.pos[2]];
+			const transform = (fx, fy) => [
+				o[0] + (right[0] * fx - up[0] * fy) * NAME_TAG_SCALE,
+				o[1] + (right[1] * fx - up[1] * fy) * NAME_TAG_SCALE,
+				o[2] + (right[2] * fx - up[2] * fy) * NAME_TAG_SCALE,
+			];
+			const y = tag.text === 'deadmau5' ? -10 : 0;
+			const x = -this.font.width(tag.text) / 2;
+			if (tag.discrete) {
+				this.add(transform, tag.text, x, y, SEE_THROUGH_TEXT, tag.light, 'normal', BACKGROUND);
+			} else {
+				// lightCoordsWithEmission(light, 2) for the solid text.
+				this.add(transform, tag.text, x, y, WHITE, [Math.max(tag.light[0], 32), tag.light[1]], 'normal');
+				this.add(transform, tag.text, x, y, SEE_THROUGH_TEXT, tag.light, 'see_through', BACKGROUND);
+			}
+		}
+	}
+
+	/** Builds the vertex data of everything added since begin(). */
+	finish() {
+		this.count = 0;
+		this.draws = [];
+		if (!this.font.ready || !this.items.length) return;
+		for (const item of this.items) this.font.width(item.text); // creates browser-drawn glyphs before the upload
+		this.font.flush();
+		for (const mode of MODE_ORDER) {
+			const items = this.items.filter(item => item.mode === mode);
+			if (items.length) this.pass(items, MODES[mode]);
+		}
+	}
+
+	pass(items, mode) {
 		const quad = (item, x0, y0, x1, y1, u0, v0, u1, v1, color) => {
-			const o = item.origin;
 			const corner = (fx, fy, u, v) => {
-				this.vertex(o[0] + (right[0] * fx - up[0] * fy) * SCALE, o[1] + (right[1] * fx - up[1] * fy) * SCALE,
-					o[2] + (right[2] * fx - up[2] * fy) * SCALE, u, v, color, item.light);
+				const p = item.transform(fx, fy);
+				this.vertex(p[0], p[1], p[2], u, v, color, item.light);
 			};
 			corner(x0, y0, u0, v0); corner(x0, y1, u0, v1); corner(x1, y1, u1, v1);
 			corner(x0, y0, u0, v0); corner(x1, y1, u1, v1); corner(x1, y0, u1, v0);
@@ -266,7 +329,7 @@ export class NameTagRenderer {
 		if (backgrounds.length) {
 			const start = this.count;
 			for (const item of backgrounds) {
-				quad(item, item.x - 1, item.y - 1, item.x + this.font.width(item.text), item.y + 9, 0, 0, 0, 0, BACKGROUND);
+				quad(item, item.x - 1, item.y - 1, item.x + this.font.width(item.text), item.y + 9, 0, 0, 0, 0, item.background);
 			}
 			this.draws.push({ ...mode, texture: null, start, count: this.count - start, background: true });
 		}
@@ -325,8 +388,12 @@ export class NameTagRenderer {
 		gl.depthMask(false);
 		for (const d of this.draws) {
 			if (d.depth) gl.enable(gl.DEPTH_TEST); else gl.disable(gl.DEPTH_TEST);
-			// The background sits a hair behind its text.
-			if (d.background && d.depth) {
+			if (d.offset) {
+				// RenderStateShard POLYGON_OFFSET_LAYERING: the text sits in front of the sign face.
+				gl.enable(gl.POLYGON_OFFSET_FILL);
+				gl.polygonOffset(-1, -10);
+			} else if (d.background && d.depth) {
+				// The background sits a hair behind its text.
 				gl.enable(gl.POLYGON_OFFSET_FILL);
 				gl.polygonOffset(1, 1);
 			} else {
@@ -346,3 +413,5 @@ export class NameTagRenderer {
 		gl.bindVertexArray(null);
 	}
 }
+
+export { FULL_BRIGHT };

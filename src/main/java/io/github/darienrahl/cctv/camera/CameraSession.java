@@ -174,6 +174,7 @@ final class CameraSession {
 	private int farRescanCursor;
 	private int diskReads;
 	private final List<int[]> blockChanges = new ArrayList<>();
+	private final Set<SectionEntry> blockEntityRefresh = new HashSet<>();
 	private final LinkedHashMap<SectionEntry, Boolean> lightWatch = new LinkedHashMap<>();
 	private String biomes = "{}";
 	private int idleTicks;
@@ -288,6 +289,7 @@ final class CameraSession {
 
 		if (viewers.isEmpty()) {
 			blockChanges.clear();
+			blockEntityRefresh.clear();
 			results.clear();
 			return ++idleTicks <= IDLE_DISPOSE_TICKS || !tryDispose();
 		}
@@ -314,6 +316,7 @@ final class CameraSession {
 		installResults();
 		scheduleCaptures(level);
 		flushBlockChanges(tick);
+		refreshBlockEntities(level);
 		refreshLight(level, tick);
 		rescan(level);
 		syncViewers(tick);
@@ -430,12 +433,33 @@ final class CameraSession {
 			}
 			entry.changesInFlight.add(new int[]{index, id});
 		}
-		if (entry.data == null || entry.data.states[index] == id) {
+		if (entry.data == null) {
+			return;
+		}
+		if (entry.data.states[index] == id) {
+			// Same block, new block entity data (a sign was edited): read the section again.
+			if (state.hasBlockEntity()) {
+				blockEntityRefresh.add(entry);
+			}
 			return;
 		}
 
 		entry.data.set(index, id);
 		blockChanges.add(new int[]{x, y, z, id, entry.order});
+	}
+
+	/** Re-reads sections whose block entities changed (the result is compared and sent when different). */
+	private void refreshBlockEntities(ServerLevel level) {
+		if (blockEntityRefresh.isEmpty()) {
+			return;
+		}
+		for (SectionEntry entry : blockEntityRefresh) {
+			SectionCapture.Snapshot snapshot = snapshotSafely(level, entry);
+			if (snapshot != null) {
+				submit(entry, snapshot);
+			}
+		}
+		blockEntityRefresh.clear();
 	}
 
 	private void rebuild(@Nullable ServerLevel level) {
@@ -446,6 +470,7 @@ final class CameraSession {
 		columns.clear();
 		surfaceCache.clear();
 		blockChanges.clear();
+		blockEntityRefresh.clear();
 		lightWatch.clear();
 		results.clear();
 		captureCursor = 0;

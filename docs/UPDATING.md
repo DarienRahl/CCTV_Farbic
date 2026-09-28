@@ -51,5 +51,5 @@ of game APIs on the server and a set of client classes the viewer ports to JavaS
 | `SkyRenderer`, `CloudRenderer`, `WeatherEffectRenderer`, `LightningBoltRenderer` | `sky.js`, `clouds.js`, `weather.js` |
 | `EntityRenderer`, `LivingEntityRenderer`, `AvatarRenderer`, mob renderers | `entities.js`, `mobs.js` |
 | `HumanoidModel` and the other `setupAnim` models, `WalkAnimationState`, `RemotePlayer` | `mobs.js`, `entities.js` |
-| `SubmitNodeCollection#submitNameTag`, `BitmapProvider`, `BakedSheetGlyph` | `nametags.js` |
+| `SubmitNodeCollection#submitNameTag`, `TextFeatureRenderer`, `AbstractSignRenderer`, `StandingSignRenderer`, `HangingSignRenderer`, `BitmapProvider`, `BakedSheetGlyph` | `text.js`, `entities.js` |
 | `BlockEntityRenderer`s (chest, shulker box, bell, banner, skull, decorated pot) | `entities.js`, `mobs.js` |

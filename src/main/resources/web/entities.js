@@ -12,7 +12,7 @@ import { JavaRandom } from './rng.js';
 import { program, FOG_GLSL, setFog } from './gl.js';
 import { SHADOW_GLSL, SHADER_LIGHT_GLSL } from './renderer.js';
 import { lerp, lerpAngle, wrapDegrees } from './math.js';
-import { NameTagRenderer } from './nametags.js';
+import { TextRenderer, rgb, matrixTransform, FULL_BRIGHT } from './text.js';
 
 const MODE_CUTOUT = 0, MODE_NOCULL = 1, MODE_TRANSLUCENT = 2, MODE_EYES = 3, MODE_ENERGY = 4;
 const MODES = { cutout: MODE_CUTOUT, cutout_nocull: MODE_NOCULL, translucent: MODE_TRANSLUCENT, eyes: MODE_EYES, energy: MODE_ENERGY };
@@ -157,6 +157,14 @@ function tokenSuffix(sep) {
 const strip = id => (id || '').replace(/^minecraft:/, '');
 const titleCase = name => name.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
 
+/** Direction.toYRot() */
+const FACING_Y_ROT = { south: 0, west: 90, north: 180, east: 270 };
+
+/** ARGB.scaleRGB */
+function scaleRgb(color, factor) {
+	return (Math.floor((color >> 16 & 255) * factor) << 16) | (Math.floor((color >> 8 & 255) * factor) << 8) | Math.floor((color & 255) * factor);
+}
+
 function hashColor(text) {
 	let h = 0;
 	for (let i = 0; i < text.length; i++) h = (h * 31 + text.charCodeAt(i)) | 0;
@@ -204,7 +212,7 @@ export class EntityRenderer {
 	constructor(renderer) {
 		this.renderer = renderer;
 		this.gl = renderer.gl;
-		this.nameTags = new NameTagRenderer(this.gl);
+		this.text = new TextRenderer(this.gl);
 		this.library = new ModelLibrary();
 		this.sink = new VertexSink();
 		this.batches = [];
@@ -259,7 +267,7 @@ export class EntityRenderer {
 			.then(r => (r.ok ? r.json() : []))
 			.then(list => { this.entityList = new Set(list); })
 			.catch(() => { this.entityList = new Set(); });
-		this.nameTags.load(query);
+		this.text.load(query);
 		this.library.load(query).then(ok => {
 			if (!ok) console.warn('CCTV: entity models unavailable, entities are drawn as boxes');
 		});
@@ -524,7 +532,10 @@ export class EntityRenderer {
 		}
 		this.visibleCount = visible;
 		const view = frame.viewRotation;
-		this.nameTags.build(this.collectNameTags(frame, list, world), [view[0], view[4], view[8]], [view[1], view[5], view[9]]);
+		this.text.begin();
+		this.text.nameTags(this.collectNameTags(frame, list, world), [view[0], view[4], view[8]], [view[1], view[5], view[9]]);
+		this.addSignText(frame, world);
+		this.text.finish();
 		if (this.assets) this.prepareBlockEntities(frame, world);
 		this.upload();
 		this.cleanupStates(now);
@@ -1327,7 +1338,7 @@ export class EntityRenderer {
 	 */
 	collectNameTags(frame, list, world) {
 		const tags = [];
-		if (!this.nameTags.ready) return tags;
+		if (!this.text.ready) return tags;
 		const o = frame.origin, cam = frame.camPos;
 		const eye = [cam[0] + o[0], cam[1] + o[1], cam[2] + o[2]];
 		for (const e of list) {
@@ -1356,8 +1367,80 @@ export class EntityRenderer {
 		return tags;
 	}
 
-	/** Draws the name tags prepared for this frame (after the translucent world, before clouds and weather). */
+	/** Draws the name tags and sign text prepared for this frame (after the translucent world, before clouds and weather). */
 	drawNameTags(frame) {
-		this.nameTags.draw(frame, this.renderer.lightmap);
+		this.text.draw(frame, this.renderer.lightmap);
+	}
+
+	/**
+	 * Sign text (AbstractSignRenderer with the StandingSignRenderer / HangingSignRenderer transformations) for
+	 * signs within the block entity view distance; the sign boards themselves are block models.
+	 */
+	addSignText(frame, world) {
+		if (!this.text.ready || !world.signs.size) return;
+		const o = frame.origin, cam = frame.camPos;
+		const eye = [cam[0] + o[0], cam[1] + o[1], cam[2] + o[2]];
+		for (const signs of world.signs.values()) {
+			for (const sign of signs) {
+				const dx = sign.x + 0.5 - eye[0], dy = sign.y + 0.5 - eye[1], dz = sign.z + 0.5 - eye[2];
+				const distance = Math.hypot(dx, dy, dz);
+				if (distance > 64) continue;
+				const rx = sign.x - o[0] - cam[0], ry = sign.y - o[1] - cam[1], rz = sign.z - o[2] - cam[2];
+				if (!frame.frustum(rx + 0.5, ry + 0.5, rz + 0.5, 1.5)) continue;
+				const info = world.infoAt(sign.x, sign.y, sign.z);
+				if (!info) continue;
+				const name = info.name;
+				const hanging = name.endsWith('hanging_sign');
+				const wall = name.endsWith('_wall_sign') || name.endsWith('_wall_hanging_sign');
+				if (!hanging && !name.endsWith('_sign')) continue;
+				const angle = wall ? (FACING_Y_ROT[info.props.facing] ?? 0) : Number(info.props.rotation || 0) * 22.5;
+				const [sky, block] = world.lightAt(sign.x, sign.y, sign.z);
+				const light = [block * 16, sky * 16];
+				for (const back of [false, true]) {
+					const side = back ? sign.b : sign.f;
+					if (!side) continue;
+					const m = mat4();
+					translate(m, rx, ry, rz);
+					if (hanging) {
+						translate(m, 0.5, 0.9375, 0.5);
+						rotate(m, 1, -angle * DEG);
+						translate(m, 0, -0.3125, 0);
+						if (back) rotate(m, 1, Math.PI);
+						translate(m, 0, -0.32, 0.073);
+						scale(m, 0.0140625, -0.0140625, 0.0140625);
+					} else {
+						translate(m, 0.5, 0.5, 0.5);
+						rotate(m, 1, -angle * DEG);
+						if (wall) translate(m, 0, -0.3125, -0.4375);
+						if (back) rotate(m, 1, Math.PI);
+						translate(m, 0, 0.33333334, 0.046666667);
+						scale(m, 0.010416667, -0.010416667, 0.010416667);
+					}
+					this.signSide(matrixTransform(m), side, sign, light, distance);
+				}
+			}
+		}
+	}
+
+	/** AbstractSignRenderer.submitSignText */
+	signSide(transform, side, sign, light, distance) {
+		const color = side.c || 0;
+		const dark = side.g && color === 0 ? 0xF0EBCC : scaleRgb(color, 0.4); // getDarkColor
+		const lineHeight = sign.lh || 10;
+		const middle = 4 * lineHeight / 2;
+		const lines = side.l || [];
+		for (let i = 0; i < lines.length; i++) {
+			const line = this.text.font.clip(lines[i], sign.w || 90);
+			if (!line) continue;
+			const x = -this.text.font.width(line) / 2;
+			const y = i * lineHeight - middle;
+			if (side.g) {
+				// Glowing text: full bright in the dye colour, outlined when black or when the camera is close.
+				if (color === 0 || distance < 16) this.text.addOutlined(transform, line, x, y, rgb(color), rgb(dark), FULL_BRIGHT);
+				else this.text.add(transform, line, x, y, rgb(color), FULL_BRIGHT, 'polygon_offset');
+			} else {
+				this.text.add(transform, line, x, y, rgb(dark), light, 'polygon_offset');
+			}
+		}
 	}
 }

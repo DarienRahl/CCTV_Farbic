@@ -48,6 +48,8 @@ final class SectionCapture {
 	/** Sorted distinct block state ids, for the palette sent before the section. */
 	int[] distinct;
 	@Nullable String json;
+	/** Block entity details for the viewer (JSON array, e.g. sign text), or {@code null}. */
+	@Nullable String blockEntities;
 	/** Only air with the dimension's default light: the viewer assumes this for sections it never receives. */
 	boolean trivial;
 	private byte defaultSky;
@@ -60,7 +62,12 @@ final class SectionCapture {
 			@Nullable PalettedContainer<BlockState> states,
 			@Nullable PalettedContainerRO<Holder<Biome>> biomes,
 			byte @Nullable [] skyPacked, byte @Nullable [] skyColumns, byte skyFill,
-			byte @Nullable [] blockPacked, byte defaultSky) {
+			byte @Nullable [] blockPacked, byte defaultSky, @Nullable String blockEntities) {
+
+		Snapshot(int sx, int sy, int sz, @Nullable PalettedContainer<BlockState> states, @Nullable PalettedContainerRO<Holder<Biome>> biomes,
+				byte @Nullable [] skyPacked, byte @Nullable [] skyColumns, byte skyFill, byte @Nullable [] blockPacked, byte defaultSky) {
+			this(sx, sy, sz, states, biomes, skyPacked, skyColumns, skyFill, blockPacked, defaultSky, null);
+		}
 
 		/** Heavy part: runs on a worker thread. */
 		SectionCapture decode() {
@@ -71,9 +78,10 @@ final class SectionCapture {
 			data.decodeBiomes(biomes);
 			data.distinct = Arrays.stream(data.states).distinct().sorted().toArray();
 			data.defaultSky = defaultSky;
+			data.blockEntities = blockEntities;
 			data.updateTrivial();
 			if (!data.trivial) {
-				data.json = Protocol.section(sx, sy, sz, data.states, data.sky, data.block, data.biomePalette, data.biomes);
+				data.json = Protocol.section(sx, sy, sz, data.states, data.sky, data.block, data.biomePalette, data.biomes, blockEntities);
 			}
 			return data;
 		}
@@ -117,7 +125,8 @@ final class SectionCapture {
 			}
 		}
 		DataLayer block = level.getLightEngine().getLayerListener(LightLayer.BLOCK).getDataLayerData(pos);
-		return new Snapshot(sx, sy, sz, states, biomes, packed(sky), skyColumns, (byte) 0, packed(block), defaultSky(level));
+		return new Snapshot(sx, sy, sz, states, biomes, packed(sky), skyColumns, (byte) 0, packed(block), defaultSky(level),
+				BlockEntityEncoder.section(chunk, sy));
 	}
 
 	/** Sky light the viewer assumes where it has no data: full daylight in dimensions with a sky, darkness otherwise. */
@@ -126,7 +135,7 @@ final class SectionCapture {
 	}
 
 	private void updateTrivial() {
-		trivial = distinct.length == 1 && distinct[0] == AIR_ID && uniform(block, (byte) 0) && uniform(sky, defaultSky);
+		trivial = blockEntities == null && distinct.length == 1 && distinct[0] == AIR_ID && uniform(block, (byte) 0) && uniform(sky, defaultSky);
 	}
 
 	private static boolean uniform(byte[] values, byte value) {
@@ -158,7 +167,8 @@ final class SectionCapture {
 
 	boolean sameAs(SectionCapture other) {
 		return Arrays.equals(states, other.states) && Arrays.equals(sky, other.sky) && Arrays.equals(block, other.block)
-				&& Arrays.equals(biomes, other.biomes) && Arrays.equals(biomePalette, other.biomePalette);
+				&& Arrays.equals(biomes, other.biomes) && Arrays.equals(biomePalette, other.biomePalette)
+				&& java.util.Objects.equals(blockEntities, other.blockEntities);
 	}
 
 	/** A block changed (server thread). {@link #distinct} may keep ids that are gone, which is harmless. */
@@ -184,7 +194,7 @@ final class SectionCapture {
 
 	String json(int sx, int sy, int sz) {
 		if (json == null) {
-			json = Protocol.section(sx, sy, sz, states, sky, block, biomePalette, biomes);
+			json = Protocol.section(sx, sy, sz, states, sky, block, biomePalette, biomes, blockEntities);
 		}
 		return json;
 	}
