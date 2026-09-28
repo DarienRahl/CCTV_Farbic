@@ -77,13 +77,17 @@ class StreamReader(threading.Thread):
         self.error = None
         self.response = None
         self.closed = False
+        self.lines = 0
+        self.connected = False
 
     def run(self):
         try:
             with urllib.request.urlopen(self.url, timeout=60) as response:
                 self.response = response
+                self.connected = True
                 event = None
                 for raw in response:
+                    self.lines += 1
                     line = raw.decode().rstrip("\n")
                     if line.startswith("event: "):
                         event = line[7:]
@@ -292,7 +296,8 @@ def resubscribe_check():
     stream = StreamReader("far")
     stream.start()
     ok = stream.ready.wait(90)
-    print("far camera after idle:", stream.events, "sections:", len(stream.sections), "error:", stream.error, flush=True)
+    print("far camera after idle:", stream.events, "sections:", len(stream.sections), "error:", stream.error,
+          "connected:", stream.connected, "lines:", stream.lines, "reading:", stream.is_alive(), flush=True)
     return [] if ok else [f"far camera: no 'ready' after its session was released (events: {stream.events})"]
 
 

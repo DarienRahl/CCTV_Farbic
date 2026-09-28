@@ -158,7 +158,9 @@ public final class CameraManager implements CameraDirectory {
 			CameraSession session = entry.getValue();
 			if (!session.tick(findLevel(session.camera().dimension()), tick)) {
 				// Conditional remove: a web thread may already have replaced the disposed session.
-				sessions.remove(entry.getKey(), session);
+				if (sessions.remove(entry.getKey(), session)) {
+					logger.info("CCTV: nobody watched camera '{}' for a minute, its data was released", session.camera().name());
+				}
 			}
 		}
 	}
@@ -248,7 +250,10 @@ public final class CameraManager implements CameraDirectory {
 				return Subscription.NOT_FOUND;
 			}
 
-			CameraSession session = sessions.computeIfAbsent(key, k -> new CameraSession(camera, config, palette, workers));
+			CameraSession session = sessions.computeIfAbsent(key, k -> {
+				logger.info("CCTV: camera '{}' is being watched, streaming starts", camera.name());
+				return new CameraSession(camera, config, palette, workers);
+			});
 			if (session.viewerCount() >= config.maxViewersPerCamera) {
 				return Subscription.FULL;
 			}
