@@ -83,7 +83,8 @@ to the milestone it belongs to. The roadmap on the README page is drawn from thi
 - [x] **Block breaking progress**: the cracks of blocks players are mining (the destroy stages drawn
       over the block's own model like SheetedDecalTextureGenerator and the crumbling pipeline)
 - [ ] Conduit, the end gateway beam, brushable blocks
-- [ ] **Shield patterns** (the banner patterns and base colour of held shields, ShieldModel)
+- [x] **Shields with their patterns** (ShieldSpecialRenderer: the base colour and banner patterns, held,
+      dropped and in item frames; items in the left hand mirrored like ItemTransform)
 - [ ] **Chests, shulker boxes, bells and pistons move** from the server's block events (ChestLidController,
       ShulkerBoxBlockEntity progress, BellRenderer, PistonHeadRenderer)
 - [ ] **Sounds**: the sounds the server sends players (mobs, steps, blocks, doors, explosions) and the

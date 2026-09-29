@@ -35,11 +35,13 @@ import net.minecraft.world.entity.decoration.ItemFrame;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.player.PlayerModelPart;
+import net.minecraft.world.item.DyeColor;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.component.DyedItemColor;
 import net.minecraft.world.item.equipment.Equippable;
 import net.minecraft.world.item.equipment.trim.ArmorTrim;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.entity.BannerPatternLayers;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.saveddata.maps.MapDecoration;
 import net.minecraft.world.level.saveddata.maps.MapId;
@@ -223,6 +225,8 @@ final class EntityEncoder {
 			}
 			writeItem(json, "hand", living.getMainHandItem());
 			writeItem(json, "offhand", living.getOffhandItem());
+			writePatterns(json, "handPatterns", living.getMainHandItem());
+			writePatterns(json, "offhandPatterns", living.getOffhandItem());
 			writeItem(json, "saddle", living.getItemBySlot(EquipmentSlot.SADDLE));
 			writeItem(json, "bodyArmor", living.getItemBySlot(EquipmentSlot.BODY));
 			writeArmor(json, living);
@@ -260,12 +264,14 @@ final class EntityEncoder {
 
 		if (entity instanceof ItemEntity item) {
 			writeItem(json, "item", item.getItem());
+			writePatterns(json, "itemPatterns", item.getItem());
 			foil |= foil(item.getItem(), FOIL_ITEM);
 		} else {
 			// Item frames and thrown items (snowballs, potions, eyes of ender...) show an item too.
 			ItemStack shown = shownItem(entity);
 			if (shown != null) {
 				writeItem(json, "item", shown);
+				writePatterns(json, "itemPatterns", shown);
 				foil |= foil(shown, FOIL_ITEM);
 			}
 		}
@@ -439,6 +445,33 @@ final class EntityEncoder {
 		if (!stack.isEmpty()) {
 			json.field(name, BuiltInRegistries.ITEM.getKey(stack.getItem()).toString());
 		}
+	}
+
+	/**
+	 * The base colour and banner patterns of an item that shows them (shields, like ShieldSpecialRenderer):
+	 * {"b": base dye, "p": [[pattern asset, dye], ...]}, only when it has either.
+	 */
+	private static void writePatterns(Json json, String name, ItemStack stack) {
+		if (stack.isEmpty()) {
+			return;
+		}
+		DyeColor base = stack.get(DataComponents.BASE_COLOR);
+		BannerPatternLayers patterns = stack.get(DataComponents.BANNER_PATTERNS);
+		boolean layers = patterns != null && !patterns.layers().isEmpty();
+		if (base == null && !layers) {
+			return;
+		}
+		json.name(name).beginObject();
+		if (base != null) {
+			json.field("b", base.getSerializedName());
+		}
+		json.name("p").beginArray();
+		if (layers) {
+			for (BannerPatternLayers.Layer layer : patterns.layers()) {
+				json.beginArray().value(layer.pattern().value().assetId().toString()).value(layer.color().getSerializedName()).endArray();
+			}
+		}
+		json.endArray().endObject();
 	}
 
 	/** Worn armor as item ids [head, chest, legs, feet] (null when empty), only if anything is worn. */

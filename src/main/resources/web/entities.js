@@ -52,6 +52,16 @@ const DECAL_UV = {
 	east: (x, y, z) => [z, -y],
 };
 
+/** Shields are drawn by ShieldSpecialRenderer, not from a sprite. */
+const isShield = item => /^(minecraft:)?shield$/.test(item || '');
+/** models/item/shield.json display transforms, for a bundle without item models. */
+const SHIELD_DISPLAY = {
+	thirdperson_righthand: { rotation: [0, 90, 0], translation: [10, 6, -4], scale: [1, 1, 1] },
+	thirdperson_lefthand: { rotation: [0, 90, 0], translation: [10, 6, 12], scale: [1, 1, 1] },
+	ground: { rotation: [0, 0, 0], translation: [2, 4, 2], scale: [0.25, 0.25, 0.25] },
+	fixed: { rotation: [0, 180, 0], translation: [-4.5, 4.5, -5], scale: [0.55, 0.55, 0.55] },
+};
+
 /** Direction.getStepX/Y/Z and toYRot of the facings. */
 const FACING_STEP = { north: [0, 0, -1], south: [0, 0, 1], west: [-1, 0, 0], east: [1, 0, 0], up: [0, 1, 0], down: [0, -1, 0] };
 const FACING_YROT = { south: 0, west: 90, north: 180, east: 270 };
@@ -1235,10 +1245,10 @@ export class EntityRenderer {
 
 		// Held items (ItemInHandLayer).
 		if (e.hand && base.parts.right_arm && base.parts.right_arm.visible) {
-			this.drawHeld(base, m, 'right_arm', e.hand, e.foil & FOIL_HAND ? { ...style, glint: GLINT_ITEM } : style, 1);
+			this.drawHeld(base, m, 'right_arm', e.hand, e.foil & FOIL_HAND ? { ...style, glint: GLINT_ITEM } : style, 1, e.handPatterns);
 		}
 		if (e.offhand && base.parts.left_arm && base.parts.left_arm.visible) {
-			this.drawHeld(base, m, 'left_arm', e.offhand, e.foil & FOIL_OFFHAND ? { ...style, glint: GLINT_ITEM } : style, -1);
+			this.drawHeld(base, m, 'left_arm', e.offhand, e.foil & FOIL_OFFHAND ? { ...style, glint: GLINT_ITEM } : style, -1, e.offhandPatterns);
 		}
 
 		// EntityRenderDispatcher: no shadow under invisible entities
@@ -1536,15 +1546,21 @@ export class EntityRenderer {
 	}
 
 	drawDroppedItem(e, pos, style) {
-		const mesh = this.itemMesh(e.item);
-		if (!mesh) return this.drawBox(e, pos, style);
+		const shield = isShield(e.item);
+		const mesh = shield ? null : this.itemMesh(e.item);
+		if (!mesh && !shield) return this.drawBox(e, pos, style);
 		const age = e.age || 0;
 		const bobOffset = (e.id * 0.618) % (Math.PI * 2);
 		const bob = Math.sin(age / 10 + bobOffset) * 0.1 + 0.1;
 		const m = mat4();
 		// ItemEntityRenderer: bob, spin, then the model's "ground" transform resting on its lowest point.
-		translate(m, pos[0], pos[1] + bob + (mesh.kind === 'block' ? 0.0625 : 0.125), pos[2]);
+		translate(m, pos[0], pos[1] + bob + (!mesh || mesh.kind === 'block' ? 0.0625 : 0.125), pos[2]);
 		rotate(m, 1, age / 20 + bobOffset);
+		if (shield) {
+			this.drawShield(m, 'ground', e.foil & FOIL_ITEM ? { ...style, glint: GLINT_ITEM } : style, e.itemPatterns);
+			this.shadowFor(e, pos, 0.15, this.world, 0.75);
+			return;
+		}
 		const fallback = mesh.kind === 'block'
 			? { translation: [0, 3, 0], scale: [0.25, 0.25, 0.25] }
 			: { translation: [0, 2, 0], scale: [0.5, 0.5, 0.5] };
@@ -1613,9 +1629,10 @@ export class EntityRenderer {
 		translate(m, -0.5, -0.5, -0.5);
 	}
 
-	drawHeld(model, m, arm, item, style, side) {
-		const mesh = this.itemMesh(item);
-		if (!mesh) return;
+	drawHeld(model, m, arm, item, style, side, patterns) {
+		const shield = isShield(item);
+		const mesh = shield ? null : this.itemMesh(item);
+		if (!mesh && !shield) return;
 		const pm = partMatrix(model, arm, m);
 		if (!pm) return;
 		// ItemInHandLayer: from the arm (block units), rotate -90 X and 180 Y, move into the fist.
@@ -1623,11 +1640,47 @@ export class EntityRenderer {
 		rotate(pm, 0, -90 * DEG);
 		rotate(pm, 1, 180 * DEG);
 		translate(pm, side / 16, 0.125, -0.625);
+		const slot = side > 0 ? 'thirdperson_righthand' : 'thirdperson_lefthand';
+		if (shield) return this.drawShield(pm, slot, style, patterns);
 		const fallback = mesh.kind === 'block'
 			? { rotation: [75, 45, 0], translation: [0, 2.5, 0], scale: [0.375, 0.375, 0.375] }
 			: { rotation: [0, 0, 0], translation: [0, 3, 1], scale: [0.55, 0.55, 0.55] };
-		this.applyDisplay(pm, this.displayTransform(item, side > 0 ? 'thirdperson_righthand' : 'thirdperson_lefthand', fallback), false);
+		// ItemTransform.apply(leftHand): the left hand mirrors the translation and the Y and Z turns
+		this.applyDisplay(pm, this.displayTransform(item, slot, fallback), side < 0);
 		this.emitItem(mesh, pm, style);
+	}
+
+	/**
+	 * ShieldSpecialRenderer: the shield model after the item's display transform (models/item/shield.json),
+	 * the handle and plate with the base texture, then like BannerRenderer.submitPatterns the base colour and
+	 * every pattern layer (entity/shield/<pattern>) over the plate in their dye colours.
+	 */
+	drawShield(m, slot, style, patterns) {
+		const model = this.library.get('minecraft:shield#main');
+		if (!model || !model.parts.plate) return;
+		this.applyDisplay(m, this.displayTransform('minecraft:shield', slot, SHIELD_DISPLAY[slot] || {}), slot.endsWith('lefthand'));
+		scale(m, 1, -1, -1);
+		const hasPatterns = !!patterns && (!!patterns.b || !!(patterns.p && patterns.p.length));
+		const base = this.texture(hasPatterns ? 'shield/base' : 'shield/base_nopattern');
+		if (!base) return;
+		model.reset();
+		let start = this.sink.count;
+		emitModel(this.sink, model, m, style);
+		this.batch(base, MODE_CUTOUT, start, true, style.glint || 0);
+		if (!hasPatterns) return;
+		const handle = model.parts.handle;
+		if (handle) handle.visible = false;
+		const layer = (texture, color) => {
+			if (!texture) return;
+			start = this.sink.count;
+			emitModel(this.sink, model, m, { ...style, color, glint: 0 });
+			this.batch(texture, MODE_TRANSLUCENT, start, false);
+		};
+		layer(this.texture('shield/base'), dyeRgb(patterns.b || 'white'));
+		for (const [asset, color] of (patterns.p || []).slice(0, 16)) {
+			layer(this.texture('shield/' + String(asset).replace(/^[a-z0-9_.-]+:/, '')), dyeRgb(color));
+		}
+		if (handle) handle.visible = true;
 	}
 
 	/**
@@ -1662,6 +1715,10 @@ export class EntityRenderer {
 			translate(m, -64, -64, -1);
 			// getLightCoords: a glow frame lights its map at 15728850 (block 210, sky 240)
 			if (texture) this.drawMap(e, m, glow ? { ...style, light: [210, 240] } : style, texture);
+		} else if (isShield(e.item)) {
+			rotate(m, 2, rotation * 45 * DEG);
+			scale(m, 0.5);
+			this.drawShield(m, 'fixed', glow ? { ...style, light: [240, 240] } : style, e.itemPatterns);
 		} else if (e.item) {
 			const mesh = this.itemMesh(e.item);
 			if (mesh) {

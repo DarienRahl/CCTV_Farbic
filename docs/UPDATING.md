@@ -65,6 +65,7 @@ of game APIs on the server and a set of client classes the viewer ports to JavaS
 | `SkinTextureDownloader#processLegacySkin` | `entities.js` (`normalizeSkin`) |
 | Block breaking: `LevelRenderer#submitBlockDestroyAnimation`, `SheetedDecalTextureGenerator`, `RenderPipelines.CRUMBLING` (blend and depth bias) | `entities.js` (`drawBreaking`, `DECAL_UV`, `MODE_CRUMBLING`) |
 | `SpawnerRenderer`, `TrialSpawnerRenderer#extractSpawnerData`, `BaseSpawner#clientTick` (spin and particles) | `entities.js` (`drawSpawner`), `particles.js` |
+| `ShieldSpecialRenderer`, `BannerRenderer#submitPatterns`, `ItemTransform#apply` (left hand) and `models/item/*.json` display transforms (in the asset bundle) | `entities.js` (`drawShield`, `drawHeld`, `applyDisplay`) |
 | `EntityRenderer#extractRenderState` leash states and `LeashFeatureRenderer` (the server sends `Leashable#getLeashOffset`, `Entity#getRopeHoldPosition` and the quad leash offsets) | `entities.js` (`drawLeashes`, `emitLeash`), `EntityEncoder.java` (`writeLeash`) |
 | Server particles: `LevelEventHandler`, `ClientPacketListener#handleParticleEvent`/`handleExplosion`, `ClientExplosionTracker`, `ClientLevel#addDestroyBlockEffect`, the `handleEntityEvent` particles, `ParticleResources` (which class draws a type). The server side hooks `ServerLevel#levelEvent`, `#sendParticles` and `#explode` | `particles.js` (`effect`, `PROVIDERS`), `EffectEncoder.java`, `ServerLevelMixin.java` |
 | `KeyframeAnimation`, `AnimationChannel`, `AnimationState` | `keyframes.js` |

@@ -211,3 +211,5 @@ com/mojang/blaze3d/vertex/SheetedDecalTextureGenerator
 net/minecraft/client/renderer/blockentity/SpawnerRenderer
 net/minecraft/client/renderer/blockentity/TrialSpawnerRenderer
 net/minecraft/world/level/BaseSpawner
+net/minecraft/client/renderer/special/ShieldSpecialRenderer
+net/minecraft/client/renderer/block/model/ItemTransform

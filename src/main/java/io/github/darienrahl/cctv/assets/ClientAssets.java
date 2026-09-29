@@ -490,7 +490,7 @@ public final class ClientAssets implements AutoCloseable {
 				try {
 					if (rest.startsWith("blockstates/") && rest.endsWith(".json")) {
 						blockstates.put(namespace + ":" + strip(rest, "blockstates/", ".json"), parse(zip, entry));
-					} else if (rest.startsWith("models/block/") && rest.endsWith(".json")) {
+					} else if ((rest.startsWith("models/block/") || rest.startsWith("models/item/")) && rest.endsWith(".json")) {
 						models.put(namespace + ":" + strip(rest, "models/", ".json"), parse(zip, entry));
 					} else if ((rest.startsWith("textures/block/") || rest.startsWith("textures/item/")) && rest.endsWith(".png")) {
 						textures.put(namespace + ":" + strip(rest, "textures/", ".png"), base64(zip, entry));
