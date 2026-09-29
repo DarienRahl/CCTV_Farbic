@@ -57,6 +57,7 @@ of game APIs on the server and a set of client classes the viewer ports to JavaS
 | `rendertype_end_portal.vsh/.fsh` (copied verbatim into `PORTAL_VS`/`PORTAL_FS`; compare the shader files of the new jar) | `entities.js` |
 | `FlameFeatureRenderer`, `CapeLayer`/`PlayerCapeModel`/`ClientAvatarState`, `WingsLayer`/`ElytraModel`/`ElytraAnimationState` | `entities.js`, `mobs.js` |
 | `EntityRenderer#extractShadow`, `ShadowFeatureRenderer`, `Lightmap.getBrightness` (entity shadows; the server sends `Level#getSkyDarken`) | `entities.js` (`shadowFor`, `drawShadows`), `EnvironmentSampler.java` |
+| The enchantment glint: `TextureTransform.setupGlintTexturing`, the `GLINT` parts of `core/entity` and `core/item` shaders, `ItemStack#hasFoil` (the server's `foil` bits) | `entities.js` (`GLINTS`, `glintMatrix`, `ENTITY_FS`), `EntityEncoder.java` |
 | `KeyframeAnimation`, `AnimationChannel`, `AnimationState` | `keyframes.js` |
 | `setupAnim` of the keyframe animated models (warden, sniffer, frog, camel...) and the entities' client-side `setupAnimationStates` / `handleEntityEvent` | `mobs.js` (`KEYFRAME_ANIMS`, `CLIENT`) |
 | `ClientLevel#animateTick`, the particles (`FlameParticle`, `CampfireSmokeParticle`, `DripParticle`...) and the blocks' `animateTick` (torches, campfires, leaves, lava...) | `particles.js` (`PROVIDERS`, `animateBlock`, `animateFluid`) |

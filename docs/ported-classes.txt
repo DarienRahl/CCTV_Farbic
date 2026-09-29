@@ -31,6 +31,8 @@ net/minecraft/client/renderer/entity/ItemEntityRenderer
 net/minecraft/client/renderer/entity/ThrownItemRenderer
 net/minecraft/client/renderer/feature/FlameFeatureRenderer
 net/minecraft/client/renderer/feature/ShadowFeatureRenderer
+net/minecraft/client/renderer/feature/ItemFeatureRenderer
+net/minecraft/client/renderer/rendertype/TextureTransform
 net/minecraft/client/renderer/Lightmap
 net/minecraft/client/renderer/entity/ItemFrameRenderer
 net/minecraft/client/renderer/entity/PaintingRenderer
@@ -67,6 +69,8 @@ net/minecraft/client/renderer/blockentity/LecternRenderer
 net/minecraft/client/model/object/book/BookModel
 net/minecraft/world/level/block/entity/EnchantingTableBlockEntity
 # shaders ported verbatim (entities.js PORTAL_VS/PORTAL_FS): assets/minecraft/shaders/core/rendertype_end_portal.vsh/.fsh
+# shader parts ported (entities.js ENTITY_VS/ENTITY_FS, SHADOW_VS/SHADOW_FS): the GLINT parts of core/entity and
+# core/item, core/rendertype_entity_shadow
 
 # name tags and text (text.js, entities.js)
 net/minecraft/client/renderer/SubmitNodeCollection

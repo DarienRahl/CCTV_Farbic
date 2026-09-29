@@ -16,6 +16,29 @@ import { lerp, lerpAngle, wrapDegrees } from './math.js';
 import { TextRenderer, rgb, matrixTransform, FULL_BRIGHT } from './text.js';
 
 const MODE_CUTOUT = 0, MODE_NOCULL = 1, MODE_TRANSLUCENT = 2, MODE_EYES = 3, MODE_ENERGY = 4;
+
+/**
+ * Enchantment glint kinds (RenderTypes ITEM_CUTOUT_GLINT, ARMOR_CUTOUT_NO_CULL_GLINT, ENTITY_SOLID_GLINT): the glint
+ * texture and the TextureTransform scale. Item coordinates are in our block atlas, scaled to a 512 pixel atlas.
+ */
+const GLINT_ITEM = 1, GLINT_ARMOR = 2, GLINT_ENTITY = 3;
+const GLINTS = {
+	[GLINT_ITEM]: { texture: 'enchanted_glint_item', scale: 8, atlas: true },
+	[GLINT_ARMOR]: { texture: 'enchanted_glint_armor', scale: 0.16 },
+	[GLINT_ENTITY]: { texture: 'enchanted_glint_item', scale: 0.5 },
+};
+/** The game's default glint strength and speed options. */
+const GLINT_ALPHA = 0.75, GLINT_SPEED = 0.5;
+/** ItemEntity... "foil" bits the server sends: main hand, off hand, armour head..feet, the shown item. */
+const FOIL_HAND = 1, FOIL_OFFHAND = 2, FOIL_ARMOR = 4, FOIL_ITEM = 64;
+
+/** TextureTransform.setupGlintTexturing as a 3x3 matrix (column major) for texture coordinates. */
+function glintMatrix(scale, millisNow) {
+	const millis = Math.floor(millisNow * GLINT_SPEED * 8);
+	const offset0 = (millis % 110000) / 110000, offset1 = (millis % 30000) / 30000;
+	const c = Math.cos(Math.PI / 18) * scale, s = Math.sin(Math.PI / 18) * scale;
+	return new Float32Array([c, s, 0, -s, c, 0, -offset0, offset1, 1]);
+}
 const MODES = { cutout: MODE_CUTOUT, cutout_nocull: MODE_NOCULL, translucent: MODE_TRANSLUCENT, eyes: MODE_EYES, energy: MODE_ENERGY };
 
 const ENTITY_VS = `
@@ -31,11 +54,13 @@ uniform int uMode;
 uniform float uTime;
 uniform vec3 uLight0;
 uniform vec3 uLight1;
+uniform mat3 uGlintMatrix;
 out float vSph;
 out float vCyl;
 out vec4 vColor;
 out vec4 vLightColor;
 out vec2 vUv;
+out vec2 vGlintUv;
 out vec4 vOverlay;
 #ifdef SHADERS
 out vec3 vPos;
@@ -51,6 +76,8 @@ void main() {
 	vColor = (uMode == 3 || uMode == 4) ? aColor : vec4(aColor.rgb * light, aColor.a);
 	vLightColor = uMode == 3 ? vec4(1.0) : texture(uLightmap, clamp(aLight / 256.0 + 0.5 / 16.0, vec2(0.5 / 16.0), vec2(15.5 / 16.0)));
 	vUv = uMode == 4 ? aUv + vec2(uTime * 0.01) : aUv;
+	// entity.vsh / item.vsh GLINT: the texture matrix applied to the model's own texture coordinates
+	vGlintUv = (uGlintMatrix * vec3(aUv, 1.0)).xy;
 	// OverlayTexture: hurt = red at 0.7 alpha, white flash fades the picture to white.
 	vOverlay = aOverlay.x > 0.5 ? vec4(1.0, 0.0, 0.0, 0.7) : vec4(1.0, 1.0, 1.0, 1.0 - aOverlay.y * 0.75);
 #ifdef SHADERS
@@ -66,9 +93,13 @@ in float vCyl;
 in vec4 vColor;
 in vec4 vLightColor;
 in vec2 vUv;
+in vec2 vGlintUv;
 in vec4 vOverlay;
 uniform sampler2D uTexture;
 uniform int uMode;
+uniform int uGlint;
+uniform sampler2D uGlintTexture;
+uniform float uGlintAlpha;
 ${FOG_GLSL}
 #ifdef SHADERS
 in vec3 vPos;
@@ -83,6 +114,7 @@ void main() {
 	if (uMode <= 1 && color.a < 0.1) discard;
 	if (uMode == 2 && color.a < 0.004) discard;
 	color *= vColor;
+	if (uGlint > 0) color.a = max(color.a, uGlintAlpha);
 	if (uMode >= 3) {
 		outColor = vec4(color.rgb * color.a * (1.0 - total_fog_value(vSph, vCyl)), 1.0);
 		return;
@@ -92,6 +124,11 @@ void main() {
 #ifdef SHADERS
 	color.rgb = shaderLight(color.rgb, vPos, vNormal, vSky, false);
 #endif
+	if (uGlint > 0) {
+		// the enchantment glint (matches BlendFunction.GLINT)
+		vec4 glint = uGlintAlpha * texture(uGlintTexture, vGlintUv);
+		color.rgb += glint.rgb * glint.rgb;
+	}
 	outColor = apply_fog(color, vSph, vCyl);
 }`;
 
@@ -352,6 +389,8 @@ export class EntityRenderer {
 		this.events = new Map();
 		// EnchantingTableBlockEntity animation state by block position
 		this.books = new Map();
+		// glint textures switched to linear filtering (their .mcmeta asks for blur)
+		this.blurred = new Set();
 		// types drawn as a plain box this frame (no model or texture for them)
 		this.boxed = new Set();
 		this.motion = new Map();
@@ -700,15 +739,15 @@ export class EntityRenderer {
 	}
 
 	/** Records that the vertices emitted since `start` use this texture / mode. */
-	batch(texture, mode, start, cull = true) {
+	batch(texture, mode, start, cull = true, glint = 0) {
 		const count = this.sink.count - start;
 		if (count <= 0) return;
 		const last = this.batches[this.batches.length - 1];
-		if (last && last.texture === texture && last.mode === mode && last.cull === cull && last.start + last.count === start) {
+		if (last && last.texture === texture && last.mode === mode && last.cull === cull && last.glint === glint && last.start + last.count === start) {
 			last.count += count;
 			return;
 		}
-		this.batches.push({ texture, mode, start, count, cull });
+		this.batches.push({ texture, mode, start, count, cull, glint });
 	}
 
 	/**
@@ -956,13 +995,18 @@ export class EntityRenderer {
 			}
 			emitModel(this.sink, model, lm, { ...style, color });
 			const mode = MODES[layer.mode] ?? MODE_CUTOUT;
-			this.batch(texture, mode, start, mode !== MODE_NOCULL && mode !== MODE_TRANSLUCENT);
+			const glint = layer.foil && (e.foil & layer.foil) ? GLINT_ARMOR : 0;
+			this.batch(texture, mode, start, mode !== MODE_NOCULL && mode !== MODE_TRANSLUCENT, glint);
 		}
 		if (!base) return this.drawBox(e, pos, style);
 
 		// Held items (ItemInHandLayer).
-		if (e.hand && base.parts.right_arm && base.parts.right_arm.visible) this.drawHeld(base, m, 'right_arm', e.hand, style, 1);
-		if (e.offhand && base.parts.left_arm && base.parts.left_arm.visible) this.drawHeld(base, m, 'left_arm', e.offhand, style, -1);
+		if (e.hand && base.parts.right_arm && base.parts.right_arm.visible) {
+			this.drawHeld(base, m, 'right_arm', e.hand, e.foil & FOIL_HAND ? { ...style, glint: GLINT_ITEM } : style, 1);
+		}
+		if (e.offhand && base.parts.left_arm && base.parts.left_arm.visible) {
+			this.drawHeld(base, m, 'left_arm', e.offhand, e.foil & FOIL_OFFHAND ? { ...style, glint: GLINT_ITEM } : style, -1);
+		}
 
 		// EntityRenderDispatcher: no shadow under invisible entities
 		if (!e.invisible) this.shadowFor(e, pos, typeof mob.shadow === 'number' ? mob.shadow * entityScale : 0.5, world);
@@ -1255,7 +1299,7 @@ export class EntityRenderer {
 		} else {
 			emitQuads(this.sink, data, m, style);
 		}
-		this.batch(this.assets.texture, MODE_NOCULL, start, false);
+		this.batch(this.assets.texture, MODE_NOCULL, start, false, style.glint || 0);
 	}
 
 	drawDroppedItem(e, pos, style) {
@@ -1272,7 +1316,7 @@ export class EntityRenderer {
 			? { translation: [0, 3, 0], scale: [0.25, 0.25, 0.25] }
 			: { translation: [0, 2, 0], scale: [0.5, 0.5, 0.5] };
 		this.applyDisplay(m, this.displayTransform(e.item, 'ground', fallback), false);
-		this.emitItem(mesh, m, style);
+		this.emitItem(mesh, m, e.foil & FOIL_ITEM ? { ...style, glint: GLINT_ITEM } : style);
 		this.shadowFor(e, pos, 0.15, this.world, 0.75);
 	}
 
@@ -1373,7 +1417,9 @@ export class EntityRenderer {
 				scale(im, 0.5);
 				if (mesh.kind === 'block') scale(im, 0.5);
 				translate(im, -0.5, -0.5, -0.5);
-				this.emitItem(mesh, im, type === 'glow_item_frame' ? { ...style, light: [240, 240] } : style);
+				const itemStyle = type === 'glow_item_frame' ? { ...style, light: [240, 240] } : { ...style };
+				if (e.foil & FOIL_ITEM) itemStyle.glint = GLINT_ITEM;
+				this.emitItem(mesh, im, itemStyle);
 			}
 		}
 	}
@@ -1851,9 +1897,36 @@ export class EntityRenderer {
 		if (shaders) this.renderer.bindShaderUniforms(u, frame, shadow);
 		gl.enable(gl.DEPTH_TEST);
 
+		// TextureTransform glint matrices of this frame and their textures (blurred, repeating)
+		const glints = {};
+		for (const [kind, g] of Object.entries(GLINTS)) {
+			const texture = this.texture(g.texture, 'misc');
+			if (texture && !this.blurred.has(texture)) {
+				gl.bindTexture(gl.TEXTURE_2D, texture);
+				gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+				gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+				this.blurred.add(texture);
+			}
+			const scale = g.atlas && this.assets ? g.scale * this.assets.atlasSize / 512 : g.scale;
+			glints[kind] = { texture, matrix: glintMatrix(scale, performance.now()) };
+		}
+		gl.uniform1f(u.uGlintAlpha, GLINT_ALPHA);
+		gl.uniform1i(u.uGlintTexture, 5);
+		let glintOn = -1;
 		const drawBatches = filter => {
 			for (const b of this.batches) {
 				if (!filter(b)) continue;
+				const glint = b.glint && glints[b.glint] && glints[b.glint].texture ? glints[b.glint] : null;
+				if (glint) {
+					gl.activeTexture(gl.TEXTURE5);
+					gl.bindTexture(gl.TEXTURE_2D, glint.texture);
+					gl.activeTexture(gl.TEXTURE0);
+					gl.uniformMatrix3fv(u.uGlintMatrix, false, glint.matrix);
+				}
+				if ((glint ? 1 : 0) !== glintOn) {
+					glintOn = glint ? 1 : 0;
+					gl.uniform1i(u.uGlint, glintOn);
+				}
 				gl.uniform1i(u.uMode, b.mode);
 				if (b.cull) gl.enable(gl.CULL_FACE); else gl.disable(gl.CULL_FACE);
 				gl.bindTexture(gl.TEXTURE_2D, b.texture);

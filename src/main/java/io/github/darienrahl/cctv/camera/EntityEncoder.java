@@ -152,6 +152,8 @@ final class EntityEncoder {
 	private static final Map<Class<?>, Optional<Method>> SWELLING_CACHE = new ConcurrentHashMap<>();
 
 	private static final EquipmentSlot[] ARMOR = {EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET};
+	/** Bits of the {@code "foil"} mask: items drawn with the enchantment glint (ItemStack#hasFoil). */
+	static final int FOIL_HAND = 1, FOIL_OFFHAND = 2, FOIL_ARMOR = 4, FOIL_ITEM = 64, FOIL_BODY = 128;
 
 	private EntityEncoder() {
 	}
@@ -180,6 +182,7 @@ final class EntityEncoder {
 				.field("w", entity.getBbWidth(), 3)
 				.field("h", entity.getBbHeight(), 3)
 				.field("age", entity.tickCount);
+		int foil = 0;
 
 		if (entity instanceof LivingEntity living) {
 			json.field("body", living.yBodyRot, 1)
@@ -209,6 +212,11 @@ final class EntityEncoder {
 			writeItem(json, "saddle", living.getItemBySlot(EquipmentSlot.SADDLE));
 			writeItem(json, "bodyArmor", living.getItemBySlot(EquipmentSlot.BODY));
 			writeArmor(json, living);
+			foil = foil(living.getMainHandItem(), FOIL_HAND) | foil(living.getOffhandItem(), FOIL_OFFHAND)
+					| foil(living.getItemBySlot(EquipmentSlot.BODY), FOIL_BODY);
+			for (int i = 0; i < ARMOR.length; i++) {
+				foil |= foil(living.getItemBySlot(ARMOR[i]), FOIL_ARMOR << i);
+			}
 		}
 
 		if (entity instanceof Player player) {
@@ -236,12 +244,17 @@ final class EntityEncoder {
 
 		if (entity instanceof ItemEntity item) {
 			writeItem(json, "item", item.getItem());
+			foil |= foil(item.getItem(), FOIL_ITEM);
 		} else {
 			// Item frames and thrown items (snowballs, potions, eyes of ender...) show an item too.
 			ItemStack shown = shownItem(entity);
 			if (shown != null) {
 				writeItem(json, "item", shown);
+				foil |= foil(shown, FOIL_ITEM);
 			}
+		}
+		if (foil != 0) {
+			json.field("foil", foil);
 		}
 		if (entity instanceof LightningBolt bolt) {
 			json.field("seed", Long.toString(bolt.seed));
@@ -326,6 +339,10 @@ final class EntityEncoder {
 			}
 		}
 		return fields.toArray(Field[]::new);
+	}
+
+	private static int foil(ItemStack stack, int bit) {
+		return !stack.isEmpty() && stack.hasFoil() ? bit : 0;
 	}
 
 	private static void writeItem(Json json, String name, ItemStack stack) {

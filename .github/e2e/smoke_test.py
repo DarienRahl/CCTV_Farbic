@@ -72,6 +72,7 @@ class StreamReader(threading.Thread):
         self.events = {}
         self.first = {}
         self.entity_types = set()
+        self.foil = set()
         self.block_updates = []
         self.sections = set()
         self.names = set()
@@ -109,6 +110,8 @@ class StreamReader(threading.Thread):
                                     self.animation_states.add((e["type"], name))
                                 for event_id in e.get("ev", []):
                                     self.entity_events.add((e["type"], event_id))
+                                if e.get("foil"):
+                                    self.foil.add((e["type"], e["foil"]))
                             self.names.update(e["name"] for e in data["e"] if e.get("nameVisible"))
                         elif event == "blocks":
                             self.block_updates.extend(data["b"])
@@ -222,7 +225,8 @@ def main():
     rcon.command('summon minecraft:pig 0 -60 8 {CustomName:"Bob",CustomNameVisible:1b}')
     rcon.command("summon minecraft:armor_stand -3 -60 2")
     rcon.command("summon minecraft:breeze 6 -60 2 {NoAI:1b}")
-    rcon.command("item replace entity @e[type=minecraft:armor_stand,limit=1] armor.head with minecraft:golden_helmet")
+    rcon.command("item replace entity @e[type=minecraft:armor_stand,limit=1] armor.head"
+                 " with minecraft:golden_helmet[enchantments={'minecraft:protection':1}]")
 
     rcon.command("cctv create ci -1 -56 -8 10 30")
     listing = rcon.command("cctv list")
@@ -313,6 +317,9 @@ def main():
     print("animation states:", sorted(stream.animation_states), "entity events:", sorted(stream.entity_events), flush=True)
     if ("minecraft:breeze", "idle") not in stream.animation_states:
         failures.append("the breeze's running idle AnimationState was not streamed")
+    print("foil:", sorted(stream.foil), flush=True)
+    if not any(t == "minecraft:armor_stand" and f & 4 for t, f in stream.foil):
+        failures.append("the armour stand's enchanted helmet was not streamed with its glint (foil)")
     if ("minecraft:sheep", 3) not in stream.entity_events:
         failures.append("the killed sheep's death entity event (3) was not streamed")
     # BeaconBlockEntity checks its pyramid every 80 ticks; the session reads beacon sections every 40

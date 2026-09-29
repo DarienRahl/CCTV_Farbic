@@ -1296,8 +1296,10 @@ export function armorLayers(prefix, e) {
 		const slot = ARMOR_SLOTS[i];
 		const folder = slot === 'leggings' ? 'humanoid_leggings' : (e.baby ? 'humanoid_baby' : 'humanoid');
 		const layer = prefix + (e.baby ? '_baby' : '') + '#' + slot;
-		out.push({ layer, texture: 'equipment/' + folder + '/' + material, color: material === 'leather' ? [0xa0 / 255, 0x65 / 255, 0x40 / 255, 1] : null });
-		if (material === 'leather') out.push({ layer, texture: 'equipment/' + folder + '/leather_overlay' });
+		// foil: the "foil" bit of this slot (the piece has the enchantment glint)
+		const foil = 4 << i;
+		out.push({ layer, texture: 'equipment/' + folder + '/' + material, color: material === 'leather' ? [0xa0 / 255, 0x65 / 255, 0x40 / 255, 1] : null, foil });
+		if (material === 'leather') out.push({ layer, texture: 'equipment/' + folder + '/leather_overlay', foil });
 	}
 	return out;
 }
@@ -1368,7 +1370,7 @@ export function describeMob(e) {
 		// WingsLayer: the player's cape as elytra when they show it, else the elytra texture
 		out.push({ layer: e.baby ? 'minecraft:elytra_baby#main' : 'minecraft:elytra#main',
 			texture: showCape && e.uuid ? { cape: e.uuid, name: e.name, fallback: 'equipment/wings/elytra' } : 'equipment/wings/elytra',
-			mode: 'cutout', color: null, equipment: true, offset: [0, 0, 0.125] });
+			mode: 'cutout', color: null, equipment: true, offset: [0, 0, 0.125], foil: 8 });
 	}
 	return { def, layers: out, anim: ANIMS[def.anim] || ANIMS.generic, shadow: value(def.shadow, 0.5) };
 }
