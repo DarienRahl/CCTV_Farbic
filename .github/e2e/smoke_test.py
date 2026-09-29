@@ -76,6 +76,7 @@ class StreamReader(threading.Thread):
         self.sections = set()
         self.names = set()
         self.sign_lines = set()
+        self.block_entities = {}
         self.animation_states = set()
         self.entity_events = set()
         self.ready = threading.Event()
@@ -113,6 +114,7 @@ class StreamReader(threading.Thread):
                         elif event == "section":
                             self.sections.add((data["x"], data["y"], data["z"]))
                             for block_entity in data.get("be", []):
+                                self.block_entities[block_entity.get("k")] = block_entity
                                 for side in ("f", "b"):
                                     self.sign_lines.update(block_entity.get(side, {}).get("l", []))
                         elif event == "ready":
@@ -187,6 +189,11 @@ def main():
     rcon.command('setblock -3 -60 0 minecraft:oak_sign[rotation=8]{front_text:{messages:["CCTV","Camera ci","",""]}}')
     rcon.command('setblock 7 -59 7 minecraft:spruce_wall_sign[facing=north]'
                  '{front_text:{messages:["","Welcome","",""],color:"yellow",has_glowing_text:1b}}')
+    rcon.command('setblock -5 -60 1 minecraft:white_banner[rotation=8]'
+                 '{patterns:[{pattern:"minecraft:stripe_bottom",color:"blue"},{pattern:"minecraft:creeper",color:"black"}]}')
+    rcon.command('setblock 2 -60 1 minecraft:decorated_pot[facing=north]'
+                 '{sherds:["minecraft:brick","minecraft:angler_pottery_sherd","minecraft:heart_pottery_sherd","minecraft:skull_pottery_sherd"]}')
+    rcon.command('setblock 3 -60 -1 minecraft:player_head[rotation=8]{profile:{name:"Notch"}}')
     rcon.command("place feature minecraft:oak -6 -60 18")
     rcon.command("place feature minecraft:birch 12 -60 16")
     rcon.command("place feature minecraft:fancy_oak 14 -60 4")
@@ -291,6 +298,14 @@ def main():
         failures.append("the breeze's running idle AnimationState was not streamed")
     if ("minecraft:sheep", 3) not in stream.entity_events:
         failures.append("the killed sheep's death entity event (3) was not streamed")
+    print("block entities:", stream.block_entities, flush=True)
+    banner = stream.block_entities.get("banner", {})
+    if [layer[0] for layer in banner.get("p", [])] != ["minecraft:stripe_bottom", "minecraft:creeper"]:
+        failures.append(f"banner patterns were not streamed (got {banner})")
+    if stream.block_entities.get("pot", {}).get("front") != "minecraft:skull_pottery_pattern":
+        failures.append(f"decorated pot sherds were not streamed (got {stream.block_entities.get('pot')})")
+    if stream.block_entities.get("head", {}).get("name") != "Notch":
+        failures.append(f"the player head's owner was not streamed (got {stream.block_entities.get('head')})")
     for line in ("CCTV", "Camera ci", "Welcome", "edited"):
         if line not in stream.sign_lines:
             failures.append(f"sign text '{line}' was not streamed (got {sorted(stream.sign_lines)})")

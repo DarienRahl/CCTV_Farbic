@@ -444,6 +444,10 @@ final class CameraSession {
 			return;
 		}
 
+		// A block entity appeared or went away (a banner placed, a sign broken): its details change with it.
+		if (state.hasBlockEntity() || Block.stateById(entry.data.states[index]).hasBlockEntity()) {
+			blockEntityRefresh.add(entry);
+		}
 		entry.data.set(index, id);
 		blockChanges.add(new int[]{x, y, z, id, entry.order});
 	}

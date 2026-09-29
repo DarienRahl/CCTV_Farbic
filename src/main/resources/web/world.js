@@ -91,6 +91,9 @@ export class World {
 		this.sections = new Map();
 		/** Sign text by section key (from the "be" list of sections). */
 		this.signs = new Map();
+		/** Block entity details by block position ("x,y,z"): banner patterns, pot sherds, head owners. */
+		this.blockEntityData = new Map();
+		this.blockEntitySections = new Map();
 		this.dirty = new Set();
 		this.generation++;
 		this.pending = new Map();
@@ -144,6 +147,25 @@ export class World {
 		this.broadcast({ type: 'palette', entries });
 	}
 
+	setBlockEntityData(sectionKey, list) {
+		// Replace what this section had before with its current details.
+		for (const key of this.blockEntitySections.get(sectionKey) || []) this.blockEntityData.delete(key);
+		const keys = [];
+		for (const be of list || []) {
+			if (be.k === 'sign') continue;
+			const key = be.x + ',' + be.y + ',' + be.z;
+			this.blockEntityData.set(key, be);
+			keys.push(key);
+		}
+		if (keys.length) this.blockEntitySections.set(sectionKey, keys);
+		else this.blockEntitySections.delete(sectionKey);
+	}
+
+	/** Details the server sent for the block entity at a position (banner patterns...), or null. */
+	blockEntityAt(x, y, z) {
+		return this.blockEntityData.get(x + ',' + y + ',' + z) || null;
+	}
+
 	static key(x, y, z) {
 		return x + ',' + y + ',' + z;
 	}
@@ -179,6 +201,7 @@ export class World {
 		const signs = (message.be || []).filter(be => be.k === 'sign');
 		if (signs.length) this.signs.set(key, signs);
 		else this.signs.delete(key);
+		this.setBlockEntityData(key, message.be);
 		this.sections.set(key, {
 			key, x: message.x, y: message.y, z: message.z,
 			states, light, biomes,

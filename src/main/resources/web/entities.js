@@ -1187,22 +1187,27 @@ export class EntityRenderer {
 				if (!def) continue;
 				const [sky, block] = world.lightAt(be.x, be.y, be.z);
 				const style = { color: [1, 1, 1, 1], light: [block * 16, sky * 16], overlay: [0, 0] };
-				this.drawBlockEntityModel(def, [bx, by, bz], style);
+				this.drawBlockEntityModel(def, [bx, by, bz], style, world.blockEntityAt(be.x, be.y, be.z), be);
 			}
 		}
 	}
 
-	drawBlockEntityModel(def, p, style) {
+	/**
+	 * @param data what the server sent for this block entity (banner patterns, pot sherds, head owner) or null
+	 * @param pos  its block position
+	 */
+	drawBlockEntityModel(def, p, style, data = null, pos = null) {
 		const m = mat4();
 		translate(m, p[0], p[1], p[2]);
-		const emit = (layer, texturePath, matrix, color, mode = MODE_CUTOUT) => {
+		const emit = (layer, texturePath, matrix, color, mode = MODE_CUTOUT, pose = null) => {
 			const model = this.library.get(layer);
-			const texture = this.texture(texturePath);
+			const texture = typeof texturePath === 'object' && texturePath ? texturePath.texture : this.texture(texturePath);
 			if (!model || !texture) return null;
 			model.reset();
+			if (pose) pose(model.parts);
 			const start = this.sink.count;
 			emitModel(this.sink, model, matrix, color ? { ...style, color } : style);
-			this.batch(texture, mode, start);
+			this.batch(texture, mode, start, mode !== MODE_TRANSLUCENT);
 			return model;
 		};
 		switch (def.kind) {
@@ -1233,7 +1238,9 @@ export class EntityRenderer {
 				scale(m, -1, -1, 1);
 				const yaw = def.wall ? { north: 180, south: 0, west: 270, east: 90 }[def.facing] ?? 0 : def.rotation * 22.5;
 				const model = this.library.get(def.layer);
-				const texture = this.texture(def.texture);
+				// Player heads show their owner's skin (SkullBlockRenderer.resolveSkullRenderType).
+				const owner = data && data.k === 'head' && def.layer === 'minecraft:player_head#main' ? data : null;
+				const texture = owner ? this.skin(owner.uuid || 'name:' + owner.name, owner.name).texture : this.texture(def.texture);
 				if (model && texture) {
 					model.reset();
 					if (model.parts.head) model.parts.head.yRot = yaw * DEG;
@@ -1252,20 +1259,39 @@ export class EntityRenderer {
 				}
 				scale(m, 2 / 3, -2 / 3, -2 / 3);
 				const base = def.wall ? 'minecraft:wall_banner' : 'minecraft:standing_banner';
+				// BannerRenderer.extractRenderState phase and BannerFlagModel.setupAnim: the flag sways.
+				const b = pos || { x: 0, y: 0, z: 0 };
+				const ticks = performance.now() / 50;
+				const phase = ((((b.x * 7 + b.y * 9 + b.z * 13 + Math.floor(ticks)) % 100) + 100) % 100 + ticks % 1) / 100;
+				const sway = parts => { if (parts.flag) parts.flag.xRot = (-0.0125 + 0.01 * Math.cos(Math.PI * 2 * phase)) * Math.PI; };
 				emit(base + '#main', 'banner/banner_base', m);
-				emit(base + '#flag', 'banner/banner_base', m);
-				emit(base + '#flag', 'banner/base', m, dyeRgb(def.color));
+				emit(base + '#flag', 'banner/banner_base', m, null, MODE_CUTOUT, sway);
+				// submitPatterns: the base colour, then every pattern layer in its dye colour (bannerPattern render type).
+				emit(base + '#flag', 'banner/base', m, dyeRgb(def.color), MODE_TRANSLUCENT, sway);
+				for (const [asset, color] of (data && data.k === 'banner' && data.p) || []) {
+					emit(base + '#flag', 'banner/' + String(asset).replace(/^[a-z0-9_.-]+:/, ''), m, dyeRgb(color), MODE_TRANSLUCENT, sway);
+				}
 				break;
 			}
 			case 'bell':
 				emit(def.layer, def.texture, m);
 				break;
 			case 'pot': {
-				translate(m, 0.5, 0, 0.5);
-				rotate(m, 1, -({ north: 180, south: 0, west: 90, east: 270 }[def.facing] ?? 0) * DEG);
-				translate(m, -0.5, 0, -0.5);
+				// DecoratedPotRenderer.createModelTransformation: rotated around the block centre.
+				const yRot = { south: 0, west: 90, north: 180, east: 270 }[def.facing] ?? 0;
+				translate(m, 0.5, 0.5, 0.5);
+				rotate(m, 1, (180 - yRot) * DEG);
+				translate(m, -0.5, -0.5, -0.5);
 				emit('minecraft:decorated_pot_base#main', 'decorated_pot/decorated_pot_base', m);
-				emit('minecraft:decorated_pot_sides#main', 'decorated_pot/decorated_pot_side', m);
+				// Every side has its own sprite: the sherd's pottery pattern, or the plain side.
+				const sherds = data && data.k === 'pot' ? data : {};
+				for (const side of ['front', 'back', 'left', 'right']) {
+					const pattern = sherds[side] ? String(sherds[side]).replace(/^[a-z0-9_.-]+:/, '') : 'decorated_pot_side';
+					const only = parts => { for (const other of ['front', 'back', 'left', 'right']) if (parts[other]) parts[other].visible = other === side; };
+					if (!emit('minecraft:decorated_pot_sides#main', 'decorated_pot/' + pattern, m, null, MODE_CUTOUT, only) && pattern !== 'decorated_pot_side') {
+						emit('minecraft:decorated_pot_sides#main', 'decorated_pot/decorated_pot_side', m, null, MODE_CUTOUT, only);
+					}
+				}
 				break;
 			}
 			default:
