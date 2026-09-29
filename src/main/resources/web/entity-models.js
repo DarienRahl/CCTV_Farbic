@@ -41,6 +41,8 @@ class Part {
 	}
 }
 
+const SKIN_LAYERS = new Set(['hat', 'jacket', 'left_sleeve', 'right_sleeve', 'left_pants', 'right_pants']);
+
 /** A baked layer: its root part plus quick access to every part by name. */
 export class Model {
 	constructor(id, data) {
@@ -67,7 +69,8 @@ export class Model {
 			part.x = src.x; part.y = src.y; part.z = src.z;
 			part.xRot = src.xRot; part.yRot = src.yRot; part.zRot = src.zRot;
 			part.xScale = src.xScale; part.yScale = src.yScale; part.zScale = src.zScale;
-			part.visible = src.visible;
+			// The skin layers a player turned off stay on armour (the game does not copy their visibility).
+			if (!SKIN_LAYERS.has(name)) part.visible = src.visible;
 		}
 	}
 }

@@ -76,10 +76,12 @@ to the milestone it belongs to.
       and smoke, lava pops, drips, portal, falling leaves, spore blossoms, fireflies
 - [ ] More particles: rain splashes, entity particles (hearts, villager emotions, potion swirls),
       block breaking, explosions and the particles the server sends (`ClientboundLevelParticlesPacket`)
-- [x] Fire on burning entities (FlameFeatureRenderer, invisible ones too)
-- [ ] Entity details: the game's shadow texture projected on blocks,
-      enchantment glint, armour trims, capes and elytra, item frames with maps, leashes, fishing
-      lines, glowing outlines
+- [x] Fire on burning entities (FlameFeatureRenderer, invisible ones too); invisible mobs show
+      their equipment
+- [x] Capes (from the player's Mojang profile, swinging like ClientAvatarState's cloak), elytra
+      (ElytraAnimationState, the cape as elytra texture), the skin layers a player turned off
+- [ ] Entity details: the game's shadow texture projected on blocks, enchantment glint, armour
+      trims, item frames with maps, leashes, fishing lines, glowing outlines
 - [ ] Terrain: the game's chunk occlusion culling (visibility graph), block breaking progress,
       remaining fluid edge cases, the biome blend setting
 - [ ] Camera in water, lava and powder snow: the game's overlays and fog

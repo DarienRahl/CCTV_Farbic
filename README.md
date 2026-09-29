@@ -14,8 +14,9 @@ in a web browser: players, mobs, opening doors and placed blocks show up right a
   from the same environment attributes as in the game.
 - **Every mob with its real model.** Model geometry is taken from `client.jar` (happy ghast, horses
   with coats and markings, wolves, cats, villagers with professions, cold/warm variants…), together
-  with saddles, armour, collars, wool, harnesses and glowing eyes. Players have their own skins
-  (or the game's default skin for their UUID) and walk, sneak, swim and glide like in the game.
+  with saddles, armour, elytra, collars, wool, harnesses and glowing eyes. Players have their own
+  skins (or the game's default skin for their UUID) with the skin layers they chose, their capes
+  (swinging as they move), and walk, sneak, swim and glide like in the game.
 - **Huge view distance.** A camera also sees terrain in unloaded chunks (read from the region files
   off the main thread, much like Bobby does), up to 1024 blocks.
 - **Shaders and custom skies.** An optional "shaders" mode (sun shadows, waving plants, water with
@@ -179,6 +180,7 @@ All endpoints support CORS and `?token=` (when a token is set).
 | `GET /api/viewer` | Viewer defaults, list of shaders and sky boxes |
 | `GET /custom/shaders/{name}.glsl`, `/custom/skyboxes/...` | Shader and sky box files from `config/cctv` |
 | `GET /skin/{uuid}?name=` | Player skin (PNG, `X-Skin-Model` header) |
+| `GET /cape/{uuid}?name=` | Player cape (PNG, 404 without a cape) |
 
 Stream events:
 

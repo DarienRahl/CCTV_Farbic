@@ -19,7 +19,8 @@ import org.slf4j.Logger;
  * WebGL can use them) and caches them. Offline-mode players are looked up by name.
  */
 final class SkinProxy {
-	record Skin(byte[] png, boolean slim, long fetchedAt) {
+	/** A player's skin and, when they have one, their cape (null when missing). */
+	record Skin(byte[] png, boolean slim, byte[] cape, long fetchedAt) {
 		boolean missing() {
 			return png == null;
 		}
@@ -31,6 +32,7 @@ final class SkinProxy {
 	private static final Pattern NAME = Pattern.compile("^[A-Za-z0-9_]{1,16}$");
 	private static final Pattern TEXTURES_VALUE = Pattern.compile("\"name\"\\s*:\\s*\"textures\"\\s*,\\s*\"value\"\\s*:\\s*\"([^\"]+)\"");
 	private static final Pattern SKIN_URL = Pattern.compile("\"SKIN\"\\s*:\\s*\\{\\s*\"url\"\\s*:\\s*\"([^\"]+)\"");
+	private static final Pattern CAPE_URL = Pattern.compile("\"CAPE\"\\s*:\\s*\\{\\s*\"url\"\\s*:\\s*\"([^\"]+)\"");
 	private static final Pattern SLIM = Pattern.compile("\"model\"\\s*:\\s*\"slim\"");
 	private static final Pattern PROFILE_ID = Pattern.compile("\"id\"\\s*:\\s*\"([0-9a-fA-F]{32})\"");
 
@@ -60,7 +62,7 @@ final class SkinProxy {
 
 		String key = !id.isEmpty() ? id : (name != null ? "name:" + name.toLowerCase() : null);
 		if (key == null) {
-			return new Skin(null, false, System.currentTimeMillis());
+			return new Skin(null, false, null, System.currentTimeMillis());
 		}
 
 		Skin cached = cache.get(key);
@@ -91,36 +93,41 @@ final class SkinProxy {
 			}
 
 			if (id.isEmpty()) {
-				return new Skin(null, false, now);
+				return new Skin(null, false, null, now);
 			}
 
 			String session = getString("https://sessionserver.mojang.com/session/minecraft/profile/" + id);
 			Matcher value = session == null ? null : TEXTURES_VALUE.matcher(session);
 			if (value == null || !value.find()) {
-				return new Skin(null, false, now);
+				return new Skin(null, false, null, now);
 			}
 
 			String textures = new String(Base64.getDecoder().decode(value.group(1)), StandardCharsets.UTF_8);
 			Matcher url = SKIN_URL.matcher(textures);
 			if (!url.find()) {
-				return new Skin(null, false, now);
+				return new Skin(null, false, null, now);
 			}
 
-			String skinUrl = url.group(1).replace("http://", "https://");
-			if (!skinUrl.startsWith("https://textures.minecraft.net/")) {
-				return new Skin(null, false, now);
+			byte[] png = texture(url.group(1));
+			if (png == null) {
+				return new Skin(null, false, null, now);
 			}
-
-			HttpResponse<byte[]> png = http.send(request(skinUrl), HttpResponse.BodyHandlers.ofByteArray());
-			if (png.statusCode() != 200 || png.body().length > 64 * 1024) {
-				return new Skin(null, false, now);
-			}
-
-			return new Skin(png.body(), SLIM.matcher(textures).find(), now);
+			Matcher cape = CAPE_URL.matcher(textures);
+			return new Skin(png, SLIM.matcher(textures).find(), cape.find() ? texture(cape.group(1)) : null, now);
 		} catch (Exception e) {
 			logger.debug("Could not fetch skin for {} / {}", id, name, e);
-			return new Skin(null, false, now);
+			return new Skin(null, false, null, now);
 		}
+	}
+
+	/** A skin or cape PNG from Mojang's texture server, or null. */
+	private byte[] texture(String url) throws Exception {
+		String https = url.replace("http://", "https://");
+		if (!https.startsWith("https://textures.minecraft.net/")) {
+			return null;
+		}
+		HttpResponse<byte[]> png = http.send(request(https), HttpResponse.BodyHandlers.ofByteArray());
+		return png.statusCode() == 200 && png.body().length <= 64 * 1024 ? png.body() : null;
 	}
 
 	private String getString(String url) throws Exception {

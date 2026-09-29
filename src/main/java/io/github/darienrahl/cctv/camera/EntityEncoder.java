@@ -27,6 +27,7 @@ import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Pose;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.entity.player.PlayerModelPart;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
@@ -213,6 +214,18 @@ final class EntityEncoder {
 		if (entity instanceof Player player) {
 			json.field("name", player.getGameProfile().name())
 					.field("uuid", player.getUUID().toString());
+			// Skin layers and cape the player turned off in their skin customisation (PlayerModelPart masks).
+			int parts = 0;
+			int all = 0;
+			for (PlayerModelPart part : PlayerModelPart.values()) {
+				all |= part.getMask();
+				if (player.isModelPartShown(part)) {
+					parts |= part.getMask();
+				}
+			}
+			if (parts != all) {
+				json.field("parts", parts);
+			}
 		} else if (entity.hasCustomName() && entity.getCustomName() != null) {
 			json.field("name", entity.getCustomName().getString());
 			if (entity.isCustomNameVisible()) {

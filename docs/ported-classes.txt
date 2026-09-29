@@ -39,6 +39,13 @@ net/minecraft/client/model/HumanoidModel
 net/minecraft/client/model/QuadrupedModel
 net/minecraft/client/model/AnimationUtils
 net/minecraft/client/player/RemotePlayer
+net/minecraft/client/player/AbstractClientPlayer
+net/minecraft/client/entity/ClientAvatarState
+net/minecraft/client/model/player/PlayerCapeModel
+net/minecraft/client/renderer/entity/layers/CapeLayer
+net/minecraft/client/model/object/equipment/ElytraModel
+net/minecraft/client/renderer/entity/layers/WingsLayer
+net/minecraft/world/entity/ElytraAnimationState
 net/minecraft/world/entity/WalkAnimationState
 
 # block entities (entities.js, mobs.js)

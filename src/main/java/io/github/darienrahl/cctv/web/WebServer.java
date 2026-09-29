@@ -38,6 +38,7 @@ import io.github.darienrahl.cctv.assets.ClientAssets;
  * GET /api/cameras               camera list (JSON)
  * GET /api/cameras/{name}/stream live stream (Server-Sent Events)
  * GET /skin/{uuid}?name={player} player skin PNG
+ * GET /cape/{uuid}?name={player} player cape PNG (404 without a cape)
  * GET /api/viewer                viewer defaults, custom sky boxes and shaders
  * GET /custom/{skyboxes|shaders}/... custom files from config/cctv
  * GET /assets/bundle.json        block states, models and textures (from the client jar)
@@ -160,6 +161,8 @@ public final class WebServer {
 			stream(exchange, name);
 		} else if (path.startsWith("/skin/")) {
 			skin(exchange, path.substring("/skin/".length()), query.get("name"));
+		} else if (path.startsWith("/cape/")) {
+			cape(exchange, path.substring("/cape/".length()), query.get("name"));
 		} else if (path.startsWith("/assets/")) {
 			asset(exchange, path.substring("/assets/".length()));
 		} else {
@@ -226,6 +229,18 @@ public final class WebServer {
 		exchange.getResponseHeaders().add("Access-Control-Expose-Headers", "X-Skin-Model");
 		exchange.getResponseHeaders().add("Cache-Control", "max-age=3600");
 		sendBytes(exchange, 200, "image/png", skin.png());
+	}
+
+	/** The cape of a player's Mojang profile (CapeLayer), fetched and cached with the skin. */
+	private void cape(HttpExchange exchange, String uuid, String name) throws IOException {
+		SkinProxy.Skin skin = config.skins ? skins.get(uuid, name) : null;
+		if (skin == null || skin.cape() == null) {
+			exchange.getResponseHeaders().add("Cache-Control", "max-age=300");
+			sendText(exchange, 404, "text/plain", "No cape");
+			return;
+		}
+		exchange.getResponseHeaders().add("Cache-Control", "max-age=3600");
+		sendBytes(exchange, 200, "image/png", skin.cape());
 	}
 
 	/** Sky box images and post-processing shaders from config/cctv. */

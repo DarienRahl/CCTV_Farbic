@@ -6,7 +6,7 @@
 import {
 	ModelLibrary, VertexSink, FLOATS, emitModel, emitQuads, partMatrix, mat4, mul, translate, rotate, scale, DEG,
 } from './entity-models.js';
-import { describeMob, isKnownMob, blockEntityModel, dyeRgb, CLIENT } from './mobs.js';
+import { describeMob, isKnownMob, blockEntityModel, dyeRgb, CLIENT, equipmentPose } from './mobs.js';
 import { Animator, AnimationStates } from './keyframes.js';
 import { collectParts } from './models.js';
 import { JavaRandom } from './rng.js';
@@ -220,6 +220,7 @@ export class EntityRenderer {
 		this.batches = [];
 		this.textures = new Map();
 		this.skins = new Map();
+		this.capes = new Map();
 		this.states = new Map();
 		this.events = new Map();
 		this.motion = new Map();
@@ -297,6 +298,11 @@ export class EntityRenderer {
 	texture(path, folder = 'entity') {
 		if (!path) return null;
 		if (typeof path === 'object' && path.skin) return this.skin(path.skin).texture;
+		if (typeof path === 'object' && path.cape) {
+			const cape = this.cape(path.cape, path.name);
+			if (cape.texture) return cape.texture;
+			return cape.missing && path.fallback ? this.texture(path.fallback) : null;
+		}
 		const key = folder + '/' + path;
 		let entry = this.textures.get(key);
 		if (!entry) {
@@ -317,6 +323,20 @@ export class EntityRenderer {
 				.catch(() => { entry.failed = true; });
 		}
 		return entry.texture;
+	}
+
+	/** Player cape from their Mojang profile: {texture (null while loading or without a cape), missing}. */
+	cape(uuid, name) {
+		let cape = this.capes.get(uuid);
+		if (cape) return cape;
+		cape = { texture: null, missing: false };
+		this.capes.set(uuid, cape);
+		fetch('/cape/' + encodeURIComponent(uuid) + '?name=' + encodeURIComponent(name || '') + tokenSuffix('&'), { credentials: 'same-origin' })
+			.then(response => { if (!response.ok) throw new Error('no cape'); return response.blob(); })
+			.then(blob => createImageBitmap(blob, { premultiplyAlpha: 'none', colorSpaceConversion: 'none' }))
+			.then(image => { cape.texture = this.createTexture(image); })
+			.catch(() => { cape.missing = true; });
+		return cape;
 	}
 
 	/** Player skin: {texture (null while loading), slim}. Without a custom skin, the game's default skin for the UUID. */
@@ -768,19 +788,27 @@ export class EntityRenderer {
 			if (!texture) continue;
 			model.reset();
 			anim.k = this.animator.bind(model.parts, anim.states, age);
+			anim.isBase = !base;
 			if (base && model !== base) {
 				mob.anim(model.parts, anim, e);
 				model.copyPose(base);
 			} else {
 				mob.anim(model.parts, anim, e);
 			}
+			equipmentPose(model.parts, e, anim);
 			if (!base) base = model;
 			// LivingEntityRenderer: an invisible mob's body is not drawn, its equipment layers are.
 			if (e.invisible && !layer.equipment) continue;
 			const start = this.sink.count;
 			// getModelTint (e.g. a wet wolf) tints the entity's own model, not the layers drawn over it.
 			const color = layer.color || (model === base && layer === mob.layers[0] && anim.tint) || [1, 1, 1, 1];
-			emitModel(this.sink, model, m, { ...style, color });
+			let lm = m;
+			if (layer.offset) {
+				// the layer's own poseStack.translate (a cape over a chestplate, elytra)
+				lm = Float32Array.from(m);
+				translate(lm, layer.offset[0], layer.offset[1], layer.offset[2]);
+			}
+			emitModel(this.sink, model, lm, { ...style, color });
 			const mode = MODES[layer.mode] ?? MODE_CUTOUT;
 			this.batch(texture, mode, start, mode !== MODE_NOCULL && mode !== MODE_TRANSLUCENT);
 		}

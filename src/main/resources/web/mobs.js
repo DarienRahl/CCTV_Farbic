@@ -91,6 +91,123 @@ function humanoid(p, a, e) {
 		else if (e.pose === 'swimming' && !e.type.endsWith(':player')) p.head.xRot = -PI / 4;
 	}
 	if (a.swimAmount > 0) swimStroke(p, a, a.attack > 0);
+	// PlayerModel.setupAnim: the skin layers the player turned off (PlayerModelPart masks), on the body model only
+	if (a.isBase && e.type === 'minecraft:player' && e.parts !== undefined) {
+		const shown = mask => !!(e.parts & mask);
+		if (p.hat) p.hat.visible = shown(64);
+		if (p.jacket) p.jacket.visible = shown(2);
+		if (p.left_sleeve) p.left_sleeve.visible = shown(4);
+		if (p.right_sleeve) p.right_sleeve.visible = shown(8);
+		if (p.left_pants) p.left_pants.visible = shown(16);
+		if (p.right_pants) p.right_pants.visible = shown(32);
+	}
+}
+
+/** Poses of the equipment models drawn over a mob (CapeLayer, WingsLayer), after they took the body's pose. */
+export function equipmentPose(p, e, a) {
+	if (p.cape) capePose(p.cape, e, a);
+	if (p.left_wing && p.right_wing) elytraPose(p, e, a);
+}
+
+/**
+ * The client-side state of a humanoid the cape and elytra follow, stepped once per entity tick:
+ * ClientAvatarState (the cloak trailing the position, bob, walk distance) and ElytraAnimationState.
+ */
+function avatarState(e, a) {
+	const m = a.memory;
+	const tick = Math.floor(a.age);
+	const pos = [e.x, e.y, e.z];
+	if (m.avatarTick === undefined || tick < m.avatarTick || tick - m.avatarTick > 40) {
+		Object.assign(m, {
+			avatarTick: tick, avatarPos: pos, cloak: [...pos], cloakO: [...pos], bob: 0, bobO: 0, walkDist: 0, walkDistO: 0,
+			elytra: [PI / 12, 0, -PI / 12], elytraO: [PI / 12, 0, -PI / 12],
+		});
+		return m;
+	}
+	const steps = tick - m.avatarTick;
+	const from = m.avatarPos;
+	for (let i = 1; i <= steps; i++) {
+		// the positions of the ticks in between, evenly spread
+		const at = from.map((v, k) => v + (pos[k] - v) * i / steps);
+		const move = from.map((v, k) => (pos[k] - v) / steps);
+		const horizontal = Math.hypot(move[0], move[2]);
+		m.walkDistO = m.walkDist;
+		m.cloakO = [...m.cloak];
+		for (let k = 0; k < 3; k++) {
+			const d = at[k] - m.cloak[k];
+			if (d > 10 || d < -10) m.cloak[k] = m.cloakO[k] = at[k];
+			else m.cloak[k] += d * 0.25;
+		}
+		// AbstractClientPlayer.updateBob
+		const onGround = Math.abs(move[1]) < 1e-3 && e.pose !== 'fall_flying';
+		const tBob = onGround && !e.dead && e.pose !== 'swimming' ? Math.min(0.1, horizontal) : 0;
+		m.bobO = m.bob;
+		m.bob += (tBob - m.bob) * 0.4;
+		m.walkDist += horizontal * 0.6;
+		// ElytraAnimationState.tick
+		m.elytraO = [...m.elytra];
+		let target;
+		if (e.pose === 'fall_flying') {
+			let ratio = 1;
+			const length = Math.hypot(move[0], move[1], move[2]);
+			if (move[1] < 0 && length > 0) ratio = 1 - Math.pow(-move[1] / length, 1.5);
+			target = [lerp(ratio, PI / 12, PI / 9), 0, lerp(ratio, -PI / 12, -PI / 2)];
+		} else if (e.sneak || e.pose === 'crouching') {
+			target = [PI * 2 / 9, 0.08726646, -PI / 4];
+		} else {
+			target = [PI / 12, 0, -PI / 12];
+		}
+		for (let k = 0; k < 3; k++) m.elytra[k] += (target[k] - m.elytra[k]) * 0.3;
+	}
+	m.avatarTick = tick;
+	m.avatarPos = pos;
+	return m;
+}
+
+/** AvatarRenderer.extractCapeState and PlayerCapeModel.setupAnim. */
+function capePose(cape, e, a) {
+	const m = avatarState(e, a);
+	const partial = a.age - Math.floor(a.age);
+	const dx = lerp(partial, m.cloakO[0], m.cloak[0]) - e.x;
+	const dy = lerp(partial, m.cloakO[1], m.cloak[1]) - e.y;
+	const dz = lerp(partial, m.cloakO[2], m.cloak[2]) - e.z;
+	const body = (e.body ?? e.yaw ?? 0) * DEG;
+	const forwardX = sin(body), forwardZ = -cos(body);
+	const flying = e.pose === 'fall_flying' ? Math.min(1, (e.flyingTicks || 0) ** 2 / 100) : 0;
+	let flap = clamp(dy * 10, -6, 32);
+	const lean = clamp((dx * forwardX + dz * forwardZ) * 100 * (1 - flying), 0, 150);
+	const lean2 = clamp((dx * forwardZ - dz * forwardX) * 100, -20, 20);
+	flap += sin(lerp(partial, m.walkDistO, m.walkDist) * 6) * 32 * lerp(partial, m.bobO, m.bob);
+	// cape.rotateBy(rotateY(-PI) rotateX(6 + lean / 2 + flap) rotateZ(lean2 / 2) rotateY(180 - lean2 / 2))
+	rotateBy(cape, [[1, -PI], [0, (6 + lean / 2 + flap) * DEG], [2, lean2 / 2 * DEG], [1, (180 - lean2 / 2) * DEG]]);
+}
+
+/** ElytraModel.setupAnim with the entity's ElytraAnimationState. */
+function elytraPose(p, e, a) {
+	const m = avatarState(e, a);
+	const partial = a.age - Math.floor(a.age);
+	const [x, y, z] = m.elytra.map((v, k) => lerp(partial, m.elytraO[k], v));
+	const left = p.left_wing, right = p.right_wing;
+	left.y = e.sneak || e.pose === 'crouching' ? 3 : 0;
+	left.xRot = x; left.zRot = z; left.yRot = y;
+	right.yRot = -y; right.y = left.y; right.xRot = x; right.zRot = -z;
+}
+
+/** ModelPart.rotateBy: the part's Z*Y*X rotation times the given axis rotations, back to Z*Y*X angles. */
+function rotateBy(part, rotations) {
+	const axis = (i, angle) => {
+		const c = cos(angle), s = sin(angle);
+		if (i === 0) return [[1, 0, 0], [0, c, -s], [0, s, c]];
+		if (i === 1) return [[c, 0, s], [0, 1, 0], [-s, 0, c]];
+		return [[c, -s, 0], [s, c, 0], [0, 0, 1]];
+	};
+	const mul = (A, B) => A.map((row, r) => [0, 1, 2].map(c => row[0] * B[0][c] + row[1] * B[1][c] + row[2] * B[2][c]));
+	let M = mul(mul(axis(2, part.zRot), axis(1, part.yRot)), axis(0, part.xRot));
+	for (const [i, angle] of rotations) M = mul(M, axis(i, angle));
+	// Matrix3f.getEulerAnglesZYX
+	part.xRot = Math.atan2(M[2][1], M[2][2]);
+	part.yRot = Math.atan2(-M[2][0], Math.sqrt(Math.max(0, 1 - M[2][0] * M[2][0])));
+	part.zRot = Math.atan2(M[1][0], M[0][0]);
 }
 
 const lerp = (t, a, b) => a + (b - a) * t;
@@ -1239,6 +1356,20 @@ export function describeMob(e) {
 	// Equipment layers (saddle, armour) are drawn on invisible mobs too.
 	if (def.saddle && e.saddle) { add(def.saddle[0], def.saddle[1]); out[out.length - 1].equipment = true; }
 	if (def.armor) out.push(...armorLayers('minecraft:' + def.armor, e).map(l => ({ ...l, mode: 'cutout', equipment: true })));
+	const chest = strip(e.armor && e.armor[1]);
+	const showCape = def.player && (e.parts === undefined || !!(e.parts & 1));
+	if (def.player && showCape && chest !== 'elytra' && e.uuid) {
+		// CapeLayer (not on invisible players); a chestplate moves the cape out a little
+		const chestplate = /_chestplate$/.test(chest);
+		out.push({ layer: 'minecraft:player#cape', texture: { cape: e.uuid, name: e.name }, mode: 'cutout', color: null,
+			offset: chestplate ? [0, -0.053125, 0.06875] : null });
+	}
+	if (def.armor && chest === 'elytra') {
+		// WingsLayer: the player's cape as elytra when they show it, else the elytra texture
+		out.push({ layer: e.baby ? 'minecraft:elytra_baby#main' : 'minecraft:elytra#main',
+			texture: showCape && e.uuid ? { cape: e.uuid, name: e.name, fallback: 'equipment/wings/elytra' } : 'equipment/wings/elytra',
+			mode: 'cutout', color: null, equipment: true, offset: [0, 0, 0.125] });
+	}
 	return { def, layers: out, anim: ANIMS[def.anim] || ANIMS.generic, shadow: value(def.shadow, 0.5) };
 }
 
