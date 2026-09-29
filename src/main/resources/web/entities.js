@@ -6,7 +6,7 @@
 import {
 	ModelLibrary, VertexSink, FLOATS, emitModel, emitQuads, partMatrix, mat4, mul, translate, rotate, scale, DEG,
 } from './entity-models.js';
-import { describeMob, blockEntityModel, dyeRgb, CLIENT } from './mobs.js';
+import { describeMob, isKnownMob, blockEntityModel, dyeRgb, CLIENT } from './mobs.js';
 import { Animator, AnimationStates } from './keyframes.js';
 import { collectParts } from './models.js';
 import { JavaRandom } from './rng.js';
@@ -566,14 +566,15 @@ export class EntityRenderer {
 				this.bolts.push({ x: rx, y: ry, z: rz, seed: e.seed || '0' });
 				continue;
 			}
-			if (e.invisible && !e.burning) continue;
+			// Invisible mobs still show their equipment (and flames); other invisible entities show nothing.
+			if (e.invisible && !e.burning && !isKnownMob(type)) continue;
 			const radius = Math.max(e.w || 1, e.h || 1) + 1;
 			if (!frame.frustum(rx, ry + (e.h || 1) / 2, rz, radius * (type === 'happy_ghast' || type === 'ghast' ? 2 : 1))) continue;
 			if (Math.hypot(rx, rz) > frame.fogEnd + 8) continue;
 			visible++;
 			const light = this.lightFor(e, world);
 			try {
-				if (!e.invisible) this.drawEntity(e, type, [rx, ry, rz], light, now, world);
+				if (!e.invisible || isKnownMob(type)) this.drawEntity(e, type, [rx, ry, rz], light, now, world);
 				// EntityRenderer.submit: burning entities (invisible ones too) are wrapped in flames.
 				if (e.burning) this.drawFlame(e, [rx, ry, rz], light, frame.viewRotation);
 			} catch (error) {
@@ -774,6 +775,8 @@ export class EntityRenderer {
 				mob.anim(model.parts, anim, e);
 			}
 			if (!base) base = model;
+			// LivingEntityRenderer: an invisible mob's body is not drawn, its equipment layers are.
+			if (e.invisible && !layer.equipment) continue;
 			const start = this.sink.count;
 			// getModelTint (e.g. a wet wolf) tints the entity's own model, not the layers drawn over it.
 			const color = layer.color || (model === base && layer === mob.layers[0] && anim.tint) || [1, 1, 1, 1];
@@ -787,7 +790,8 @@ export class EntityRenderer {
 		if (e.hand && base.parts.right_arm && base.parts.right_arm.visible) this.drawHeld(base, m, 'right_arm', e.hand, style, 1);
 		if (e.offhand && base.parts.left_arm && base.parts.left_arm.visible) this.drawHeld(base, m, 'left_arm', e.offhand, style, -1);
 
-		this.shadowFor(e, pos, typeof mob.shadow === 'number' ? mob.shadow * entityScale : 0.5, world);
+		// EntityRenderDispatcher: no shadow under invisible entities
+		if (!e.invisible) this.shadowFor(e, pos, typeof mob.shadow === 'number' ? mob.shadow * entityScale : 0.5, world);
 	}
 
 	/** AvatarRenderer.setupRotations: players lie down while swimming, crawling and gliding with elytra. */

@@ -1236,8 +1236,9 @@ export function describeMob(e) {
 		if (!texture) continue;
 		add(value(extra.layer), texture, { mode: extra.mode, color: extra.color ? extra.color(e) : null });
 	}
-	if (def.saddle && e.saddle) add(def.saddle[0], def.saddle[1]);
-	if (def.armor) out.push(...armorLayers('minecraft:' + def.armor, e).map(l => ({ ...l, mode: 'cutout' })));
+	// Equipment layers (saddle, armour) are drawn on invisible mobs too.
+	if (def.saddle && e.saddle) { add(def.saddle[0], def.saddle[1]); out[out.length - 1].equipment = true; }
+	if (def.armor) out.push(...armorLayers('minecraft:' + def.armor, e).map(l => ({ ...l, mode: 'cutout', equipment: true })));
 	return { def, layers: out, anim: ANIMS[def.anim] || ANIMS.generic, shadow: value(def.shadow, 0.5) };
 }
 
