@@ -95,6 +95,81 @@ void main() {
 	outColor = apply_fog(color, vSph, vCyl);
 }`;
 
+// rendertype_end_portal.vsh / .fsh of the game (projection.glsl, matrix.glsl): layers of the end_portal texture
+// projected in screen space over the end_sky texture, drifting with the game time.
+const PORTAL_VS = `
+layout(location = 0) in vec3 aPos;
+uniform mat4 uViewProj;
+out vec4 texProj0;
+out float vSph;
+out float vCyl;
+void main() {
+	gl_Position = uViewProj * vec4(aPos, 1.0);
+	vec4 projection = gl_Position * 0.5;
+	projection.xy = vec2(projection.x + projection.w, projection.y + projection.w);
+	projection.zw = gl_Position.zw;
+	texProj0 = projection;
+	vSph = length(aPos);
+	vCyl = max(length(aPos.xz), abs(aPos.y));
+}`;
+
+const PORTAL_FS = `
+in vec4 texProj0;
+in float vSph;
+in float vCyl;
+uniform sampler2D uSky;
+uniform sampler2D uPortal;
+uniform float uGameTime;
+uniform int uLayers;
+${FOG_GLSL}
+const vec3 COLORS[16] = vec3[16](
+	vec3(0.022087, 0.098399, 0.110818),
+	vec3(0.011892, 0.095924, 0.089485),
+	vec3(0.027636, 0.101689, 0.100326),
+	vec3(0.046564, 0.109883, 0.114838),
+	vec3(0.064901, 0.117696, 0.097189),
+	vec3(0.063761, 0.086895, 0.123646),
+	vec3(0.084817, 0.111994, 0.166380),
+	vec3(0.097489, 0.154120, 0.091064),
+	vec3(0.106152, 0.131144, 0.195191),
+	vec3(0.097721, 0.110188, 0.187229),
+	vec3(0.133516, 0.138278, 0.148582),
+	vec3(0.070006, 0.243332, 0.235792),
+	vec3(0.196766, 0.142899, 0.214696),
+	vec3(0.047281, 0.315338, 0.321970),
+	vec3(0.204675, 0.390010, 0.302066),
+	vec3(0.080955, 0.314821, 0.661491)
+);
+const mat4 SCALE_TRANSLATE = mat4(
+	0.5, 0.0, 0.0, 0.25,
+	0.0, 0.5, 0.0, 0.25,
+	0.0, 0.0, 1.0, 0.0,
+	0.0, 0.0, 0.0, 1.0
+);
+mat2 mat2_rotate_z(float radians) {
+	return mat2(cos(radians), -sin(radians), sin(radians), cos(radians));
+}
+mat4 end_portal_layer(float layer) {
+	mat4 translate = mat4(
+		1.0, 0.0, 0.0, 17.0 / layer,
+		0.0, 1.0, 0.0, (2.0 + layer / 1.5) * (uGameTime * 1.5),
+		0.0, 0.0, 1.0, 0.0,
+		0.0, 0.0, 0.0, 1.0
+	);
+	mat2 rotate = mat2_rotate_z(radians((layer * layer * 4321.0 + layer * 9.0) * 2.0));
+	mat2 scale = mat2((4.5 - layer / 4.0) * 2.0);
+	return mat4(scale * rotate) * translate * SCALE_TRANSLATE;
+}
+out vec4 outColor;
+void main() {
+	vec3 color = textureProj(uSky, texProj0).rgb * COLORS[0];
+	for (int i = 0; i < 16; i++) {
+		if (i >= uLayers) break;
+		color += textureProj(uPortal, texProj0 * end_portal_layer(float(i + 1))).rgb * COLORS[i];
+	}
+	outColor = apply_fog(vec4(color, 1.0), vSph, vCyl);
+}`;
+
 const DEPTH_VS = `
 layout(location = 0) in vec3 aPos;
 layout(location = 2) in vec2 aUv;
@@ -235,6 +310,8 @@ export class EntityRenderer {
 		this.programs = {};
 		this.depthProgram = program(this.gl, DEPTH_VS, DEPTH_FS);
 		this.blobProgram = program(this.gl, BLOB_VS, BLOB_FS);
+		this.portalProgram = null;
+		this.portals = { endPortal: [], endGateway: [] };
 		const gl = this.gl;
 		this.vao = gl.createVertexArray();
 		this.vbo = gl.createBuffer();
@@ -1274,6 +1351,8 @@ export class EntityRenderer {
 
 	prepareBlockEntities(frame, world) {
 		const o = frame.origin, cam = frame.camPos;
+		this.portals.endPortal.length = 0;
+		this.portals.endGateway.length = 0;
 		for (const section of world.sections.values()) {
 			if (!section.blockEntities || section.blockEntities.length === 0) continue;
 			for (const be of section.blockEntities) {
@@ -1281,6 +1360,10 @@ export class EntityRenderer {
 				const bx = be.x - o[0] - cam[0], by = be.y - o[1] - cam[1], bz = be.z - o[2] - cam[2];
 				if (be.info.shortName === 'beacon') {
 					this.drawBeacon(be, [bx, by, bz], frame, world);
+					continue;
+				}
+				if (be.info.shortName === 'end_portal' || be.info.shortName === 'end_gateway') {
+					this.addPortal(be, [bx, by, bz], frame, world);
 					continue;
 				}
 				if (Math.hypot(bx, by, bz) > Math.min(frame.fogEnd, 96)) continue;
@@ -1317,6 +1400,76 @@ export class EntityRenderer {
 			this.beaconBeam(texture, p, animationTime, start, i === data.s.length - 1 ? 2048 : height, color, 0.2 * radiusScale, 0.25 * radiusScale);
 			start += height;
 		});
+	}
+
+	/**
+	 * TheEndPortalRenderer (the top and bottom of a box 0.375 to 0.75 high) and TheEndGatewayRenderer (every face
+	 * next to a block that does not hide it), drawn with the game's end portal shader in draw().
+	 */
+	addPortal(be, p, frame, world) {
+		const gateway = be.info.shortName === 'end_gateway';
+		if (Math.hypot(p[0] + 0.5, p[1] + 0.5, p[2] + 0.5) > Math.min(frame.fogEnd + 8, gateway ? 256 : 64)) return;
+		if (!frame.frustum(p[0] + 0.5, p[1] + 0.5, p[2] + 0.5, 1.5)) return;
+		const out = gateway ? this.portals.endGateway : this.portals.endPortal;
+		const [x0, z0, x1, z1] = [p[0], p[2], p[0] + 1, p[2] + 1];
+		const y0 = p[1] + (gateway ? 0 : 0.375), y1 = p[1] + (gateway ? 1 : 0.75);
+		const shown = (dx, dy, dz) => {
+			// TheEndPortalBlockEntity: only up and down; TheEndGatewayBlockEntity: Block.shouldRenderFace
+			if (!gateway) return dy !== 0;
+			const info = world.infoAt(be.x + dx, be.y + dy, be.z + dz);
+			return !(info && info.opaque);
+		};
+		const quad = (a, b, c, d) => out.push(...a, ...b, ...c, ...a, ...c, ...d);
+		if (shown(0, 1, 0)) quad([x0, y1, z1], [x1, y1, z1], [x1, y1, z0], [x0, y1, z0]);
+		if (shown(0, -1, 0)) quad([x0, y0, z0], [x1, y0, z0], [x1, y0, z1], [x0, y0, z1]);
+		if (shown(0, 0, -1)) quad([x0, y0, z0], [x0, y1, z0], [x1, y1, z0], [x1, y0, z0]);
+		if (shown(0, 0, 1)) quad([x1, y0, z1], [x1, y1, z1], [x0, y1, z1], [x0, y0, z1]);
+		if (shown(-1, 0, 0)) quad([x0, y0, z1], [x0, y1, z1], [x0, y1, z0], [x0, y0, z0]);
+		if (shown(1, 0, 0)) quad([x1, y0, z0], [x1, y1, z0], [x1, y1, z1], [x1, y0, z1]);
+	}
+
+	/** RenderPipelines END_PORTAL (15 layers) and END_GATEWAY (16 layers). */
+	drawPortals(frame) {
+		const lists = [[this.portals.endPortal, 15], [this.portals.endGateway, 16]].filter(([list]) => list.length);
+		if (!lists.length || !this.assets || !this.assets.environment || !this.assets.environment.endSky) return;
+		const portalTexture = this.texture('end_portal/end_portal');
+		if (!portalTexture) return;
+		const gl = this.gl;
+		if (!this.portalProgram) {
+			this.portalProgram = program(gl, PORTAL_VS, PORTAL_FS);
+			this.portalVao = gl.createVertexArray();
+			this.portalVbo = gl.createBuffer();
+			gl.bindVertexArray(this.portalVao);
+			gl.bindBuffer(gl.ARRAY_BUFFER, this.portalVbo);
+			gl.enableVertexAttribArray(0);
+			gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 12, 0);
+		}
+		const { program: p, u } = this.portalProgram;
+		gl.useProgram(p);
+		gl.bindVertexArray(this.portalVao);
+		gl.bindBuffer(gl.ARRAY_BUFFER, this.portalVbo);
+		gl.uniformMatrix4fv(u.uViewProj, false, frame.viewProj);
+		setFog(gl, u, frame.fog);
+		// Globals.GameTime: the day's ticks as a fraction
+		const time = this.env ? this.env.gameTime(frame.now) : frame.now / 50;
+		gl.uniform1f(u.uGameTime, (time % 24000) / 24000);
+		gl.activeTexture(gl.TEXTURE0);
+		gl.bindTexture(gl.TEXTURE_2D, this.assets.environment.endSky);
+		gl.uniform1i(u.uSky, 0);
+		gl.activeTexture(gl.TEXTURE1);
+		gl.bindTexture(gl.TEXTURE_2D, portalTexture);
+		gl.uniform1i(u.uPortal, 1);
+		gl.disable(gl.BLEND);
+		gl.depthMask(true);
+		gl.disable(gl.CULL_FACE);
+		for (const [list, layers] of lists) {
+			gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(list), gl.STREAM_DRAW);
+			gl.uniform1i(u.uLayers, layers);
+			gl.drawArrays(gl.TRIANGLES, 0, list.length / 3);
+		}
+		gl.enable(gl.CULL_FACE);
+		gl.activeTexture(gl.TEXTURE0);
+		gl.bindVertexArray(null);
 	}
 
 	/** BeaconRenderer.submitBeaconBeam */
@@ -1469,6 +1622,7 @@ export class EntityRenderer {
 
 	/** pass 'opaque': the scene; 'shadow': depth only into the sun shadow map. */
 	draw(pass, frame, shadow) {
+		if (pass !== 'shadow') this.drawPortals(frame);
 		if (!this.batches.length && !this.shadows.length) return;
 		const gl = this.gl;
 		gl.bindVertexArray(this.vao);

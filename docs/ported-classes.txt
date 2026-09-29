@@ -56,6 +56,10 @@ net/minecraft/client/renderer/blockentity/BannerRenderer
 net/minecraft/client/renderer/blockentity/SkullBlockRenderer
 net/minecraft/client/renderer/blockentity/DecoratedPotRenderer
 net/minecraft/client/renderer/blockentity/BeaconRenderer
+net/minecraft/client/renderer/blockentity/AbstractEndPortalRenderer
+net/minecraft/client/renderer/blockentity/TheEndPortalRenderer
+net/minecraft/client/renderer/blockentity/TheEndGatewayRenderer
+# shaders ported verbatim (entities.js PORTAL_VS/PORTAL_FS): assets/minecraft/shaders/core/rendertype_end_portal.vsh/.fsh
 
 # name tags and text (text.js, entities.js)
 net/minecraft/client/renderer/SubmitNodeCollection
