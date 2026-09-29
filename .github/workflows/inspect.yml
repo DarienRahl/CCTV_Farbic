@@ -13,6 +13,9 @@ on:
       list:
         description: Regex; lists matching class files of the client jar
         default: ''
+      uses:
+        description: Regex; lists class files of the client jar whose bytes contain a match (finds who uses a field or method, e.g. WEATHER_RAIN)
+        default: ''
       javap:
         description: Space separated class names for javap -p (client jar contains the common classes too)
         default: ''
@@ -50,6 +53,13 @@ jobs:
         env:
           PATTERN: ${{ inputs.list }}
         run: unzip -Z1 client.jar | grep -E "$PATTERN" | head -n 2000
+      - name: find uses
+        if: inputs.uses != ''
+        env:
+          PATTERN: ${{ inputs.uses }}
+        run: |
+          mkdir -p all && (cd all && unzip -qo ../client.jar '*.class')
+          grep -rlaE "$PATTERN" all | sed 's|^all/||' | sort | head -n 500
       - name: javap
         if: inputs.javap != ''
         env:
