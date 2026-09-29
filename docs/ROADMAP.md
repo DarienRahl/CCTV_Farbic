@@ -24,7 +24,7 @@ to the milestone it belongs to.
 5. **Budgets, not hopes.** Server time per camera, bytes per section and browser frame time are
    measured in CI.
 
-## 1.1.x — stability (released: 1.1.2)
+## 1.1.x — stability (released: 1.1.3)
 
 - [x] Far terrain without holes in cliffs and hillsides (buried check looks at the neighbouring
       chunks towards the camera; nothing is skipped for cameras underground)
@@ -34,8 +34,8 @@ to the milestone it belongs to.
       camera's own block
 - [x] Players walk, sneak, swim, crawl and glide like in the game; default skins by UUID
 - [x] Name tags 1:1 (game font, scale, background, see-through text, lighting, visibility rules)
-- [ ] **1.1.3:** camera sessions that went idle stream again to the next viewer
-      (reproduced in CI; `/api/status` shows the session state)
+- [x] **1.1.3:** cameras stream again after a quiet minute (the empty server paused itself; a
+      watched camera now keeps it awake); `/api/status` shows the session state
 
 ## 1.2 — easy updates
 
