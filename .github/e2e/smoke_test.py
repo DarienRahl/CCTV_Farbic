@@ -205,6 +205,7 @@ def main():
     rcon.command("fill 5 -61 10 7 -61 12 minecraft:iron_block")
     rcon.command("setblock 6 -60 11 minecraft:beacon")
     rcon.command("setblock 6 -57 11 minecraft:red_stained_glass")
+    rcon.command("setblock -3 -61 11 minecraft:end_portal")
     rcon.command("place feature minecraft:oak -6 -60 18")
     rcon.command("place feature minecraft:birch 12 -60 16")
     rcon.command("place feature minecraft:fancy_oak 14 -60 4")

@@ -2,12 +2,13 @@
 // (vanilla graphics and the shader look).
 import { chromium } from 'playwright';
 
+const pageErrors = [];
 const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
 
 async function shoot(name, settings, camera = 'ci') {
 	const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
 	page.on('console', m => console.log('[browser]', m.type(), m.text()));
-	page.on('pageerror', e => console.log('[browser] pageerror', e.message));
+	page.on('pageerror', e => { console.log('[browser] pageerror', e.message); pageErrors.push(name + ': ' + e.message); });
 	if (settings) await page.addInitScript(s => localStorage.setItem('cctv-settings-v2', s), JSON.stringify(settings));
 	await page.goto('http://127.0.0.1:8100/cam/' + camera);
 	// Wait for block textures (downloaded by the server) and for the world to be meshed.
@@ -26,6 +27,7 @@ async function shoot(name, settings, camera = 'ci') {
 		text: window.cctv ? window.cctv.entities.text.draws.length : 0,
 		signs: window.cctv ? window.cctv.world.signs.size : 0,
 		particles: window.cctv && window.cctv.particles ? window.cctv.particles.particles.length : 0,
+		portals: window.cctv && window.cctv.entities.portals ? window.cctv.entities.portals.endPortal.length / 18 : 0,
 		stats: document.getElementById('stats').textContent,
 	}));
 	console.log(name + ':', JSON.stringify(info));
@@ -50,6 +52,14 @@ await browser.close();
 
 if (!vanilla.textures || vanilla.units === 0 || !vanilla.models) {
 	console.error('viewer did not render a textured world with entity models');
+	process.exit(1);
+}
+if (pageErrors.length) {
+	console.error('viewer script errors:\n' + pageErrors.join('\n'));
+	process.exit(1);
+}
+if (vanilla.portals === 0) {
+	console.error('viewer drew no end portal (one is in front of the camera)');
 	process.exit(1);
 }
 if (vanilla.particles === 0) {
