@@ -41,7 +41,8 @@ import io.github.darienrahl.cctv.assets.ClientAssets;
  * GET /api/viewer                viewer defaults, custom sky boxes and shaders
  * GET /custom/{skyboxes|shaders}/... custom files from config/cctv
  * GET /assets/bundle.json        block states, models and textures (from the client jar)
- * GET /assets/models.json        entity model geometry (from the client jar)
+ * GET /assets/models.json        entity model geometry and keyframe animations (from the client jar)
+ * GET /assets/names.json         entity names in the configured language
  * GET /assets/entities.json      list of entity textures
  * GET /assets/entity/{path}.png  one entity texture
  * GET /assets/font/{path}         the game's font (definitions .json, glyph sheets .png)
@@ -272,6 +273,9 @@ public final class WebServer {
 				return;
 			}
 			sendGzipped(exchange, "application/json", models);
+		} else if (path.equals("names.json")) {
+			headers.add("Cache-Control", "no-cache");
+			sendText(exchange, 200, "application/json", assets.namesJson());
 		} else if (path.equals("entities.json")) {
 			headers.add("Cache-Control", "no-cache");
 			sendText(exchange, 200, "application/json", assets.entityListJson());

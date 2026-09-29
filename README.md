@@ -124,6 +124,7 @@ can really see. "Mob labels" adds tags for every other mob (its custom name or i
 | `workerThreads` | half the cores (1–4) | Threads that decode sections and read world files off the main thread |
 | `rescanSeconds` | `5` | Full re-check of the area every N seconds (safety net) |
 | `downloadClientAssets` | `true` | Download textures/models from Mojang's `client.jar` |
+| `language` | `en_us` | Language of mob names in the viewer (`pl_pl`, `de_de`…; downloaded from Mojang once) |
 | `gzip` | `true` | Compress the stream |
 | `skins` | `true` | Player skins (the server fetches them from the Mojang API and caches them) |
 | `markers` | `true` | Camera marker block in the world |

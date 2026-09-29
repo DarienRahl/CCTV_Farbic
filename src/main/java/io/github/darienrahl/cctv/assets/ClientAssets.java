@@ -22,6 +22,7 @@ import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.regex.Pattern;
 import java.util.zip.GZIPOutputStream;
@@ -34,6 +35,8 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
+
+import io.github.darienrahl.cctv.web.Json;
 
 /**
  * Block textures and models for the web viewer.
@@ -54,12 +57,14 @@ public final class ClientAssets implements AutoCloseable {
 	}
 
 	private static final String MANIFEST = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json";
+	private static final String ASSET_OBJECTS = "https://resources.download.minecraft.net/";
 	private static final Pattern ENTITY_PATH = Pattern.compile("^[a-z0-9_./-]{1,128}$");
 	private static final Pattern FONT_PATH = Pattern.compile("^[a-z0-9_./-]{1,128}\\.(json|png)$");
 
 	private final Path dir;
 	private final String version;
 	private final boolean download;
+	private final String language;
 	private final Logger logger;
 	private final List<ZipFile> sources = new ArrayList<>();
 	private volatile State state = State.LOADING;
@@ -70,11 +75,18 @@ public final class ClientAssets implements AutoCloseable {
 	private volatile byte @Nullable [] entityModels;
 	private volatile String entityModelsEtag = "";
 	private volatile boolean entityModelsPending = true;
+	private volatile String names = "{}";
 
 	public ClientAssets(Path dir, String version, boolean download, Logger logger) {
+		this(dir, version, download, "en_us", logger);
+	}
+
+	/** @param language Minecraft language code of the entity names, e.g. {@code en_us} or {@code pl_pl} */
+	public ClientAssets(Path dir, String version, boolean download, String language, Logger logger) {
 		this.dir = dir;
 		this.version = version;
 		this.download = download;
+		this.language = language;
 		this.logger = logger;
 	}
 
@@ -103,6 +115,11 @@ public final class ClientAssets implements AutoCloseable {
 
 	public String entityListJson() {
 		return entityList;
+	}
+
+	/** Entity names in the configured language: {@code {"cow": "Cow", ...}} ({@code entity.minecraft.*} keys). */
+	public String namesJson() {
+		return names;
 	}
 
 	/** Gzip-compressed entity model geometry (see {@link EntityModels}), or {@code null} when unavailable. */
@@ -210,6 +227,7 @@ public final class ClientAssets implements AutoCloseable {
 			state = State.READY;
 			logger.info("CCTV: block assets ready ({} KB, {} ms)", bundle.length / 1024, (System.nanoTime() - start) / 1_000_000);
 
+			loadNames();
 			loadEntityModels(jar);
 		} catch (Exception e) {
 			error = e.toString();
@@ -244,6 +262,83 @@ public final class ClientAssets implements AutoCloseable {
 		} finally {
 			entityModelsPending = false;
 		}
+	}
+
+	/**
+	 * The game's entity names: {@code en_us} from the client jar, the configured language on top (from a
+	 * resource pack, or downloaded from Mojang's asset index once and cached next to the jar).
+	 */
+	private void loadNames() {
+		try {
+			Map<String, String> merged = new TreeMap<>();
+			collectNames(merged, read("assets/minecraft/lang/en_us.json"));
+			if (!language.equals("en_us")) {
+				byte[] translated = read("assets/minecraft/lang/" + language + ".json");
+				collectNames(merged, translated != null ? translated : downloadLanguage());
+			}
+			Json json = new Json(64 + merged.size() * 32).beginObject();
+			merged.forEach(json::field);
+			names = json.endObject().toString();
+		} catch (Exception e) {
+			logger.warn("CCTV: entity names in '{}' unavailable, English names are used ({})", language, e.toString());
+		}
+	}
+
+	private static void collectNames(Map<String, String> names, byte @Nullable [] lang) {
+		if (lang == null) {
+			return;
+		}
+		String prefix = "entity.minecraft.";
+		for (Map.Entry<String, JsonElement> entry : JsonParser.parseString(new String(lang, StandardCharsets.UTF_8)).getAsJsonObject().entrySet()) {
+			String key = entry.getKey();
+			if (key.startsWith(prefix) && key.indexOf('.', prefix.length()) < 0 && entry.getValue().isJsonPrimitive()) {
+				names.put(key.substring(prefix.length()), entry.getValue().getAsString());
+			}
+		}
+	}
+
+	/** Language files other than en_us are game assets outside the client jar (the asset index lists them). */
+	private byte @Nullable [] downloadLanguage() throws Exception {
+		Path cache = dir.resolve("lang-" + language + "-" + version + ".json");
+		if (Files.isRegularFile(cache)) {
+			return Files.readAllBytes(cache);
+		}
+		if (!download) {
+			return null;
+		}
+		HttpClient http = HttpClient.newBuilder()
+				.connectTimeout(Duration.ofSeconds(15))
+				.followRedirects(HttpClient.Redirect.NORMAL)
+				.build();
+		String versionUrl = null;
+		for (JsonElement element : getJson(http, MANIFEST).getAsJsonArray("versions")) {
+			JsonObject entry = element.getAsJsonObject();
+			if (entry.get("id").getAsString().equals(version)) {
+				versionUrl = entry.get("url").getAsString();
+				break;
+			}
+		}
+		if (versionUrl == null) {
+			throw new IOException("Version " + version + " not found in Mojang's version manifest");
+		}
+		String indexUrl = getJson(http, versionUrl).getAsJsonObject("assetIndex").get("url").getAsString();
+		JsonObject object = getJson(http, indexUrl).getAsJsonObject("objects").getAsJsonObject("minecraft/lang/" + language + ".json");
+		if (object == null) {
+			throw new IOException("Minecraft has no language '" + language + "'");
+		}
+		String hash = object.get("hash").getAsString();
+		HttpResponse<byte[]> response = http.send(HttpRequest.newBuilder(URI.create(ASSET_OBJECTS + hash.substring(0, 2) + "/" + hash))
+				.timeout(Duration.ofMinutes(2)).build(), HttpResponse.BodyHandlers.ofByteArray());
+		if (response.statusCode() != 200) {
+			throw new IOException("HTTP " + response.statusCode() + " for language " + language);
+		}
+		byte[] data = response.body();
+		if (!HexFormat.of().formatHex(MessageDigest.getInstance("SHA-1").digest(data)).equalsIgnoreCase(hash)) {
+			throw new IOException("Language file checksum mismatch");
+		}
+		Files.write(cache, data);
+		logger.info("CCTV: downloaded the '{}' language file from Mojang for entity names", language);
+		return data;
 	}
 
 	private static byte[] gzip(byte[] data) throws IOException {

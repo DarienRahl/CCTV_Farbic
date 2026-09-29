@@ -43,7 +43,7 @@ public final class CctvMod implements ModInitializer {
 			String version = FabricLoader.getInstance().getModContainer("minecraft")
 					.map(container -> container.getMetadata().getVersion().getFriendlyString())
 					.orElse("unknown");
-			ClientAssets assets = new ClientAssets(dir.resolve("assets"), version, config.downloadClientAssets, LOGGER);
+			ClientAssets assets = new ClientAssets(dir.resolve("assets"), version, config.downloadClientAssets, config.language, LOGGER);
 			CameraManager started = new CameraManager(server, dir, config, new CameraStore(dir.resolve("cameras.json"), LOGGER), assets, LOGGER);
 			started.start();
 			manager = started;

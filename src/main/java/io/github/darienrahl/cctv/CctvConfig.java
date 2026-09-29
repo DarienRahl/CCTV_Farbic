@@ -59,6 +59,12 @@ public final class CctvConfig {
 	 * to players. When false, put a client jar there yourself or the viewer uses plain colours.
 	 */
 	public boolean downloadClientAssets = true;
+	/**
+	 * Language of entity names in the viewer (mob labels), a Minecraft language code such as {@code en_us},
+	 * {@code pl_pl} or {@code de_de}. Languages other than English are downloaded from Mojang once (like the
+	 * game launcher does) or taken from a resource pack in config/cctv/resourcepacks.
+	 */
+	public String language = "en_us";
 
 	/** Compress the live stream with gzip when the browser supports it. */
 	public boolean gzip = true;
@@ -185,6 +191,9 @@ public final class CctvConfig {
 		viewer.mode = oneOf(viewer.mode, "color", "color", "mono", "night");
 		if (viewer.postShader == null || !viewer.postShader.matches("[A-Za-z0-9_-]{0,64}")) {
 			viewer.postShader = "";
+		}
+		if (language == null || !language.matches("[a-z]{2,3}_[a-z0-9]{2,4}")) {
+			language = "en_us";
 		}
 		port = clamp(port, 1, 65535);
 		defaultFov = Math.max(10, Math.min(140, defaultFov));

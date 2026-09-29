@@ -269,6 +269,10 @@ export class EntityRenderer {
 			.then(r => (r.ok ? r.json() : []))
 			.then(list => { this.entityList = new Set(list); })
 			.catch(() => { this.entityList = new Set(); });
+		fetch('/assets/names.json' + query, { credentials: 'same-origin' })
+			.then(r => (r.ok ? r.json() : {}))
+			.then(names => { this.names = names; })
+			.catch(() => {});
 		this.text.load(query);
 		this.library.load(query).then(ok => {
 			if (!ok) console.warn('CCTV: entity models unavailable, entities are drawn as boxes');
@@ -1390,7 +1394,7 @@ export class EntityRenderer {
 			if (world.occluded(eye, [e.x, e.y + height * 0.9, e.z]) && world.occluded(eye, [e.x, e.y + height * 0.5, e.z])) continue;
 			tags.push({
 				pos: [rx, ry, rz],
-				text: e.name || titleCase(type),
+				text: e.name || (this.names && this.names[type]) || titleCase(type),
 				discrete: type === 'player' && !!(e.sneak || e.pose === 'crouching'),
 				light: this.lightFor(e, world),
 			});

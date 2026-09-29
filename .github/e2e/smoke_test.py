@@ -260,6 +260,11 @@ def main():
     except RuntimeError as e:
         failures.append(str(e))
 
+    names = json.load(urllib.request.urlopen(f"{WEB}/assets/names.json", timeout=10))
+    print("entity names:", len(names), {k: names.get(k) for k in ("cow", "happy_ghast", "zombie_villager")}, flush=True)
+    if names.get("zombie_villager") != "Zombie Villager":
+        failures.append("entity names from the game's language file are missing")
+
     viewer = json.load(urllib.request.urlopen(f"{WEB}/api/viewer", timeout=10))
     print("viewer settings:", viewer, flush=True)
     if "sepia" not in viewer.get("shaders", []):
