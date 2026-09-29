@@ -49,6 +49,8 @@ export class Sounds {
 		this.jukeboxes = new Map();
 		this.listener = { x: 0, y: 0, z: 0 };
 		this.entities = new Map();
+		/** Lightning bolts already heard. */
+		this.bolts = new Set();
 	}
 
 	/** Starts audio (must follow a click: browsers only allow sound after the user asks for it). */
@@ -120,7 +122,16 @@ export class Sounds {
 			l.setOrientation(forward[0], forward[1], forward[2], 0, 1, 0);
 		}
 		this.entities.clear();
-		for (const e of entityList || []) this.entities.set(e.id, e);
+		for (const e of entityList || []) {
+			this.entities.set(e.id, e);
+			if (e.type === 'minecraft:lightning_bolt' && !this.bolts.has(e.id)) {
+				// LightningBolt.tick in the client: the thunder, heard everywhere, and the impact
+				this.bolts.add(e.id);
+				if (this.bolts.size > 64) this.bolts.delete(this.bolts.values().next().value);
+				this.local('minecraft:entity.lightning_bolt.thunder', e.x, e.y, e.z, 'weather', 10000, 0.8 + Math.random() * 0.2);
+				this.local('minecraft:entity.lightning_bolt.impact', e.x, e.y, e.z, 'weather', 2, 0.5 + Math.random() * 0.2);
+			}
+		}
 		if (!this.events) return;
 		while (this.pending.length && (renderTick === undefined || this.pending[0].t <= renderTick)) {
 			const { t: tick, sounds } = this.pending.shift();
@@ -183,6 +194,17 @@ export class Sounds {
 			default:
 				break;
 		}
+	}
+
+	/**
+	 * Level.playLocalSound in the client: a sound the viewer makes itself (a block's animateTick, lightning),
+	 * with an unseeded random; far sounds with a distance delay start later.
+	 */
+	local(id, x, y, z, source, volume, pitch, delay = false) {
+		if (!this.enabled || !this.events || !this.ctx) return;
+		const d2 = (x - this.listener.x) ** 2 + (y - this.listener.y) ** 2 + (z - this.listener.z) ** 2;
+		const wait = delay && d2 > 100 ? Math.floor(Math.sqrt(d2) / 40 * 20) * 0.05 : 0;
+		this.play(id, source, volume, pitch, randomFor(Math.floor(Math.random() * 2 ** 31)), { x, y, z }, wait);
 	}
 
 	/** WeighedSoundEvents.getSound: a weighted pick; "event" entries pick from another event. */

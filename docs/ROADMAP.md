@@ -92,8 +92,9 @@ to the milestone it belongs to. The roadmap on the README page is drawn from thi
       blocks, jukeboxes) and the ones the client makes from level events, played in 3D like the game's
       SoundEngine (sound files from the game's asset index, downloaded and cached by the server; a button
       turns them on in the viewer)
-- [ ] Client-side sounds: rain and thunder, lightning, cave and biome ambience, the crackle of lava, fire,
-      campfires and furnaces (animateTick)
+- [x] Sounds the client makes itself: lightning thunder and impact (LightningBolt), the crackle and bubbling
+      of fire, campfires, furnaces, candles, lava, flowing water and nether portals (animateTick)
+- [ ] Rain on blocks, cave and biome ambience (AmbientSoundHandler), underwater ambience
 - [x] **Particles** from `particles/*.json` and their textures: torch, candle and campfire flames
       and smoke, lava pops, drips, portal, falling leaves, spore blossoms, fireflies
 - [x] **Particles from the server**: broken blocks (pieces of the block's texture), explosions and

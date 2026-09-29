@@ -34,7 +34,6 @@ net/minecraft/client/renderer/feature/ShadowFeatureRenderer
 net/minecraft/client/renderer/feature/ItemFeatureRenderer
 net/minecraft/client/renderer/feature/LeashFeatureRenderer
 net/minecraft/client/renderer/rendertype/TextureTransform
-net/minecraft/client/renderer/Lightmap
 net/minecraft/client/renderer/entity/ItemFrameRenderer
 net/minecraft/client/renderer/MapRenderer
 net/minecraft/client/resources/MapTextureManager
@@ -215,11 +214,8 @@ net/minecraft/client/renderer/special/ShieldSpecialRenderer
 net/minecraft/client/renderer/block/model/ItemTransform
 # block events (entities.js blockEvent, blockAnim; particles.js blockEvent)
 net/minecraft/world/level/block/entity/ChestLidController
-net/minecraft/client/renderer/blockentity/ChestRenderer
 net/minecraft/world/level/block/entity/ShulkerBoxBlockEntity
-net/minecraft/client/renderer/blockentity/ShulkerBoxRenderer
 net/minecraft/world/level/block/entity/BellBlockEntity
-net/minecraft/client/renderer/blockentity/BellRenderer
 net/minecraft/world/level/block/NoteBlock
 # sounds (sound.js; SoundEncoder.java for LevelEventHandler's sounds)
 net/minecraft/client/sounds/SoundEngine
@@ -230,3 +226,5 @@ net/minecraft/client/resources/sounds/SimpleSoundInstance
 net/minecraft/client/resources/sounds/EntityBoundSoundInstance
 com/mojang/blaze3d/audio/Channel
 com/mojang/blaze3d/audio/Listener
+# client sounds of blocks and lightning (particles.js animateBlock / animateFluid, sound.js)
+net/minecraft/world/entity/LightningBolt

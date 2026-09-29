@@ -1085,13 +1085,21 @@ function animateBlock(level, name, info, x, y, z) {
 	} else if (name.endsWith('candle_cake') && p.lit === 'true') {
 		candleFlame(level, x + 0.5, y + 1, z + 0.5);
 	} else if ((name === 'campfire' || name === 'soul_campfire') && p.lit === 'true') {
-		// CampfireBlock.animateTick (lava pops only from the normal campfire)
+		// CampfireBlock.animateTick: the crackle, and lava pops only from the normal campfire
+		if (nextInt(10) === 0) {
+			level.sound('minecraft:block.campfire.crackle', x + 0.5, y + 0.5, z + 0.5, 'block', 0.5 + nextFloat(), nextFloat() * 0.7 + 0.6);
+		}
 		if (name === 'campfire' && nextInt(5) === 0) {
 			for (let i = 0; i < nextInt(1) + 1; i++) level.add('minecraft:lava', x + 0.5, y + 0.5, z + 0.5, nextFloat() / 2, 5.0e-5, nextFloat() / 2);
 		}
 	} else if (name === 'fire' || name === 'soul_fire') {
+		if (nextInt(24) === 0) level.sound('minecraft:block.fire.ambient', x + 0.5, y + 0.5, z + 0.5, 'block', 1 + nextFloat(), nextFloat() * 0.7 + 0.3);
 		fireSmoke(level, name, x, y, z);
 	} else if ((name === 'furnace' || name === 'blast_furnace' || name === 'smoker') && p.lit === 'true') {
+		if (nextDouble() < 0.1) {
+			const crackle = { furnace: 'block.furnace.fire_crackle', blast_furnace: 'block.blastfurnace.fire_crackle', smoker: 'block.smoker.smoke' }[name];
+			level.sound('minecraft:' + crackle, x + 0.5, y, z + 0.5, 'block', 1, 1);
+		}
 		if (name === 'smoker') {
 			level.add('minecraft:smoke', x + 0.5, y + 1.1, z + 0.5, 0, 0, 0);
 		} else {
@@ -1113,6 +1121,7 @@ function animateBlock(level, name, info, x, y, z) {
 		}
 	} else if (name === 'nether_portal') {
 		// NetherPortalBlock
+		if (nextInt(100) === 0) level.sound('minecraft:block.portal.ambient', x + 0.5, y + 0.5, z + 0.5, 'block', 0.5, nextFloat() * 0.4 + 0.8);
 		for (let i = 0; i < 4; i++) {
 			let px = x + nextDouble(), pz = z + nextDouble();
 			const py = y + nextDouble();
@@ -1188,8 +1197,13 @@ function particleOptions(raw) {
 }
 
 /** AbstractCandleBlock.addParticlesAndSound */
+/** AbstractCandleBlock.addParticlesAndSound */
 function candleFlame(level, x, y, z) {
-	if (nextFloat() < 0.3) level.add('minecraft:smoke', x, y, z, 0, 0, 0);
+	const chance = nextFloat();
+	if (chance < 0.3) {
+		level.add('minecraft:smoke', x, y, z, 0, 0, 0);
+		if (chance < 0.17) level.sound('minecraft:block.candle.ambient', x + 0.5, y + 0.5, z + 0.5, 'block', 1 + nextFloat(), nextFloat() * 0.7 + 0.3);
+	}
 	level.add('minecraft:small_flame', x, y, z, 0, 0, 0);
 }
 
@@ -1214,12 +1228,25 @@ function fireSmoke(level, name, x, y, z) {
 	}
 }
 
-/** LavaFluid.animateTick and the drips of ClientLevel.doAnimateTick. */
+/** LavaFluid and WaterFluid.animateTick (with their sounds) and the drips of ClientLevel.doAnimateTick. */
 function animateFluid(level, info, x, y, z) {
 	const lava = !!(info.f & FLAG_LAVA);
 	if (lava) {
 		const above = level.info(x, y + 1, z);
-		if (isAir(above) && nextInt(100) === 0) level.add('minecraft:lava', x + nextDouble(), y + 1, z + nextDouble(), 0, 0, 0);
+		if (isAir(above)) {
+			if (nextInt(100) === 0) {
+				const px = x + nextDouble(), py = y + 1, pz = z + nextDouble();
+				level.add('minecraft:lava', px, py, pz, 0, 0, 0);
+				level.sound('minecraft:block.lava.pop', px, py, pz, 'ambient', 0.2 + nextFloat() * 0.2, 0.9 + nextFloat() * 0.15);
+			}
+			if (nextInt(200) === 0) level.sound('minecraft:block.lava.ambient', x, y, z, 'ambient', 0.2 + nextFloat() * 0.2, 0.9 + nextFloat() * 0.15);
+		}
+	} else {
+		// WaterFluid.animateTick: flowing water that is not falling murmurs
+		const waterLevel = Number(props(info).level);
+		if (waterLevel >= 1 && waterLevel <= 7 && nextInt(64) === 0) {
+			level.sound('minecraft:block.water.ambient', x + 0.5, y + 0.5, z + 0.5, 'ambient', nextFloat() * 0.25 + 0.75, nextFloat() + 0.5);
+		}
 	}
 	if (nextInt(10) !== 0) return;
 	// trySpawnDripParticles below the fluid
@@ -1397,7 +1424,9 @@ export class Particles {
 	 * ClientLevel.animateTick, the campfires and the entities' effect swirls. renderTick: the entity tick on screen.
 	 */
 	tick(world, camera, weather, renderTick, entities) {
-		if (!this.enabled || !this.texture) return;
+		// with particles off, blocks still tick for the sounds they make (when sounds are on)
+		const particlesOn = this.enabled && !!this.texture;
+		if (!particlesOn && !this.onSound) return;
 		const level = this.levelFor(world, weather);
 		this.camera = camera;
 		while (this.pending.length && (renderTick === undefined || this.pending[0].t <= renderTick)) {
@@ -1725,6 +1754,10 @@ export class Particles {
 			add(type, x, y, z, xa, ya, za, options) {
 				engine.add(this, type, x, y, z, xa, ya, za, options);
 			},
+			/** Level.playLocalSound: a sound the client makes itself (animateTick), when sounds are on. */
+			sound(id, x, y, z, source, volume, pitch, delay = false) {
+				if (engine.onSound) engine.onSound(id, x, y, z, source, volume, pitch, delay);
+			},
 			lightCoords(x, y, z) {
 				const [sky, block] = world.lightAt(Math.floor(x), Math.floor(y), Math.floor(z));
 				return [block * 16, sky * 16];
@@ -1774,7 +1807,7 @@ export class Particles {
 
 	/** ClientLevel.addParticle */
 	add(level, type, x, y, z, xa, ya, za, options) {
-		if (this.particles.length >= MAX_PARTICLES) return;
+		if (!this.enabled || !this.texture || this.particles.length >= MAX_PARTICLES) return;
 		const name = type.replace(/^minecraft:/, '');
 		const provider = PROVIDERS[name];
 		const sprites = this.sets.get(type.includes(':') ? type : 'minecraft:' + type);

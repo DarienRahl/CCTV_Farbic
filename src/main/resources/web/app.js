@@ -392,6 +392,8 @@ function showSound() {
 async function setSound(on) {
 	if (on) await sounds.enable();
 	else sounds.disable();
+	// blocks' own sounds (animateTick) come from the particle system's block ticks
+	particles.onSound = sounds.enabled ? (...args) => sounds.local(...args) : null;
 	try {
 		localStorage.setItem('cctv-sound', sounds.enabled ? '1' : '0');
 	} catch {
