@@ -1,10 +1,12 @@
 """Points the project at another Minecraft version (used by the update-minecraft workflow).
 
 Resolves the newest Fabric Loader and Fabric API for the version from Fabric's servers and
-updates gradle.properties and fabric.mod.json. Usage: bump_minecraft.py <minecraft version>
+updates gradle.properties and fabric.mod.json (and the version badge on the README page).
+Usage: bump_minecraft.py <minecraft version>
 """
 import json
 import re
+import subprocess
 import sys
 import urllib.request
 import xml.etree.ElementTree as ET
@@ -51,6 +53,8 @@ def main():
     replace("src/main/resources/fabric.mod.json", r'"minecraft": "[^"]*"', f'"minecraft": "~{minecraft}"')
     replace("src/main/resources/fabric.mod.json", r'"fabricloader": "[^"]*"', f'"fabricloader": ">={loader}"')
     print(f"Minecraft {minecraft}: Fabric Loader {loader}, Fabric API {api}")
+    # the README badges show the game version
+    subprocess.run([sys.executable, ".github/scripts/roadmap.py"], check=True)
 
 
 if __name__ == "__main__":

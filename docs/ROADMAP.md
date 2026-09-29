@@ -5,7 +5,8 @@ looking from the same place at the same moment, it stays **smooth** with big vie
 weak machines, and moving to a **new Minecraft version is routine and mostly automatic**.
 
 This file is the plan of record. Items are ticked off as they ship; each release note links back
-to the milestone it belongs to.
+to the milestone it belongs to. The roadmap on the README page is drawn from this file by
+`.github/scripts/roadmap.py` (run it after a change; CI checks it).
 
 ## Principles
 
