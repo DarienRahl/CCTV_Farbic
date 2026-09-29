@@ -2,13 +2,17 @@ package io.github.darienrahl.cctv.assets;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.file.Path;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
 
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
@@ -26,13 +30,20 @@ import io.github.darienrahl.cctv.web.Json;
  * Nothing from the client is kept loaded afterwards.
  */
 final class EntityModels {
+	/** Version of the extracted JSON; part of the cache file name so a new mod version re-extracts. */
+	static final int FORMAT = 2;
+
+	private static final String ANIMATION_DEFINITIONS = "net/minecraft/client/animation/definitions/";
+
 	private EntityModels() {
 	}
 
 	/**
-	 * @return {@code {"layers": {"minecraft:horse#main": part}}} where a part is
+	 * @return {@code {"layers": {"minecraft:horse#main": part}, "animations": {"WardenAnimation.WARDEN_ROAR": animation}}}
+	 *         where a part is
 	 *         {@code {p:[x,y,z], r:[xRot,yRot,zRot], s:[sx,sy,sz]?, q:[x,y,z,u,v x4 per quad...], c:{name: part}}}
-	 *         in model pixels (y down, like the client), or {@code null} when the models could not be read
+	 *         in model pixels (y down, like the client) and an animation is written by {@link AnimationWriter},
+	 *         or {@code null} when the models could not be read
 	 */
 	static @Nullable String extract(Path clientJar, Logger logger) {
 		ClassLoader parent = EntityModels.class.getClassLoader();
@@ -68,7 +79,12 @@ final class EntityModels {
 				writer.write(json, root);
 				count++;
 			}
-			json.endObject().endObject();
+			json.endObject();
+			String animations = animations(clientJar, loader, logger);
+			if (animations != null) {
+				json.name("animations").raw(animations);
+			}
+			json.endObject();
 			logger.info("CCTV: read {} entity models from the client jar", count);
 			return json.toString();
 		} catch (Throwable e) {
@@ -76,6 +92,122 @@ final class EntityModels {
 			logger.warn("CCTV: entity models unavailable, mobs are drawn with simplified shapes ({})", e.toString());
 			logger.debug("CCTV: entity model extraction failed", e);
 			return null;
+		}
+	}
+
+	/**
+	 * Keyframe animations (sniffer, warden, frog, camel...) are static {@code AnimationDefinition} fields of the
+	 * classes in {@code net.minecraft.client.animation.definitions}; every one of them is written out, so new
+	 * animations of a game version come along without code changes. {@code null} when they cannot be read
+	 * (the models are still used, mobs then move with the simple animations).
+	 */
+	private static @Nullable String animations(Path clientJar, ClassLoader loader, Logger logger) {
+		try (ZipFile zip = new ZipFile(clientJar.toFile())) {
+			List<String> holders = zip.stream()
+					.map(ZipEntry::getName)
+					.filter(name -> name.startsWith(ANIMATION_DEFINITIONS) && name.endsWith(".class") && !name.contains("$")
+							&& name.indexOf('/', ANIMATION_DEFINITIONS.length()) < 0 && !name.endsWith("package-info.class"))
+					.sorted()
+					.toList();
+			AnimationWriter writer = new AnimationWriter(loader);
+			Json json = new Json(1 << 18);
+			json.beginObject();
+			int count = 0;
+			for (String entry : holders) {
+				String className = entry.substring(0, entry.length() - ".class".length()).replace('/', '.');
+				Class<?> holder = Class.forName(className, true, loader);
+				for (Field field : holder.getFields()) {
+					if (Modifier.isStatic(field.getModifiers()) && writer.definition.isAssignableFrom(field.getType())) {
+						json.name(holder.getSimpleName() + "." + field.getName());
+						writer.write(json, field.get(null));
+						count++;
+					}
+				}
+			}
+			logger.info("CCTV: read {} entity animations from the client jar", count);
+			return json.endObject().toString();
+		} catch (Throwable e) {
+			logger.warn("CCTV: entity keyframe animations unavailable, mobs use simple animations ({})", e.toString());
+			logger.debug("CCTV: animation extraction failed", e);
+			return null;
+		}
+	}
+
+	/**
+	 * Reflection over AnimationDefinition, AnimationChannel and Keyframe. An animation is
+	 * {@code {len: seconds, loop: bool, bones: {name: [{t: "p"|"r"|"s", k: [time, preX, preY, preZ, x, y, z, interpolation, ...]}]}}},
+	 * interpolation 0 linear and 1 Catmull-Rom; values as the game stores them (positions with y negated,
+	 * rotations in radians, scales minus one).
+	 */
+	private static final class AnimationWriter {
+		final Class<?> definition;
+		private final Method length;
+		private final Method looping;
+		private final Method bones;
+		private final Method target;
+		private final Method keyframes;
+		private final Method timestamp;
+		private final Method preTarget;
+		private final Method postTarget;
+		private final Method interpolation;
+		private final Method vx;
+		private final Method vy;
+		private final Method vz;
+		private final Map<Object, String> targets = new IdentityHashMap<>();
+		private final Map<Object, Integer> interpolations = new IdentityHashMap<>();
+
+		AnimationWriter(ClassLoader loader) throws ReflectiveOperationException {
+			definition = Class.forName("net.minecraft.client.animation.AnimationDefinition", true, loader);
+			length = definition.getMethod("lengthInSeconds");
+			looping = definition.getMethod("looping");
+			bones = definition.getMethod("boneAnimations");
+			Class<?> channel = Class.forName("net.minecraft.client.animation.AnimationChannel", true, loader);
+			target = channel.getMethod("target");
+			keyframes = channel.getMethod("keyframes");
+			Class<?> keyframe = Class.forName("net.minecraft.client.animation.Keyframe", true, loader);
+			timestamp = keyframe.getMethod("timestamp");
+			preTarget = keyframe.getMethod("preTarget");
+			postTarget = keyframe.getMethod("postTarget");
+			interpolation = keyframe.getMethod("interpolation");
+			Class<?> vector = Class.forName("org.joml.Vector3fc", true, loader);
+			vx = vector.getMethod("x");
+			vy = vector.getMethod("y");
+			vz = vector.getMethod("z");
+			Class<?> targetConstants = Class.forName("net.minecraft.client.animation.AnimationChannel$Targets", true, loader);
+			targets.put(targetConstants.getField("POSITION").get(null), "p");
+			targets.put(targetConstants.getField("ROTATION").get(null), "r");
+			targets.put(targetConstants.getField("SCALE").get(null), "s");
+			Class<?> interpolationConstants = Class.forName("net.minecraft.client.animation.AnimationChannel$Interpolations", true, loader);
+			interpolations.put(interpolationConstants.getField("LINEAR").get(null), 0);
+			interpolations.put(interpolationConstants.getField("CATMULLROM").get(null), 1);
+		}
+
+		void write(Json json, Object animation) throws ReflectiveOperationException {
+			json.beginObject()
+					.field("len", (float) length.invoke(animation), 4)
+					.field("loop", (boolean) looping.invoke(animation))
+					.name("bones").beginObject();
+			for (Map.Entry<?, ?> bone : ((Map<?, ?>) bones.invoke(animation)).entrySet()) {
+				json.name(String.valueOf(bone.getKey()).toLowerCase(Locale.ROOT)).beginArray();
+				for (Object channel : (List<?>) bone.getValue()) {
+					String kind = targets.get(target.invoke(channel));
+					if (kind == null) {
+						continue;
+					}
+					json.beginObject().field("t", kind).name("k").beginArray();
+					for (Object frame : (Object[]) keyframes.invoke(channel)) {
+						Object pre = preTarget.invoke(frame);
+						Object post = postTarget.invoke(frame);
+						json.value((float) timestamp.invoke(frame), 4)
+								.value((float) vx.invoke(pre), 5).value((float) vy.invoke(pre), 5).value((float) vz.invoke(pre), 5)
+								.value((float) vx.invoke(post), 5).value((float) vy.invoke(post), 5).value((float) vz.invoke(post), 5)
+								.value(interpolations.getOrDefault(interpolation.invoke(frame), 0));
+					}
+					json.endArray().endObject();
+				}
+				json.endArray();
+			}
+			json.endObject().endObject();
 		}
 	}
 

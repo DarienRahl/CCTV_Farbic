@@ -382,6 +382,371 @@ const ANIMS = {
 	},
 };
 
+// --- keyframe animated mobs --------------------------------------------------------------------------------
+// setupAnim of the models that play the game's AnimationDefinitions (a.k, see keyframes.js). The names are the
+// game's: "<definitions class>.<field>" for animations, entity field names for animation states.
+
+const headTo = (p, a, part = 'head') => {
+	const head = p[part];
+	if (head) { head.xRot = a.headPitch * DEG; head.yRot = a.netHeadYaw * DEG; }
+};
+
+/** Uses the simple animation when the game's keyframes are not available (older server, extraction failed). */
+const keyframed = (probe, fallback, setup) => (p, a, e) => (a.k && a.k.has(probe) ? setup(p, a, e, a.k) : ANIMS[fallback](p, a, e));
+
+const KEYFRAME_ANIMS = {
+	/** WardenModel.setupAnim */
+	warden: keyframed('WardenAnimation.WARDEN_ROAR', 'generic', (p, a, e, k) => {
+		const { head, body } = p;
+		if (!head || !body) return;
+		// animateHeadLookTarget
+		head.xRot = a.headPitch * DEG;
+		head.yRot = a.netHeadYaw * DEG;
+		// animateWalk
+		const speed = Math.min(0.5, 3 * a.walkSpeed), pos = a.walk * 0.8662, c = cos(pos), s = sin(pos);
+		const speedMin = Math.min(0.35, speed);
+		head.zRot += 0.3 * s * speed;
+		head.xRot += 1.2 * cos(pos + PI / 2) * speedMin;
+		body.zRot = 0.1 * s * speed;
+		body.xRot = c * speedMin;
+		if (p.left_leg) p.left_leg.xRot = c * speed;
+		if (p.right_leg) p.right_leg.xRot = cos(pos + PI) * speed;
+		if (p.left_arm) Object.assign(p.left_arm, { xRot: -(0.8 * c * speed), zRot: 0, yRot: 0, x: 13, y: -13, z: 1 });
+		if (p.right_arm) Object.assign(p.right_arm, { xRot: -(0.8 * s * speed), zRot: 0, yRot: 0, x: -13, y: -13, z: 1 });
+		// animateIdlePose
+		const age = a.age * 0.1;
+		head.zRot += 0.06 * cos(age);
+		head.xRot += 0.06 * sin(age);
+		body.zRot += 0.025 * sin(age);
+		body.xRot += 0.025 * cos(age);
+		// animateTendrils
+		const tendril = (a.memory.tendril || 0) / 10 * (Math.cos(a.age * 2.25) * PI * 0.1);
+		if (p.left_tendril) p.left_tendril.xRot = tendril;
+		if (p.right_tendril) p.right_tendril.xRot = -tendril;
+		k.state('WardenAnimation.WARDEN_ATTACK', 'attackAnimationState');
+		k.state('WardenAnimation.WARDEN_SONIC_BOOM', 'sonicBoomAnimationState');
+		k.state('WardenAnimation.WARDEN_DIG', 'diggingAnimationState');
+		k.state('WardenAnimation.WARDEN_EMERGE', 'emergeAnimationState');
+		k.state('WardenAnimation.WARDEN_ROAR', 'roarAnimationState');
+		k.state('WardenAnimation.WARDEN_SNIFF', 'sniffAnimationState');
+	}),
+	/** SnifferModel.setupAnim */
+	sniffer: keyframed('SnifferAnimation.SNIFFER_WALK', 'quadruped', (p, a, e, k) => {
+		headTo(p, a);
+		const walk = e.d && e.d.searching ? 'SnifferAnimation.SNIFFER_SNIFF_SEARCH' : 'SnifferAnimation.SNIFFER_WALK';
+		k.walk(walk, a.walk, a.walkSpeed, 9, 100);
+		k.state('SnifferAnimation.SNIFFER_DIG', 'diggingAnimationState');
+		k.state('SnifferAnimation.SNIFFER_LONGSNIFF', 'sniffingAnimationState');
+		k.state('SnifferAnimation.SNIFFER_STAND_UP', 'risingAnimationState');
+		k.state('SnifferAnimation.SNIFFER_HAPPY', 'feelingHappyAnimationState');
+		k.state('SnifferAnimation.SNIFFER_SNIFFSNIFF', 'scentingAnimationState');
+	}),
+	/** FrogModel.setupAnim */
+	frog: keyframed('FrogAnimation.FROG_WALK', 'head', (p, a, e, k) => {
+		k.state('FrogAnimation.FROG_JUMP', 'jumpAnimationState');
+		k.state('FrogAnimation.FROG_CROAK', 'croakAnimationState');
+		k.state('FrogAnimation.FROG_TONGUE', 'tongueAnimationState');
+		if (e.d && e.d.inWater) k.walk('FrogAnimation.FROG_SWIM', a.walk, a.walkSpeed, 1, 2.5);
+		else k.walk('FrogAnimation.FROG_WALK', a.walk, a.walkSpeed, 1.5, 2.5);
+		k.state('FrogAnimation.FROG_IDLE_WATER', 'swimIdleAnimationState');
+		if (p.croaking_body) p.croaking_body.visible = a.states.isStarted('croakAnimationState');
+	}),
+	/** CamelModel.setupAnim (AdultCamelModel / BabyCamelModel pick the definitions) */
+	camel: keyframed('CamelAnimation.CAMEL_WALK', 'quadruped', (p, a, e, k) => {
+		const A = e.baby ? 'CamelBabyAnimation.CAMEL_BABY_' : 'CamelAnimation.CAMEL_';
+		if (p.head) {
+			p.head.yRot = clamp(a.netHeadYaw, -30, 30) * DEG;
+			p.head.xRot = clamp(a.headPitch, -25, 45) * DEG;
+		}
+		k.walk(A + 'WALK', a.walk, a.walkSpeed, 2, 2.5);
+		k.state(A + 'SIT', 'sitAnimationState');
+		k.state(A + 'SIT_POSE', 'sitPoseAnimationState');
+		k.state(A + 'STANDUP', 'sitUpAnimationState');
+		k.state(A + 'IDLE', 'idleAnimationState');
+		k.state(A + 'DASH', 'dashAnimationState');
+	}),
+	/** ArmadilloModel.setupAnim */
+	armadillo: keyframed('ArmadilloAnimation.ARMADILLO_WALK', 'quadruped', (p, a, e, k) => {
+		const A = e.baby ? 'BabyArmadilloAnimation.ARMADILLO_BABY_' : 'ArmadilloAnimation.ARMADILLO_';
+		const hiding = !!(e.d && e.d.hiding);
+		if (p.body) p.body.skipDraw = hiding;
+		for (const name of ['left_hind_leg', 'right_hind_leg', 'tail']) if (p[name]) p[name].visible = !hiding;
+		if (p.cube) p.cube.visible = hiding;
+		if (!hiding) {
+			if (p.head) {
+				p.head.xRot = clamp(a.headPitch, -22.5, 25) * DEG;
+				p.head.yRot = clamp(a.netHeadYaw, -32.5, 32.5) * DEG;
+			}
+			k.walk(A + 'WALK', a.walk, a.walkSpeed, 16.5, 2.5);
+		}
+		k.state(A + 'ROLL_OUT', 'rollOutAnimationState');
+		k.state(A + 'ROLL_UP', 'rollUpAnimationState');
+		k.state(A + 'PEEK', 'peekAnimationState');
+	}),
+	/** BatModel.setupAnim */
+	bat: keyframed('BatAnimation.BAT_FLYING', 'batSimple', (p, a, e, k) => {
+		if (e.d && e.d.resting && p.head) p.head.yRot = a.netHeadYaw * DEG;
+		k.state('BatAnimation.BAT_FLYING', 'flyAnimationState');
+		k.state('BatAnimation.BAT_RESTING', 'restAnimationState');
+	}),
+	/** BreezeModel.setupAnim */
+	breeze: keyframed('BreezeAnimation.IDLE', 'head', (p, a, e, k) => {
+		k.state('BreezeAnimation.IDLE', 'idle');
+		k.state('BreezeAnimation.SHOOT', 'shoot');
+		k.state('BreezeAnimation.SLIDE', 'slide');
+		k.state('BreezeAnimation.SLIDE_BACK', 'slideBack');
+		k.state('BreezeAnimation.INHALE', 'inhale');
+		k.state('BreezeAnimation.JUMP', 'longJump');
+	}),
+	/** CreakingModel.setupAnim */
+	creaking: keyframed('CreakingAnimation.CREAKING_WALK', 'generic', (p, a, e, k) => {
+		headTo(p, a);
+		k.walk('CreakingAnimation.CREAKING_WALK', a.walk, a.walkSpeed, 1, 1);
+		k.state('CreakingAnimation.CREAKING_ATTACK', 'attackAnimationState');
+		k.state('CreakingAnimation.CREAKING_INVULNERABLE', 'invulnerabilityAnimationState');
+		k.state('CreakingAnimation.CREAKING_DEATH', 'deathAnimationState');
+	}),
+	/** RabbitModel.setupAnim (AdultRabbitModel / BabyRabbitModel pick the definitions) */
+	rabbit: keyframed('RabbitAnimation.HOP', 'head', (p, a, e, k) => {
+		const A = e.baby ? 'BabyRabbitAnimation.' : 'RabbitAnimation.';
+		if (!a.states.isStarted('idleHeadTiltAnimationState')) headTo(p, a);
+		k.state(A + 'HOP', 'hopAnimationState');
+		k.state(A + 'IDLE_HEAD_TILT', 'idleHeadTiltAnimationState');
+	}),
+	/** CopperGolemModel.setupAnim */
+	copperGolem: keyframed('CopperGolemAnimation.COPPER_GOLEM_WALK', 'generic', (p, a, e, k) => {
+		headTo(p, a);
+		if (!e.hand && !e.offhand) {
+			k.walk('CopperGolemAnimation.COPPER_GOLEM_WALK', a.walk, a.walkSpeed, 2, 2.5);
+		} else {
+			k.walk('CopperGolemAnimation.COPPER_GOLEM_WALK_ITEM', a.walk, a.walkSpeed, 2, 2.5);
+			// poseHeldItemArmsIfStill
+			const r = p.right_arm, l = p.left_arm;
+			if (r && l) {
+				r.xRot = Math.min(r.xRot, -0.87266463); l.xRot = Math.min(l.xRot, -0.87266463);
+				r.yRot = Math.min(r.yRot, -0.1134464); l.yRot = Math.max(l.yRot, 0.1134464);
+				r.zRot = Math.min(r.zRot, -0.064577185); l.zRot = Math.max(l.zRot, 0.064577185);
+			}
+		}
+		k.state('CopperGolemAnimation.COPPER_GOLEM_IDLE', 'idleAnimationState');
+		k.state('CopperGolemAnimation.COPPER_GOLEM_CHEST_INTERACTION_NOITEM_GET', 'interactionGetItemAnimationState');
+		k.state('CopperGolemAnimation.COPPER_GOLEM_CHEST_INTERACTION_NOITEM_NOGET', 'interactionGetNoItemAnimationState');
+		k.state('CopperGolemAnimation.COPPER_GOLEM_CHEST_INTERACTION_ITEM_DROP', 'interactionDropItemAnimationState');
+		k.state('CopperGolemAnimation.COPPER_GOLEM_CHEST_INTERACTION_ITEM_NODROP', 'interactionDropNoItemAnimationState');
+	}),
+	/** NautilusModel.setupAnim */
+	nautilus: keyframed('NautilusAnimation.SWIMMING', 'none', (p, a, e, k) => {
+		if (p.body) {
+			p.body.yRot = clamp(a.netHeadYaw, -10, 10) * DEG;
+			p.body.xRot = clamp(a.headPitch, -10, 10) * DEG;
+		}
+		k.walk('NautilusAnimation.SWIMMING', a.walk + a.age / 5, a.walkSpeed + 0.2, 2, 3);
+	}),
+	/** AdultAxolotlModel keeps the simple animation; BabyAxolotlModel.setupAnim plays keyframes. */
+	axolotl: (p, a, e) => {
+		if (!e.baby || !a.k || !a.k.has('BabyAxolotlAnimation.BABY_AXOLOTL_SWIM')) return ANIMS.quadruped(p, a, e);
+		const k = a.k;
+		if (a.states.isStarted('walkAnimationState')) k.walk('BabyAxolotlAnimation.AXOLOTL_WALK_FLOOR', a.walk, a.walkSpeed, 15, 30);
+		k.state('BabyAxolotlAnimation.BABY_AXOLOTL_SWIM', 'swimAnimationState');
+		k.state('BabyAxolotlAnimation.WALK_FLOOR_UNDERWATER', 'walkAnimationState');
+		k.state('BabyAxolotlAnimation.BABY_AXOLOTL_IDLE_FLOOR', 'idleOnGroundAnimationState');
+		k.state('BabyAxolotlAnimation.IDLE_UNDERWATER', 'idleUnderWaterAnimationState');
+		k.state('BabyAxolotlAnimation.IDLE_FLOOR_UNDERWATER', 'idleUnderWaterOnGroundAnimationState');
+		k.state('BabyAxolotlAnimation.BABY_AXOLOTL_PLAY_DEAD', 'playDeadAnimationState');
+	},
+};
+ANIMS.batSimple = ANIMS.bat;
+Object.assign(ANIMS, KEYFRAME_ANIMS);
+
+// --- client side animation triggers ------------------------------------------------------------------------
+// What the game client does in the entity's tick(), handleEntityEvent and onSyncedDataUpdated to start and stop
+// AnimationStates that the server does not run (see keyframes.js AnimationStates). tick(e, st, tick) runs once per
+// entity tick, event(e, st, id, tick) for every entity event; st.memory keeps the entity's client-only fields.
+
+const WALKING = e => (e.walkSpeed || 0) > 1e-5; // WalkAnimationState.isMoving
+const chance = n => Math.floor(Math.random() * n);
+
+export const CLIENT = {
+	/** Warden.handleEntityEvent and the client part of Warden.tick */
+	warden: {
+		event(e, st, id, tick) {
+			if (id === 4) { st.stop('roarAnimationState'); st.start('attackAnimationState', tick); }
+			else if (id === 61) st.memory.tendril = 10;
+			else if (id === 62) st.start('sonicBoomAnimationState', tick);
+		},
+		tick(e, st) {
+			if (st.memory.tendril > 0) st.memory.tendril--;
+		},
+	},
+	/** Frog.tick (client) */
+	frog: {
+		tick(e, st, tick) {
+			st.animateWhen(!!(e.d && e.d.inWater) && !WALKING(e), 'swimIdleAnimationState', tick);
+		},
+	},
+	/** Camel.setupAnimationStates */
+	camel: {
+		tick(e, st, tick) {
+			const m = st.memory;
+			if (!(m.idleTimeout > 0)) {
+				m.idleTimeout = chance(40) + 80;
+				st.start('idleAnimationState', tick);
+			} else {
+				m.idleTimeout--;
+			}
+			const sitting = !!(e.d && e.d.camelSitting);
+			const poseTime = Number(e.d && e.d.poseTime) || 0;
+			if ((poseTime < 0) !== sitting) {
+				st.stop('sitUpAnimationState');
+				st.stop('dashAnimationState');
+				if (sitting && poseTime < 40 && poseTime >= 0) {
+					st.startIfStopped('sitAnimationState', tick);
+					st.stop('sitPoseAnimationState');
+				} else {
+					st.stop('sitAnimationState');
+					st.startIfStopped('sitPoseAnimationState', tick);
+				}
+			} else {
+				st.stop('sitAnimationState');
+				st.stop('sitPoseAnimationState');
+				st.animateWhen(!!(e.d && e.d.dashing), 'dashAnimationState', tick);
+				st.animateWhen(poseTime < (sitting ? 40 : 52) && poseTime >= 0, 'sitUpAnimationState', tick);
+			}
+		},
+	},
+	/** Armadillo.setupAnimationStates and handleEntityEvent (peek) */
+	armadillo: {
+		event(e, st, id) {
+			if (id === 64) st.memory.peekReceived = true;
+		},
+		tick(e, st, tick) {
+			const state = (e.d && e.d.state) || 'idle';
+			const m = st.memory;
+			if (state !== m.state) { m.state = state; m.inState = 0; } else m.inState++;
+			if (state === 'rolling') {
+				st.stop('rollOutAnimationState'); st.startIfStopped('rollUpAnimationState', tick); st.stop('peekAnimationState');
+			} else if (state === 'scared') {
+				st.stop('rollOutAnimationState'); st.stop('rollUpAnimationState');
+				if (m.peekReceived) { st.stop('peekAnimationState'); m.peekReceived = false; }
+				st.startIfStopped('peekAnimationState', tick);
+			} else if (state === 'unrolling') {
+				st.startIfStopped('rollOutAnimationState', tick); st.stop('rollUpAnimationState'); st.stop('peekAnimationState');
+			} else {
+				st.stop('rollOutAnimationState'); st.stop('rollUpAnimationState'); st.stop('peekAnimationState');
+			}
+		},
+	},
+	/** Bat.setupAnimationStates */
+	bat: {
+		tick(e, st, tick) {
+			const resting = !!(e.d && e.d.resting);
+			st.stop(resting ? 'flyAnimationState' : 'restAnimationState');
+			st.startIfStopped(resting ? 'restAnimationState' : 'flyAnimationState', tick);
+		},
+	},
+	/** Breeze.onSyncedDataUpdated (client) and Breeze.tick */
+	breeze: {
+		tick(e, st, tick) {
+			const pose = e.pose || 'standing';
+			if (pose !== st.memory.pose) {
+				st.memory.pose = pose;
+				for (const name of ['shoot', 'idle', 'inhale', 'longJump']) st.stop(name);
+				if (pose === 'shooting') st.startIfStopped('shoot', tick);
+				else if (pose === 'inhaling') st.startIfStopped('inhale', tick);
+				else if (pose === 'sliding') st.startIfStopped('slide', tick);
+			}
+			if (pose === 'long_jumping') st.startIfStopped('longJump', tick);
+			st.startIfStopped('idle', tick);
+			if (pose !== 'sliding' && st.isStarted('slide')) {
+				st.start('slideBack', tick);
+				st.stop('slide');
+			}
+		},
+	},
+	/** Creaking.handleEntityEvent, tick and setupAnimationStates */
+	creaking: {
+		event(e, st, id) {
+			if (id === 66) st.memory.invulnerable = 8;
+			else if (id === 4) st.memory.attack = 15;
+		},
+		tick(e, st, tick) {
+			const m = st.memory;
+			if (m.invulnerable > 0) m.invulnerable--;
+			if (m.attack > 0) m.attack--;
+			st.animateWhen(m.attack > 0, 'attackAnimationState', tick);
+			st.animateWhen(m.invulnerable > 0, 'invulnerabilityAnimationState', tick);
+			st.animateWhen(!!(e.d && e.d.tearingDown), 'deathAnimationState', tick);
+		},
+	},
+	/** Rabbit.handleEntityEvent (jump), aiStep and setupAnimationStates */
+	rabbit: {
+		event(e, st, id) {
+			if (id === 1) { st.memory.jumpDuration = 15; st.memory.jumpTicks = 0; }
+		},
+		tick(e, st, tick) {
+			const m = st.memory;
+			m.jumpTicks ??= 0; m.jumpDuration ??= 0; m.idleTimeout ??= 0;
+			if (m.jumpTicks !== m.jumpDuration) m.jumpTicks++;
+			else if (m.jumpDuration !== 0) { m.jumpTicks = 0; m.jumpDuration = 0; }
+			if (m.idleTimeout <= 0 && !(e.d && e.d.leashed)) {
+				m.idleTimeout = chance(40) + 180;
+				st.start('idleHeadTiltAnimationState', tick);
+			} else if (m.jumpTicks > 0) {
+				st.startIfStopped('hopAnimationState', tick);
+				st.stop('idleHeadTiltAnimationState');
+			} else {
+				m.idleTimeout--;
+				st.stop('hopAnimationState');
+			}
+		},
+	},
+	/** CopperGolem.setupAnimationStates (without the head spin sound) */
+	copper_golem: {
+		tick(e, st, tick) {
+			const m = st.memory;
+			const state = (e.d && e.d.state) || 'idle';
+			const interactions = {
+				getting_item: 'interactionGetItemAnimationState', getting_no_item: 'interactionGetNoItemAnimationState',
+				dropping_item: 'interactionDropItemAnimationState', dropping_no_item: 'interactionDropNoItemAnimationState',
+			};
+			if (state === 'idle') {
+				for (const name of Object.values(interactions)) st.stop(name);
+				if (m.idleStart === tick) st.start('idleAnimationState', tick);
+				else if (!m.idleStart) m.idleStart = tick + 200 + chance(40);
+				if (tick === m.idleStart + 10) m.idleStart = 0;
+			} else {
+				st.stop('idleAnimationState');
+				m.idleStart = 0;
+				for (const [name, field] of Object.entries(interactions)) {
+					if (name === state) st.startIfStopped(field, tick);
+					else st.stop(field);
+				}
+			}
+		},
+	},
+	/** Axolotl.tickBabyAnimations */
+	axolotl: {
+		tick(e, st, tick) {
+			if (!e.baby) return;
+			const all = ['swimAnimationState', 'walkAnimationState', 'walkUnderWaterAnimationState', 'idleUnderWaterAnimationState',
+				'idleUnderWaterOnGroundAnimationState', 'idleOnGroundAnimationState', 'playDeadAnimationState'];
+			const water = !!(e.d && e.d.inWater), ground = !!(e.d && e.d.onGround);
+			const moving = WALKING(e) || e.yaw !== st.memory.yaw || e.pitch !== st.memory.pitch;
+			st.memory.yaw = e.yaw;
+			st.memory.pitch = e.pitch;
+			let solo;
+			if (e.d && e.d.playingDead) solo = 'playDeadAnimationState';
+			else if (moving) solo = water && !ground ? 'swimAnimationState' : !water && ground ? 'walkAnimationState' : 'walkUnderWaterAnimationState';
+			else solo = water && !ground ? 'idleUnderWaterAnimationState' : water && ground ? 'idleUnderWaterOnGroundAnimationState' : 'idleOnGroundAnimationState';
+			for (const name of all) {
+				if (name === solo) st.startIfStopped(name, tick);
+				else st.stop(name);
+			}
+		},
+	},
+};
+CLIENT.camel_husk = CLIENT.camel;
+
 // --- per type definitions ----------------------------------------------------------------------------------
 
 /** Variant id -> texture name. */
@@ -398,9 +763,9 @@ const HUMANOID_ARMOR = true;
 
 const MOBS = {
 	allay: { layer: 'allay#main', texture: 'allay/allay', shadow: 0.4, anim: 'flyer', cull: false },
-	armadillo: { layer: e => (e.baby ? 'armadillo_baby#main' : 'armadillo#main'), texture: e => 'armadillo/armadillo' + baby(e), shadow: 0.4, anim: 'quadruped' },
+	armadillo: { layer: e => (e.baby ? 'armadillo_baby#main' : 'armadillo#main'), texture: e => 'armadillo/armadillo' + baby(e), shadow: 0.4, anim: 'armadillo' },
 	armor_stand: { layer: e => (e.d && e.d.small ? 'armor_stand_small#main' : 'armor_stand#main'), texture: 'armorstand/armorstand', shadow: 0, anim: 'armorStand', armor: 'armor_stand' },
-	axolotl: { layer: e => (e.baby ? 'axolotl_baby#main' : 'axolotl#main'), texture: e => 'axolotl/axolotl_' + variant(e, 'lucy') + baby(e), shadow: 0.5, anim: 'quadruped' },
+	axolotl: { layer: e => (e.baby ? 'axolotl_baby#main' : 'axolotl#main'), texture: e => 'axolotl/axolotl_' + variant(e, 'lucy') + baby(e), shadow: 0.5, anim: 'axolotl' },
 	bat: { layer: 'bat#main', texture: 'bat/bat', shadow: 0.25, anim: 'bat' },
 	bee: {
 		layer: e => (e.baby ? 'bee_baby#main' : 'bee#main'),
@@ -409,9 +774,9 @@ const MOBS = {
 	},
 	blaze: { layer: 'blaze#main', texture: 'blaze/blaze', shadow: 0.5, anim: 'blaze', fullBright: true },
 	bogged: { layer: 'bogged#main', texture: 'skeleton/bogged', shadow: 0.5, anim: 'skeleton', armor: 'bogged', layers: [{ layer: 'bogged#outer', texture: 'skeleton/bogged_overlay' }] },
-	breeze: { layer: 'breeze#main', texture: 'breeze/breeze', shadow: 0.5, anim: 'head', layers: [{ layer: 'breeze#eyes', texture: 'breeze/breeze_eyes', mode: 'eyes' }] },
-	camel: { layer: e => (e.baby ? 'camel_baby#main' : 'camel#main'), texture: e => 'camel/camel' + baby(e), shadow: 0.7, anim: 'quadruped', saddle: ['camel#saddle', 'equipment/camel_saddle/saddle'] },
-	camel_husk: { layer: 'camel#main', texture: 'camel/camel_husk', shadow: 0.7, anim: 'quadruped', saddle: ['camel_husk#saddle', 'equipment/camel_husk_saddle/saddle'] },
+	breeze: { layer: 'breeze#main', texture: 'breeze/breeze', shadow: 0.5, anim: 'breeze', layers: [{ layer: 'breeze#eyes', texture: 'breeze/breeze_eyes', mode: 'eyes' }] },
+	camel: { layer: e => (e.baby ? 'camel_baby#main' : 'camel#main'), texture: e => 'camel/camel' + baby(e), shadow: 0.7, anim: 'camel', saddle: ['camel#saddle', 'equipment/camel_saddle/saddle'] },
+	camel_husk: { layer: 'camel#main', texture: 'camel/camel_husk', shadow: 0.7, anim: 'camel', saddle: ['camel_husk#saddle', 'equipment/camel_husk_saddle/saddle'] },
 	cat: {
 		layer: e => (e.baby ? 'cat_baby#main' : 'cat#main'), texture: e => 'cat/cat_' + variant(e, 'tabby') + baby(e), shadow: 0.4, anim: 'cat',
 		layers: [{ layer: e => (e.baby ? 'cat_baby#collar' : 'cat#collar'), texture: e => 'cat/cat_collar' + baby(e), when: e => e.d && e.d.tame, color: e => dyeRgb(e.d.collar || 'red') }],
@@ -422,12 +787,12 @@ const MOBS = {
 		texture: e => 'chicken/chicken_' + variant(e, 'temperate') + baby(e), shadow: 0.3, anim: 'chicken',
 	},
 	cod: { layer: 'cod#main', texture: 'fish/cod', shadow: 0.3, anim: 'fish', fish: true },
-	copper_golem: { layer: 'copper_golem#main', texture: 'copper_golem/copper_golem', shadow: 0.5, anim: 'generic', layers: [{ layer: 'copper_golem#eyes', texture: 'copper_golem/copper_golem_eyes', mode: 'eyes' }] },
+	copper_golem: { layer: 'copper_golem#main', texture: 'copper_golem/copper_golem', shadow: 0.5, anim: 'copperGolem', layers: [{ layer: 'copper_golem#eyes', texture: 'copper_golem/copper_golem_eyes', mode: 'eyes' }] },
 	cow: {
 		layer: e => (e.baby ? 'cow_baby#main' : ({ cold: 'cold_cow#main', warm: 'warm_cow#main' })[variant(e, 'temperate')] || 'cow#main'),
 		texture: e => 'cow/cow_' + variant(e, 'temperate') + baby(e), shadow: 0.7, anim: 'quadruped',
 	},
-	creaking: { layer: 'creaking#main', texture: 'creaking/creaking', shadow: 0.6, anim: 'generic', layers: [{ layer: 'creaking#eyes', texture: 'creaking/creaking_eyes', mode: 'eyes' }] },
+	creaking: { layer: 'creaking#main', texture: 'creaking/creaking', shadow: 0.6, anim: 'creaking', layers: [{ layer: 'creaking#eyes', texture: 'creaking/creaking_eyes', mode: 'eyes' }] },
 	creeper: {
 		layer: 'creeper#main', texture: 'creeper/creeper', shadow: 0.5, anim: 'creeper', creeper: true,
 		layers: [{ layer: 'creeper#armor', texture: 'creeper/creeper_armor', when: e => e.d && e.d.powered, mode: 'energy' }],
@@ -450,7 +815,7 @@ const MOBS = {
 		texture: e => 'fox/fox' + (variant(e, 'red') === 'snow' ? '_snow' : '') + (e.pose === 'sleeping' ? '_sleep' : '') + baby(e),
 		shadow: 0.4, anim: 'quadruped',
 	},
-	frog: { layer: 'frog#main', texture: e => 'frog/frog_' + variant(e, 'temperate'), shadow: 0.3, anim: 'head' },
+	frog: { layer: 'frog#main', texture: e => 'frog/frog_' + variant(e, 'temperate'), shadow: 0.3, anim: 'frog' },
 	ghast: { layer: 'ghast#main', texture: e => (e.d && e.d.charging ? 'ghast/ghast_shooting' : 'ghast/ghast'), shadow: 1.5, anim: 'ghast', fullBright: true },
 	giant: { layer: 'giant#main', texture: 'zombie/zombie', shadow: 3, anim: 'zombie' },
 	glow_squid: { layer: e => (e.baby ? 'glow_squid_baby#main' : 'glow_squid#main'), texture: e => 'squid/glow_squid' + baby(e), shadow: 0.7, anim: 'squid', squid: true, fullBright: true },
@@ -494,7 +859,7 @@ const MOBS = {
 	magma_cube: { layer: 'magma_cube#main', texture: 'slime/magmacube', shadow: 0.25, anim: 'none', slime: true, fullBright: true },
 	mooshroom: { layer: e => (e.baby ? 'mooshroom_baby#main' : 'mooshroom#main'), texture: e => 'cow/mooshroom_' + variant(e, 'red') + baby(e), shadow: 0.7, anim: 'quadruped' },
 	mule: { layer: e => (e.baby ? 'mule_baby#main' : 'mule#main'), texture: e => 'horse/mule' + baby(e), shadow: 0.75, anim: 'horse', saddle: ['mule#saddle', 'equipment/mule_saddle/saddle'] },
-	nautilus: { layer: e => (e.baby ? 'nautilus_baby#main' : 'nautilus#main'), texture: e => 'nautilus/nautilus' + baby(e), shadow: 0.7, anim: 'none', saddle: ['nautilus#saddle', 'equipment/nautilus_saddle/saddle'] },
+	nautilus: { layer: e => (e.baby ? 'nautilus_baby#main' : 'nautilus#main'), texture: e => 'nautilus/nautilus' + baby(e), shadow: 0.7, anim: 'nautilus', saddle: ['nautilus#saddle', 'equipment/nautilus_saddle/saddle'] },
 	ocelot: { layer: e => (e.baby ? 'ocelot_baby#main' : 'ocelot#main'), texture: e => 'cat/ocelot' + baby(e), shadow: 0.4, anim: 'cat' },
 	panda: {
 		layer: e => (e.baby ? 'panda_baby#main' : 'panda#main'),
@@ -528,7 +893,7 @@ const MOBS = {
 			const v = variant(e, 'brown');
 			return 'rabbit/rabbit_' + (v === 'evil' ? 'caerbannog' : v) + baby(e);
 		},
-		shadow: 0.3, anim: 'head',
+		shadow: 0.3, anim: 'rabbit',
 	},
 	ravager: { layer: 'ravager#main', texture: 'illager/ravager', shadow: 1.1, anim: 'quadruped' },
 	salmon: {
@@ -549,7 +914,7 @@ const MOBS = {
 	skeleton: { layer: 'skeleton#main', texture: 'skeleton/skeleton', shadow: 0.5, anim: 'skeleton', armor: 'skeleton' },
 	skeleton_horse: { layer: e => (e.baby ? 'skeleton_horse_baby#main' : 'skeleton_horse#main'), texture: e => 'horse/horse_skeleton' + baby(e), shadow: 0.75, anim: 'horse', saddle: ['skeleton_horse#saddle', 'equipment/skeleton_horse_saddle/saddle'] },
 	slime: { layer: 'slime#main', texture: 'slime/slime', shadow: 0.25, anim: 'none', slime: true, layers: [{ layer: 'slime#outer', texture: 'slime/slime', mode: 'translucent' }] },
-	sniffer: { layer: e => (e.baby ? 'sniffer_baby#main' : 'sniffer#main'), texture: e => (e.baby ? 'sniffer/snifflet' : 'sniffer/sniffer'), shadow: 1.1, anim: 'quadruped' },
+	sniffer: { layer: e => (e.baby ? 'sniffer_baby#main' : 'sniffer#main'), texture: e => (e.baby ? 'sniffer/snifflet' : 'sniffer/sniffer'), shadow: 1.1, anim: 'sniffer' },
 	snow_golem: { layer: 'snow_golem#main', texture: 'snow_golem/snow_golem', shadow: 0.5, anim: 'snowGolem' },
 	spider: { layer: 'spider#main', texture: 'spider/spider', shadow: 0.8, anim: 'spider', layers: [{ layer: 'spider#main', texture: 'spider/spider_eyes', mode: 'eyes' }] },
 	squid: { layer: e => (e.baby ? 'squid_baby#main' : 'squid#main'), texture: e => 'squid/squid' + baby(e), shadow: 0.7, anim: 'squid', squid: true },
@@ -567,7 +932,7 @@ const MOBS = {
 	vindicator: { layer: 'vindicator#main', texture: 'illager/vindicator', shadow: 0.5, anim: 'illager' },
 	wandering_trader: { layer: 'wandering_trader#main', texture: 'wandering_trader/wandering_trader', shadow: 0.5, anim: 'villager' },
 	warden: {
-		layer: 'warden#main', texture: 'warden/warden', shadow: 0.9, anim: 'generic',
+		layer: 'warden#main', texture: 'warden/warden', shadow: 0.9, anim: 'warden',
 		layers: [{ layer: 'warden#bioluminescent', texture: 'warden/warden_bioluminescent_layer', mode: 'eyes' }],
 	},
 	witch: { layer: 'witch#main', texture: 'witch/witch', shadow: 0.5, anim: 'villager' },
@@ -591,7 +956,7 @@ const MOBS = {
 	zombie_horse: { layer: e => (e.baby ? 'zombie_horse_baby#main' : 'zombie_horse#main'), texture: e => 'horse/horse_zombie' + baby(e), shadow: 0.75, anim: 'horse', saddle: ['zombie_horse#saddle', 'equipment/zombie_horse_saddle/saddle'] },
 	zombie_nautilus: {
 		layer: e => (variant(e, 'temperate') === 'warm' ? 'zombie_nautilus_coral#main' : 'zombie_nautilus#main'),
-		texture: e => (variant(e, 'temperate') === 'warm' ? 'nautilus/zombie_nautilus_coral' : 'nautilus/zombie_nautilus'), shadow: 0.7, anim: 'none',
+		texture: e => (variant(e, 'temperate') === 'warm' ? 'nautilus/zombie_nautilus_coral' : 'nautilus/zombie_nautilus'), shadow: 0.7, anim: 'nautilus',
 		saddle: ['nautilus#saddle', 'equipment/nautilus_saddle/saddle'],
 	},
 	zombie_villager: { villager: 'zombie_villager', shadow: 0.5, anim: 'zombie', armor: 'zombie_villager' },

@@ -30,17 +30,18 @@ of game APIs on the server and a set of client classes the viewer ports to JavaS
 
 | File | Game APIs used | Purpose |
 |---|---|---|
-| `mixin/ServerLevelMixin.java` | `ServerLevel#sendBlockUpdated` (inject) | instant block updates |
+| `mixin/ServerLevelMixin.java` | `ServerLevel#sendBlockUpdated`, `#broadcastEntityEvent` (inject) | instant block updates, entity events for animations |
 | `mixin/ChunkMapAccessor.java` | `ChunkMap#readChunk` (invoker) | saved chunks for far terrain |
 | `camera/SectionCapture.java` | `LevelChunkSection`, `PalettedContainer`, `DataLayer`, light listeners | copying sections |
 | `camera/SavedChunks.java` | `SerializableChunkData`, `ChunkStatus`, heightmaps | parsing saved chunks |
 | `camera/BlockPalette.java` | `BlockState` properties, shapes, render shape, fluids | block state table for the viewer |
-| `camera/EntityEncoder.java` | entity getters, data components, equipment | entity frames |
+| `camera/EntityEncoder.java` | entity getters, data components, equipment, `AnimationState` fields | entity frames |
 | `camera/EnvironmentSampler.java` | `EnvironmentAttributes`, `DimensionType` | sky, fog, light colours |
 | `camera/WeatherSampler.java`, `BiomeTable.java` | biome precipitation and colours | rain and snow columns, tints |
 | `camera/CameraSession.java`, `CameraManager.java` | chunk access, heightmaps, entity queries | streaming |
 | `command/*.java` | Brigadier arguments, chat components, permissions | `/cctv` |
-| `assets/EntityModels.java` | `LayerDefinitions`, `ModelPart` (reflection on `client.jar`) | entity model geometry |
+| `assets/EntityModels.java` | `LayerDefinitions`, `ModelPart`, `AnimationDefinition` (reflection on `client.jar`) | entity model geometry, keyframe animations |
+| `mixin/MinecraftServerMixin.java` | `MinecraftServer#tickServer` (`getPlayerCount` in the pause check) | no pause while a camera is watched |
 
 ## Client classes ported to the viewer
 
@@ -53,3 +54,11 @@ of game APIs on the server and a set of client classes the viewer ports to JavaS
 | `HumanoidModel` and the other `setupAnim` models, `WalkAnimationState`, `RemotePlayer` | `mobs.js`, `entities.js` |
 | `SubmitNodeCollection#submitNameTag`, `TextFeatureRenderer`, `AbstractSignRenderer`, `StandingSignRenderer`, `HangingSignRenderer`, `BitmapProvider`, `BakedSheetGlyph` | `text.js`, `entities.js` |
 | `BlockEntityRenderer`s (chest, shulker box, bell, banner, skull, decorated pot) | `entities.js`, `mobs.js` |
+| `KeyframeAnimation`, `AnimationChannel`, `AnimationState` | `keyframes.js` |
+| `setupAnim` of the keyframe animated models (warden, sniffer, frog, camel...) and the entities' client-side `setupAnimationStates` / `handleEntityEvent` | `mobs.js` (`KEYFRAME_ANIMS`, `CLIENT`) |
+
+The keyframe animations themselves (`net.minecraft.client.animation.definitions.*`) are read from the
+client jar at run time (`EntityModels.java`), so changed or new definitions need no work. A new mob
+that uses them needs its `setupAnim` in `KEYFRAME_ANIMS` (a few lines naming the definitions) and, if
+the client starts its states itself, a `CLIENT` entry; the server already reports every running
+`AnimationState` field and every entity event.

@@ -20,6 +20,7 @@ import org.slf4j.Logger;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.block.state.BlockState;
 
 import io.github.darienrahl.cctv.CctvConfig;
@@ -194,6 +195,16 @@ public final class CameraManager implements CameraDirectory {
 		int z = pos.getZ();
 		for (CameraSession session : sessions.values()) {
 			session.onBlockChanged(level, x, y, z, state);
+		}
+	}
+
+	/** Called (server thread) for every entity event sent to players. */
+	public void onEntityEvent(ServerLevel level, Entity entity, byte event) {
+		if (sessions.isEmpty()) {
+			return;
+		}
+		for (CameraSession session : sessions.values()) {
+			session.onEntityEvent(level, entity, event);
 		}
 	}
 

@@ -4,6 +4,8 @@ Talks to the server over RCON (like an admin console), places a camera with
 /cctv, then reads the live stream like a browser would and checks that world
 data, entities and instant block updates arrive.
 """
+import base64
+import gzip
 import json
 import socket
 import struct
@@ -74,6 +76,8 @@ class StreamReader(threading.Thread):
         self.sections = set()
         self.names = set()
         self.sign_lines = set()
+        self.animation_states = set()
+        self.entity_events = set()
         self.ready = threading.Event()
         self.error = None
         self.response = None
@@ -98,6 +102,11 @@ class StreamReader(threading.Thread):
                         self.first.setdefault(event, data)
                         if event == "entities":
                             self.entity_types.update(e["type"] for e in data["e"])
+                            for e in data["e"]:
+                                for name in e.get("anim", {}):
+                                    self.animation_states.add((e["type"], name))
+                                for event_id in e.get("ev", []):
+                                    self.entity_events.add((e["type"], event_id))
                             self.names.update(e["name"] for e in data["e"] if e.get("nameVisible"))
                         elif event == "blocks":
                             self.block_updates.extend(data["b"])
@@ -143,7 +152,7 @@ def wait_for_models(timeout=300):
     while time.time() < deadline:
         try:
             with urllib.request.urlopen(f"{WEB}/assets/models.json", timeout=30) as response:
-                return json.load(response).get("layers", {})
+                return json.load(response)
         except urllib.error.HTTPError as e:
             if e.code == 404:
                 raise RuntimeError("entity models unavailable")
@@ -188,6 +197,7 @@ def main():
     rcon.command("summon minecraft:happy_ghast 1 -55 16")
     rcon.command('summon minecraft:pig 0 -60 8 {CustomName:"Bob",CustomNameVisible:1b}')
     rcon.command("summon minecraft:armor_stand -3 -60 2")
+    rcon.command("summon minecraft:breeze 6 -60 2 {NoAI:1b}")
     rcon.command("item replace entity @e[type=minecraft:armor_stand,limit=1] armor.head with minecraft:golden_helmet")
 
     rcon.command("cctv create ci -1 -56 -8 10 30")
@@ -204,6 +214,7 @@ def main():
 
     rcon.command("setblock 0 -60 0 minecraft:gold_block")
     rcon.command('data merge block -3 -60 0 {front_text:{messages:["CCTV","edited","",""]}}')
+    rcon.command("kill @e[type=minecraft:sheep]")
     time.sleep(4)
 
     print("events:", stream.events, flush=True)
@@ -231,11 +242,21 @@ def main():
         failures.append(str(e))
 
     try:
-        layers = wait_for_models()
-        print("entity model layers:", len(layers), flush=True)
+        models = wait_for_models()
+        layers = models.get("layers", {})
+        animations = models.get("animations", {})
+        print("entity model layers:", len(layers), "keyframe animations:", len(animations), flush=True)
         for layer in ("minecraft:horse#main", "minecraft:happy_ghast#main", "minecraft:cow#main", "minecraft:player#main"):
             if layer not in layers:
                 failures.append(f"entity model {layer} missing")
+        for name in ("WardenAnimation.WARDEN_ROAR", "SnifferAnimation.SNIFFER_WALK", "CamelAnimation.CAMEL_IDLE",
+                     "FrogAnimation.FROG_CROAK", "BreezeAnimation.IDLE"):
+            if name not in animations:
+                failures.append(f"keyframe animation {name} missing")
+        # The animations as the viewer gets them, for local viewer tests (decode: base64 -d | gunzip).
+        packed = base64.b64encode(gzip.compress(json.dumps(animations, separators=(",", ":")).encode())).decode()
+        for i in range(0, len(packed), 4000):
+            print("ANIMATIONS:" + packed[i:i + 4000], flush=True)
     except RuntimeError as e:
         failures.append(str(e))
 
@@ -260,6 +281,11 @@ def main():
         failures.append("the cow in front of the camera was not streamed")
     if not any(b[0] == 0 and b[1] == -60 and b[2] == 0 for b in stream.block_updates):
         failures.append("instant block update (mixin) did not arrive")
+    print("animation states:", sorted(stream.animation_states), "entity events:", sorted(stream.entity_events), flush=True)
+    if ("minecraft:breeze", "idle") not in stream.animation_states:
+        failures.append("the breeze's running idle AnimationState was not streamed")
+    if ("minecraft:sheep", 3) not in stream.entity_events:
+        failures.append("the killed sheep's death entity event (3) was not streamed")
     for line in ("CCTV", "Camera ci", "Welcome", "edited"):
         if line not in stream.sign_lines:
             failures.append(f"sign text '{line}' was not streamed (got {sorted(stream.sign_lines)})")

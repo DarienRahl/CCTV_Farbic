@@ -1,5 +1,6 @@
 package io.github.darienrahl.cctv.camera;
 
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
@@ -18,6 +19,7 @@ import net.minecraft.core.component.DataComponentType;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.util.StringRepresentable;
+import net.minecraft.world.entity.AnimationState;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.LightningBolt;
@@ -125,6 +127,18 @@ final class EntityEncoder {
 			{"getIcon", "icon"},
 			{"getRotation", "rotation"},
 			{"isAggressive", "aggressive"},
+			// Inputs of the client-side animation code the viewer ports (mobs.js CLIENT).
+			{"isResting", "resting"},
+			{"isSearching", "searching"},
+			{"getState", "state"},
+			{"isCamelSitting", "camelSitting"},
+			{"getPoseTime", "poseTime"},
+			{"isDashing", "dashing"},
+			{"isTearingDown", "tearingDown"},
+			{"shouldHideInShell", "hiding"},
+			// Methods every entity has: only sent for the types that need them (third column).
+			{"isInWater", "inWater", "minecraft:frog minecraft:axolotl"},
+			{"onGround", "onGround", "minecraft:axolotl"},
 	};
 
 	/** Entities that hang on a block face (their direction is the face they are on). */
@@ -146,6 +160,11 @@ final class EntityEncoder {
 	}
 
 	static void write(Json json, Entity entity, String type, IntConsumer blockStates) {
+		write(json, entity, type, blockStates, null);
+	}
+
+	/** @param events entity events since the last frame ({@code "ev"}), replayed by the viewer like handleEntityEvent */
+	static void write(Json json, Entity entity, String type, IntConsumer blockStates, @Nullable List<Integer> events) {
 		json.beginObject()
 				.field("id", entity.getId())
 				.field("type", type)
@@ -232,9 +251,65 @@ final class EntityEncoder {
 		if (entity.isOnFire() && !entity.fireImmune()) {
 			json.field("burning", true);
 		}
+		writeAnimations(json, entity);
+		if (events != null && !events.isEmpty()) {
+			json.name("ev").beginArray();
+			for (int event : events) {
+				json.value(event);
+			}
+			json.endArray();
+		}
 
 		writeState(json, entity, blockStates);
 		json.endObject();
+	}
+
+	/**
+	 * Running keyframe animations: every {@link AnimationState} field of the entity (roaring warden, sniffing
+	 * sniffer, croaking frog...) that is started, as {@code "anim": {"roarAnimationState": millisSinceStart}}.
+	 * The field names are the ones the client's render states and models use, so the viewer can pair them
+	 * with the game's animation definitions.
+	 */
+	private static void writeAnimations(Json json, Entity entity) {
+		Field[] fields = ANIMATION_STATES.computeIfAbsent(entity.getClass(), EntityEncoder::animationStateFields);
+		boolean open = false;
+		for (Field field : fields) {
+			try {
+				AnimationState state = (AnimationState) field.get(entity);
+				if (state == null || !state.isStarted()) {
+					continue;
+				}
+				if (!open) {
+					json.name("anim").beginObject();
+					open = true;
+				}
+				json.field(field.getName(), state.getTimeInMillis(entity.tickCount));
+			} catch (ReflectiveOperationException | RuntimeException e) {
+				Problems.report(null, "animation state " + field.getName(), e);
+			}
+		}
+		if (open) {
+			json.endObject();
+		}
+	}
+
+	private static final Map<Class<?>, Field[]> ANIMATION_STATES = new ConcurrentHashMap<>();
+
+	private static Field[] animationStateFields(Class<?> type) {
+		List<Field> fields = new ArrayList<>();
+		for (Class<?> cls = type; cls != null && cls != Object.class; cls = cls.getSuperclass()) {
+			for (Field field : cls.getDeclaredFields()) {
+				if (field.getType() == AnimationState.class && !Modifier.isStatic(field.getModifiers())) {
+					try {
+						field.setAccessible(true);
+						fields.add(field);
+					} catch (RuntimeException e) {
+						Problems.report(null, "animation state " + field.getName(), e);
+					}
+				}
+			}
+		}
+		return fields.toArray(Field[]::new);
 	}
 
 	private static void writeItem(Json json, String name, ItemStack stack) {
@@ -312,7 +387,7 @@ final class EntityEncoder {
 			}
 		}
 
-		for (Map.Entry<Method, String> probe : probes(entity.getClass())) {
+		for (Map.Entry<Method, String> probe : probes(entity.getClass(), type)) {
 			Object value;
 			try {
 				value = probe.getKey().invoke(entity);
@@ -436,10 +511,13 @@ final class EntityEncoder {
 		return null;
 	}
 
-	private static List<Map.Entry<Method, String>> probes(Class<?> type) {
+	private static List<Map.Entry<Method, String>> probes(Class<?> type, String entityType) {
 		return PROBE_CACHE.computeIfAbsent(type, cls -> {
 			List<Map.Entry<Method, String>> found = new ArrayList<>();
 			for (String[] probe : PROBES) {
+				if (probe.length > 2 && !List.of(probe[2].split(" ")).contains(entityType)) {
+					continue;
+				}
 				try {
 					Method method = cls.getMethod(probe[0]);
 					if (!Modifier.isStatic(method.getModifiers()) && method.getReturnType() != void.class

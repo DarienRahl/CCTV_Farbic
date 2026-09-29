@@ -6,7 +6,8 @@
 import {
 	ModelLibrary, VertexSink, FLOATS, emitModel, emitQuads, partMatrix, mat4, mul, translate, rotate, scale, DEG,
 } from './entity-models.js';
-import { describeMob, blockEntityModel, dyeRgb } from './mobs.js';
+import { describeMob, blockEntityModel, dyeRgb, CLIENT } from './mobs.js';
+import { Animator, AnimationStates } from './keyframes.js';
 import { collectParts } from './models.js';
 import { JavaRandom } from './rng.js';
 import { program, FOG_GLSL, setFog } from './gl.js';
@@ -214,6 +215,7 @@ export class EntityRenderer {
 		this.gl = renderer.gl;
 		this.text = new TextRenderer(this.gl);
 		this.library = new ModelLibrary();
+		this.animator = new Animator(this.library);
 		this.sink = new VertexSink();
 		this.batches = [];
 		this.textures = new Map();
@@ -348,7 +350,15 @@ export class EntityRenderer {
 		// Track the smallest network delay seen, slowly relaxing so server lag is followed.
 		this.offset = this.offset === null ? sample : Math.min(sample, this.offset + (sample - this.offset) * 0.02 + 0.05);
 		const map = new Map();
-		for (const e of frame.e) map.set(e.id, e);
+		for (const e of frame.e) {
+			map.set(e.id, e);
+			// Running AnimationStates as start ticks (entity tickCount), events tagged with their frame.
+			if (e.anim) {
+				e.animStart = {};
+				for (const [name, millis] of Object.entries(e.anim)) e.animStart[name] = (e.age || 0) - millis / 50;
+			}
+			if (e.ev) e.evTick = frame.t;
+		}
 		this.animateMotion(frame.t, map);
 		this.frames.push({ t: frame.t, map });
 		while (this.frames.length > 40) this.frames.shift();
@@ -475,6 +485,24 @@ export class EntityRenderer {
 		return s;
 	}
 
+	/** The entity's AnimationStates: the server's plus the ones the ported client code (mobs.js CLIENT) runs. */
+	keyframeStates(type, e, s) {
+		const states = s.keyframes || (s.keyframes = new AnimationStates());
+		states.sync(e.animStart);
+		const client = CLIENT[type];
+		if (!client) return states;
+		const tick = Math.floor(e.age || 0);
+		if (client.event && e.ev && e.evTick !== states.eventTick) {
+			states.eventTick = e.evTick;
+			for (const id of e.ev) client.event(e, states, id, tick);
+		}
+		if (client.tick) {
+			if (states.lastTick === null || tick < states.lastTick || tick - states.lastTick > 40) states.lastTick = tick - 1;
+			while (states.lastTick < tick) client.tick(e, states, ++states.lastTick);
+		}
+		return states;
+	}
+
 	cleanupStates(now) {
 		if (this.states.size < 64) return;
 		for (const [id, s] of this.states) if (now - s.seen > 5000) this.states.delete(id);
@@ -596,6 +624,8 @@ export class EntityRenderer {
 			flap: e.id * 3 + age,
 			swimAmount: e.swimAmount || 0,
 		};
+		anim.states = this.keyframeStates(type, e, s);
+		anim.memory = anim.states.memory;
 		if (def.fullBright) style.light = [240, style.light[1]];
 
 		// LivingEntityRenderer.submit / setupRotations
@@ -669,6 +699,7 @@ export class EntityRenderer {
 			const texture = this.texture(layer.texture);
 			if (!texture) continue;
 			model.reset();
+			anim.k = this.animator.bind(model.parts, anim.states, age);
 			if (base && model !== base) {
 				mob.anim(model.parts, anim, e);
 				model.copyPose(base);

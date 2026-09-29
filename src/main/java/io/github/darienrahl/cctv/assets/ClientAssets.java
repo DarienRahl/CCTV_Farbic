@@ -224,7 +224,7 @@ public final class ClientAssets implements AutoCloseable {
 	 */
 	private void loadEntityModels(Path jar) {
 		try {
-			Path cache = dir.resolve("entity-models-" + version + ".json.gz");
+			Path cache = dir.resolve("entity-models-" + EntityModels.FORMAT + "-" + version + ".json.gz");
 			byte[] gz = null;
 			if (Files.isRegularFile(cache) && Files.getLastModifiedTime(cache).compareTo(Files.getLastModifiedTime(jar)) >= 0) {
 				gz = Files.readAllBytes(cache);

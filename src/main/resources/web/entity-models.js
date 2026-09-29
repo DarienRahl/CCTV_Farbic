@@ -4,6 +4,8 @@
 // then the cubes. Animations change the live part fields the way the
 // client's setupAnim does (after resetPose).
 
+import { KeyframeAnimation } from './keyframes.js';
+
 /** A model part with its bind pose (x, y, z in pixels, rotations in radians). */
 class Part {
 	constructor(name, data) {
@@ -212,11 +214,13 @@ export function emitQuads(sink, q, m, style) {
 	}
 }
 
-/** Loads /assets/models.json once and hands out fresh Model instances per layer id. */
+/** Loads /assets/models.json once and hands out Model instances per layer id and the game's keyframe animations. */
 export class ModelLibrary {
 	constructor() {
 		this.layers = null;
 		this.cache = new Map();
+		this.animations = {};
+		this.animationCache = new Map();
 	}
 
 	async load(query) {
@@ -226,6 +230,7 @@ export class ModelLibrary {
 				if (response.ok) {
 					const json = await response.json();
 					this.layers = json.layers || {};
+					this.animations = json.animations || {};
 					return true;
 				}
 				if (response.status === 404) return false;
@@ -239,6 +244,17 @@ export class ModelLibrary {
 
 	has(id) {
 		return !!(this.layers && this.layers[id]);
+	}
+
+	/** A keyframe animation by its game name ("WardenAnimation.WARDEN_ROAR"), or null. */
+	animation(name) {
+		let animation = this.animationCache.get(name);
+		if (animation === undefined) {
+			const definition = this.animations[name];
+			animation = definition ? new KeyframeAnimation(definition) : null;
+			this.animationCache.set(name, animation);
+		}
+		return animation;
 	}
 
 	/** A shared model instance for a layer (pose it, emit it, then it can be reused). */

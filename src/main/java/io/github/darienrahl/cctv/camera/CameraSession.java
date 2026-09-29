@@ -994,6 +994,25 @@ final class CameraSession {
 	/** Block states shown by entities in the current frame (falling blocks, carried blocks). */
 	private final Set<Integer> entityBlockStates = new HashSet<>();
 
+	/** Entity events since the last entity frame, by entity id (server thread). */
+	private final Map<Integer, List<Integer>> entityEvents = new HashMap<>();
+
+	/** Server thread: an entity event (ServerLevel.broadcastEntityEvent) near the camera goes into the next frame. */
+	void onEntityEvent(ServerLevel level, Entity entity, byte event) {
+		if (level != this.level || viewers.isEmpty()) {
+			return;
+		}
+		Camera c = camera;
+		double range = Math.min(c.range(), config.entityRange);
+		if (Math.abs(entity.getX() - c.x()) > range || Math.abs(entity.getY() - c.y()) > range || Math.abs(entity.getZ() - c.z()) > range) {
+			return;
+		}
+		List<Integer> events = entityEvents.computeIfAbsent(entity.getId(), id -> new ArrayList<>(2));
+		if (events.size() < 16) {
+			events.add((int) event);
+		}
+	}
+
 	private String entitiesJson(ServerLevel level, long tick) {
 		Camera c = camera;
 		double range = Math.min(c.range(), config.entityRange);
@@ -1007,7 +1026,7 @@ final class CameraSession {
 			if (EntityEncoder.shouldSend(entity, type)) {
 				long mark = json.mark();
 				try {
-					EntityEncoder.write(json, entity, type, entityBlockStates::add);
+					EntityEncoder.write(json, entity, type, entityBlockStates::add, entityEvents.get(entity.getId()));
 				} catch (RuntimeException | LinkageError e) {
 					// One entity the encoder does not understand (mod entity, changed game API) is left out.
 					json.reset(mark);
@@ -1015,6 +1034,7 @@ final class CameraSession {
 				}
 			}
 		}
+		entityEvents.clear();
 		json.endArray().endObject();
 		return json.toString();
 	}
