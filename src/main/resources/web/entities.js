@@ -241,6 +241,55 @@ function scaleRgb(color, factor) {
 	return (Math.floor((color >> 16 & 255) * factor) << 16) | (Math.floor((color >> 8 & 255) * factor) << 8) | Math.floor((color & 255) * factor);
 }
 
+const clamp = (v, min, max) => Math.min(max, Math.max(min, v));
+/** Mth.frac */
+const frac = v => v - Math.floor(v);
+/** an angle in radians wrapped to [-PI, PI) */
+function wrapRadians(a) {
+	while (a >= Math.PI) a -= Math.PI * 2;
+	while (a < -Math.PI) a += Math.PI * 2;
+	return a;
+}
+
+/** BookModel.State.forAnimation */
+function bookState(progress, pageFlip1, pageFlip2, openness) {
+	return { openness: (Math.sin(progress * 0.02) * 0.1 + 1.25) * openness, pageFlip1, pageFlip2 };
+}
+
+/** EnchantingTableBlockEntity.bookAnimationTick: turn to the nearest player within 3 blocks and open, else close. */
+function bookAnimationTick(b, be, list) {
+	b.oOpen = b.open;
+	b.oRot = b.rot;
+	const cx = be.x + 0.5, cy = be.y + 0.5, cz = be.z + 0.5;
+	let player = null, best = 9;
+	for (const e of list) {
+		if (e.type !== 'minecraft:player') continue;
+		const d = (e.x - cx) ** 2 + (e.y - cy) ** 2 + (e.z - cz) ** 2;
+		if (d < best) { best = d; player = e; }
+	}
+	const random = n => Math.floor(Math.random() * n);
+	if (player) {
+		b.tRot = Math.atan2(player.z - cz, player.x - cx);
+		b.open += 0.1;
+		if (b.open < 0.5 || random(40) === 0) {
+			const old = b.flipT;
+			do b.flipT += random(4) - random(4); while (old === b.flipT);
+		}
+	} else {
+		b.tRot += 0.02;
+		b.open -= 0.1;
+	}
+	b.rot = wrapRadians(b.rot);
+	b.tRot = wrapRadians(b.tRot);
+	b.rot += wrapRadians(b.tRot - b.rot) * 0.4;
+	b.open = clamp(b.open, 0, 1);
+	b.time++;
+	b.oFlip = b.flip;
+	const diff = clamp((b.flipT - b.flip) * 0.4, -0.2, 0.2);
+	b.flipA += (diff - b.flipA) * 0.9;
+	b.flip += b.flipA;
+}
+
 function hashColor(text) {
 	let h = 0;
 	for (let i = 0; i < text.length; i++) h = (h * 31 + text.charCodeAt(i)) | 0;
@@ -298,6 +347,10 @@ export class EntityRenderer {
 		this.capes = new Map();
 		this.states = new Map();
 		this.events = new Map();
+		// EnchantingTableBlockEntity animation state by block position
+		this.books = new Map();
+		// types drawn as a plain box this frame (no model or texture for them)
+		this.boxed = new Set();
 		this.motion = new Map();
 		this.itemMeshes = new Map();
 		this.frames = [];
@@ -621,6 +674,7 @@ export class EntityRenderer {
 
 	cleanupStates(now) {
 		for (const [id, queue] of this.events) if (!queue.length || this.tick - queue[queue.length - 1].t > 200) this.events.delete(id);
+		for (const [key, b] of this.books) if (now - b.seen > 5000) this.books.delete(key);
 		if (this.states.size < 64) return;
 		for (const [id, s] of this.states) if (now - s.seen > 5000) this.states.delete(id);
 	}
@@ -654,6 +708,7 @@ export class EntityRenderer {
 		this.env = env;
 		this.bolts = [];
 		this.shadows = [];
+		this.boxed.clear();
 		const now = frame.now;
 		const o = frame.origin, cam = frame.camPos;
 		let visible = 0;
@@ -685,7 +740,7 @@ export class EntityRenderer {
 		this.text.nameTags(this.collectNameTags(frame, list, world), [view[0], view[4], view[8]], [view[1], view[5], view[9]]);
 		this.addSignText(frame, world);
 		this.text.finish();
-		if (this.assets) this.prepareBlockEntities(frame, world);
+		if (this.assets) this.prepareBlockEntities(frame, world, list);
 		this.upload();
 		this.cleanupStates(now);
 	}
@@ -931,6 +986,7 @@ export class EntityRenderer {
 
 	drawBox(e, pos, style) {
 		// Unknown entity: its hitbox as a plain box, so it is at least visible.
+		this.boxed.add(e.type);
 		const w = (e.w || 0.6) / 2, h = e.h || 0.6;
 		const q = [];
 		const corners = [[-w, 0, -w], [w, 0, -w], [w, h, -w], [-w, h, -w], [-w, 0, w], [w, 0, w], [w, h, w], [-w, h, w]];
@@ -1349,7 +1405,7 @@ export class EntityRenderer {
 
 	// --- block entities (chests, shulker boxes, heads, banners, bells, pots) ---------------------------
 
-	prepareBlockEntities(frame, world) {
+	prepareBlockEntities(frame, world, list) {
 		const o = frame.origin, cam = frame.camPos;
 		this.portals.endPortal.length = 0;
 		this.portals.endGateway.length = 0;
@@ -1368,6 +1424,10 @@ export class EntityRenderer {
 				}
 				if (be.info.shortName === 'end_portal' || be.info.shortName === 'end_gateway') {
 					this.addPortal(be, [bx, by, bz], frame, world);
+					continue;
+				}
+				if (be.info.shortName === 'enchanting_table' || be.info.shortName === 'lectern') {
+					if (Math.hypot(bx, by, bz) <= Math.min(frame.fogEnd, 64) && frame.frustum(bx + 0.5, by + 1, bz + 0.5, 1.5)) this.drawBook(be, [bx, by, bz], frame, world, list);
 					continue;
 				}
 				if (Math.hypot(bx, by, bz) > Math.min(frame.fogEnd, 96)) continue;
@@ -1501,6 +1561,68 @@ export class EntityRenderer {
 			translate(m, -0.5, -0.5, -0.5);
 			this.emitItem(mesh, m, style);
 		});
+	}
+
+	/**
+	 * EnchantTableRenderer: the book floating over the table, turning to the nearest player and opening with its
+	 * pages flipping (EnchantingTableBlockEntity.bookAnimationTick, stepped once a game tick). LecternRenderer: the
+	 * open book lying on a lectern.
+	 */
+	drawBook(be, p, frame, world, list) {
+		const m = mat4();
+		let state;
+		if (be.info.shortName === 'lectern') {
+			if (be.info.props.has_book !== 'true') return;
+			// Direction.getClockWise().toYRot()
+			const yRot = { north: 270, east: 0, south: 90, west: 180 }[be.info.props.facing] ?? 270;
+			translate(m, p[0] + 0.5, p[1] + 1.0625, p[2] + 0.5);
+			rotate(m, 1, -yRot * DEG);
+			rotate(m, 2, 67.5 * DEG);
+			translate(m, 0, -0.125, 0);
+			state = bookState(0, 0.1, 0.9, 1.2);
+		} else {
+			const now = this.env ? this.env.gameTime(frame.now) : frame.now / 50;
+			const tick = Math.floor(now), partial = now - tick;
+			const key = be.x + ',' + be.y + ',' + be.z;
+			let b = this.books.get(key);
+			if (!b || tick < b.tick) {
+				b = { tick, time: 0, flip: 0, oFlip: 0, flipT: 0, flipA: 0, open: 0, oOpen: 0, rot: 0, oRot: 0, tRot: 0 };
+				this.books.set(key, b);
+			}
+			b.seen = frame.now;
+			// a table out of sight for long catches up on the last 100 ticks, enough to settle
+			if (tick - b.tick > 100) {
+				b.time += tick - 100 - b.tick;
+				b.tick = tick - 100;
+			}
+			for (; b.tick < tick; b.tick++) bookAnimationTick(b, be, list);
+			// extractRenderState
+			const flip = lerp(b.oFlip, b.flip, partial), open = lerp(b.oOpen, b.open, partial), time = b.time + partial;
+			const yRot = b.oRot + wrapRadians(b.rot - b.oRot) * partial;
+			translate(m, p[0] + 0.5, p[1] + 0.75, p[2] + 0.5);
+			translate(m, 0, 0.1 + Math.sin(time * 0.1) * 0.01, 0);
+			rotate(m, 1, -yRot);
+			rotate(m, 2, 80 * DEG);
+			const ff1 = frac(flip + 0.25) * 1.6 - 0.3, ff2 = frac(flip + 0.75) * 1.6 - 0.3;
+			state = bookState(time, clamp(ff1, 0, 1), clamp(ff2, 0, 1), open);
+		}
+		const model = this.library.get('minecraft:book#main');
+		const texture = this.texture('enchantment/enchanting_table_book');
+		if (!model || !texture) return;
+		model.reset();
+		// BookModel.setupAnim
+		const parts = model.parts, o = state.openness;
+		parts.left_lid.yRot = Math.PI + o;
+		parts.right_lid.yRot = -o;
+		parts.left_pages.yRot = o;
+		parts.right_pages.yRot = -o;
+		parts.flip_page1.yRot = o - o * 2 * state.pageFlip1;
+		parts.flip_page2.yRot = o - o * 2 * state.pageFlip2;
+		for (const name of ['left_pages', 'right_pages', 'flip_page1', 'flip_page2']) parts[name].x = Math.sin(o);
+		const [sky, block] = world.lightAt(be.x, be.y, be.z);
+		const start = this.sink.count;
+		emitModel(this.sink, model, m, { color: [1, 1, 1, 1], light: [block * 16, sky * 16], overlay: [0, 0] });
+		this.batch(texture, MODE_CUTOUT, start);
 	}
 
 	/** BeaconRenderer.submitBeaconBeam */

@@ -209,6 +209,8 @@ def main():
     rcon.command("setblock 10 -60 10 minecraft:beacon")
     rcon.command("setblock 10 -57 10 minecraft:red_stained_glass")
     rcon.command("setblock -3 -61 11 minecraft:end_portal")
+    rcon.command("setblock 1 -60 -3 minecraft:enchanting_table")
+    rcon.command("setblock -2 -60 -3 minecraft:lectern[facing=north,has_book=true]")
     rcon.command("place feature minecraft:oak -6 -60 18")
     rcon.command("place feature minecraft:birch 12 -60 16")
     rcon.command("place feature minecraft:fancy_oak 14 -60 4")

@@ -28,6 +28,8 @@ async function shoot(name, settings, camera = 'ci') {
 		signs: window.cctv ? window.cctv.world.signs.size : 0,
 		particles: window.cctv && window.cctv.particles ? window.cctv.particles.particles.length : 0,
 		portals: window.cctv && window.cctv.entities.portals ? window.cctv.entities.portals.endPortal.length / 18 : 0,
+		books: window.cctv && window.cctv.entities.books ? window.cctv.entities.books.size : 0,
+		boxed: window.cctv && window.cctv.entities.boxed ? [...window.cctv.entities.boxed] : [],
 		stats: document.getElementById('stats').textContent,
 	}));
 	console.log(name + ':', JSON.stringify(info));
@@ -60,6 +62,14 @@ if (pageErrors.length) {
 }
 if (vanilla.portals === 0) {
 	console.error('viewer drew no end portal (one is in front of the camera)');
+	process.exit(1);
+}
+if (vanilla.books === 0) {
+	console.error('viewer drew no enchanting table book (a table is in front of the camera)');
+	process.exit(1);
+}
+if (vanilla.boxed.length) {
+	console.error('entities drawn as plain boxes (model or texture missing): ' + vanilla.boxed.join(', '));
 	process.exit(1);
 }
 if (vanilla.particles === 0) {
