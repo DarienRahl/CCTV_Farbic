@@ -76,7 +76,8 @@ to the milestone it belongs to.
       and smoke, lava pops, drips, portal, falling leaves, spore blossoms, fireflies
 - [ ] More particles: rain splashes, entity particles (hearts, villager emotions, potion swirls),
       block breaking, explosions and the particles the server sends (`ClientboundLevelParticlesPacket`)
-- [ ] Entity details: fire on burning entities, the game's shadow texture projected on blocks,
+- [x] Fire on burning entities (FlameFeatureRenderer, invisible ones too)
+- [ ] Entity details: the game's shadow texture projected on blocks,
       enchantment glint, armour trims, capes and elytra, item frames with maps, leashes, fishing
       lines, glowing outlines
 - [ ] Terrain: the game's chunk occlusion culling (visibility graph), block breaking progress,

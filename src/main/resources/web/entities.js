@@ -566,14 +566,16 @@ export class EntityRenderer {
 				this.bolts.push({ x: rx, y: ry, z: rz, seed: e.seed || '0' });
 				continue;
 			}
-			if (e.invisible) continue;
+			if (e.invisible && !e.burning) continue;
 			const radius = Math.max(e.w || 1, e.h || 1) + 1;
 			if (!frame.frustum(rx, ry + (e.h || 1) / 2, rz, radius * (type === 'happy_ghast' || type === 'ghast' ? 2 : 1))) continue;
 			if (Math.hypot(rx, rz) > frame.fogEnd + 8) continue;
 			visible++;
 			const light = this.lightFor(e, world);
 			try {
-				this.drawEntity(e, type, [rx, ry, rz], light, now, world);
+				if (!e.invisible) this.drawEntity(e, type, [rx, ry, rz], light, now, world);
+				// EntityRenderer.submit: burning entities (invisible ones too) are wrapped in flames.
+				if (e.burning) this.drawFlame(e, [rx, ry, rz], light, frame.viewRotation);
 			} catch (error) {
 				console.warn('CCTV: could not draw', e.type, error);
 			}
@@ -587,6 +589,45 @@ export class EntityRenderer {
 		if (this.assets) this.prepareBlockEntities(frame, world);
 		this.upload();
 		this.cleanupStates(now);
+	}
+
+	/**
+	 * FlameFeatureRenderer: layers of the fire_0 / fire_1 block sprites (animated in the block atlas) facing the
+	 * camera, 1.4 times the entity's width, stacked 0.45 apart up to its height, each narrower and further back.
+	 */
+	drawFlame(e, pos, light, view) {
+		if (!this.assets || !this.assets.texture) return;
+		const fire = [this.assets.sprite('minecraft:block/fire_0'), this.assets.sprite('minecraft:block/fire_1')];
+		const s = (e.w || 0.6) * 1.4;
+		let h = (e.h || 1.8) / s;
+		// pose: entity position, scale, camera orientation (right, up, towards the camera), then 0.3 towards the camera
+		const right = [view[0], view[4], view[8]], up = [view[1], view[5], view[9]], back = [view[2], view[6], view[10]];
+		const m = mat4();
+		for (let i = 0; i < 3; i++) {
+			m[i] = right[i] * s; m[4 + i] = up[i] * s; m[8 + i] = back[i] * s;
+			m[12 + i] = pos[i] + back[i] * s * (0.3 - Math.trunc(h) * 0.02);
+		}
+		const quads = [];
+		let r = 0.5, yo = 0, zo = 0;
+		for (let ss = 0; h > 0; ss++) {
+			const tex = fire[ss % 2];
+			let u0 = tex.u0, u1 = tex.u1;
+			const v0 = tex.v0, v1 = tex.v1;
+			if (Math.floor(ss / 2) % 2 === 0) [u0, u1] = [u1, u0];
+			quads.push(-r, -yo, zo, u1, v1, r, -yo, zo, u0, v1, r, 1.4 - yo, zo, u0, v0, -r, 1.4 - yo, zo, u1, v0);
+			h -= 0.45; yo -= 0.45; r *= 0.9; zo -= 0.03;
+		}
+		const start = this.sink.count;
+		this.sink.ensure(quads.length / 20 * 6);
+		// LightCoordsUtil.withBlock(light, 15)
+		emitQuads(this.sink, quads, m, { color: [1, 1, 1, 1], light: [240, light[1]], overlay: [0, 0] });
+		// fireVertex: setNormal(pose, 0, 1, 0), the camera's up
+		const out = this.sink.data;
+		for (let v = start; v < this.sink.count; v++) {
+			const o = v * FLOATS;
+			out[o + 3] = up[0]; out[o + 4] = up[1]; out[o + 5] = up[2];
+		}
+		this.batch(this.assets.texture, MODE_CUTOUT, start, false);
 	}
 
 	/** Packed light at the entity's eyes (EntityRenderer.getPackedLightCoords), in smooth units. */

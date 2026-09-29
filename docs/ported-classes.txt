@@ -29,6 +29,7 @@ net/minecraft/client/renderer/entity/player/AvatarRenderer
 net/minecraft/client/renderer/entity/SheepRenderer
 net/minecraft/client/renderer/entity/ItemEntityRenderer
 net/minecraft/client/renderer/entity/ThrownItemRenderer
+net/minecraft/client/renderer/feature/FlameFeatureRenderer
 net/minecraft/client/renderer/entity/ItemFrameRenderer
 net/minecraft/client/renderer/entity/PaintingRenderer
 net/minecraft/client/renderer/entity/BoatRenderer
