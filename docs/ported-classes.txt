@@ -32,6 +32,7 @@ net/minecraft/client/renderer/entity/ThrownItemRenderer
 net/minecraft/client/renderer/feature/FlameFeatureRenderer
 net/minecraft/client/renderer/feature/ShadowFeatureRenderer
 net/minecraft/client/renderer/feature/ItemFeatureRenderer
+net/minecraft/client/renderer/feature/LeashFeatureRenderer
 net/minecraft/client/renderer/rendertype/TextureTransform
 net/minecraft/client/renderer/Lightmap
 net/minecraft/client/renderer/entity/ItemFrameRenderer

@@ -90,7 +90,9 @@ to the milestone it belongs to.
       below, fading with depth and in the dark, only within 16 blocks of the camera
 - [x] **Enchantment glint** on held, dropped and framed items, armour and elytra (the 26.3 glint
       pipelines: the glint texture through TextureTransform's moving matrix, added in the same pass)
-- [ ] Entity details: armour trims, item frames with maps, leashes, fishing lines, glowing outlines
+- [x] **Leashes** (LeashFeatureRenderer: the crossed ribbons from the entity to the holder's hand
+      or the knot, sagging, lit at both ends; the four ropes of a happy ghast's harness)
+- [ ] Entity details: armour trims, item frames with maps, fishing lines, glowing outlines
 - [ ] Terrain: the game's chunk occlusion culling (visibility graph), block breaking progress,
       remaining fluid edge cases, the biome blend setting
 - [ ] Camera in water, lava and powder snow: the game's overlays and fog

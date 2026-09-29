@@ -22,6 +22,7 @@ import net.minecraft.util.StringRepresentable;
 import net.minecraft.world.entity.AnimationState;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.entity.Leashable;
 import net.minecraft.world.entity.LightningBolt;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Pose;
@@ -31,6 +32,7 @@ import net.minecraft.world.entity.player.PlayerModelPart;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.Vec3;
 
 import io.github.darienrahl.cctv.web.Json;
 
@@ -256,6 +258,9 @@ final class EntityEncoder {
 		if (foil != 0) {
 			json.field("foil", foil);
 		}
+		if (entity instanceof Leashable leashable && leashable.getLeashHolder() != null) {
+			writeLeash(json, entity, leashable, leashable.getLeashHolder());
+		}
 		if (entity instanceof LightningBolt bolt) {
 			json.field("seed", Long.toString(bolt.seed));
 		}
@@ -339,6 +344,39 @@ final class EntityEncoder {
 			}
 		}
 		return fields.toArray(Field[]::new);
+	}
+
+	/**
+	 * EntityRenderer#extractRenderState's leash: the holder and where the leash is tied, as offsets from the
+	 * entity's and the holder's positions (so the viewer follows both as they move); "q" holds the four
+	 * leashes of a quad connection (a happy ghast's harness), each [entity offset, holder offset].
+	 */
+	private static void writeLeash(Json json, Entity entity, Leashable leashable, Entity holder) {
+		float yRot = entity.getPreciseBodyRotation(1.0F) * (float) (Math.PI / 180.0);
+		json.name("leash").beginObject().field("h", holder.getId());
+		if (holder.supportQuadLeashAsHolder() && leashable.supportQuadLeash()) {
+			float holderYRot = holder.getPreciseBodyRotation(1.0F) * (float) (Math.PI / 180.0);
+			Vec3[] own = leashable.getQuadLeashOffsets();
+			Vec3[] held = holder.getQuadLeashHolderOffsets();
+			json.name("q").beginArray();
+			for (int i = 0; i < Math.min(own.length, held.length); i++) {
+				json.beginArray();
+				vec(json, own[i].yRot(-yRot));
+				vec(json, held[i].yRot(-holderYRot));
+				json.endArray();
+			}
+			json.endArray();
+		} else {
+			json.name("o");
+			vec(json, leashable.getLeashOffset(1.0F).yRot(-yRot));
+			json.name("e");
+			vec(json, holder.getRopeHoldPosition(1.0F).subtract(holder.position()));
+		}
+		json.endObject();
+	}
+
+	private static void vec(Json json, Vec3 v) {
+		json.beginArray().value(v.x, 3).value(v.y, 3).value(v.z, 3).endArray();
 	}
 
 	private static int foil(ItemStack stack, int bit) {

@@ -787,6 +787,7 @@ export class EntityRenderer {
 			}
 		}
 		this.visibleCount = visible;
+		this.drawLeashes(frame, list, world);
 		const view = frame.viewRotation;
 		this.text.begin();
 		this.text.nameTags(this.collectNameTags(frame, list, world), [view[0], view[4], view[8]], [view[1], view[5], view[9]]);
@@ -795,6 +796,76 @@ export class EntityRenderer {
 		if (this.assets) this.prepareBlockEntities(frame, world, list);
 		this.upload();
 		this.cleanupStates(now);
+	}
+
+	/**
+	 * EntityRenderer's leash state and LeashFeatureRenderer: from where the leash is tied on the entity to the
+	 * holder's hand (or knot), 24 steps of two crossed brown ribbons with alternating shades, sagging when slack,
+	 * lit by the light at both ends. The server sends the holder and the tie offsets ("leash").
+	 */
+	drawLeashes(frame, list, world) {
+		let byId = null;
+		const o = frame.origin, cam = frame.camPos;
+		for (const e of list) {
+			if (!e.leash) continue;
+			if (!byId) byId = new Map(list.map(x => [x.id, x]));
+			const holder = byId.get(e.leash.h);
+			if (!holder) continue;
+			const pos = [e.x - o[0] - cam[0], e.y - o[1] - cam[1], e.z - o[2] - cam[2]];
+			const holderPos = [holder.x - o[0] - cam[0], holder.y - o[1] - cam[1], holder.z - o[2] - cam[2]];
+			const mid = [(pos[0] + holderPos[0]) / 2, (pos[1] + holderPos[1]) / 2, (pos[2] + holderPos[2]) / 2];
+			const radius = Math.hypot(pos[0] - holderPos[0], pos[1] - holderPos[1], pos[2] - holderPos[2]) / 2 + 2;
+			if (Math.hypot(mid[0], mid[2]) - radius > frame.fogEnd || !frame.frustum(mid[0], mid[1], mid[2], radius)) continue;
+			const light = x => {
+				const [sky, block] = world.lightAt(Math.floor(x.x), Math.floor(x.y + (x.h || 1) * 0.85), Math.floor(x.z));
+				return [x.burning ? 15 : block, sky];
+			};
+			const [startBlock, startSky] = light(e), [endBlock, endSky] = light(holder);
+			const leashes = e.leash.q
+				? e.leash.q.map(([a, b]) => ({ offset: a, end: b, slack: false }))
+				: [{ offset: e.leash.o, end: e.leash.e, slack: true }];
+			for (const leash of leashes) {
+				if (!leash.offset || !leash.end) continue;
+				const start = [pos[0] + leash.offset[0], pos[1] + leash.offset[1], pos[2] + leash.offset[2]];
+				const end = [holderPos[0] + leash.end[0], holderPos[1] + leash.end[1], holderPos[2] + leash.end[2]];
+				this.emitLeash(start, end, leash.slack, startBlock, endBlock, startSky, endSky);
+			}
+		}
+	}
+
+	/** LeashFeatureRenderer.prepare: one triangle strip, forwards with the upper ribbon, back with the crossing one. */
+	emitLeash(start, end, slack, startBlock, endBlock, startSky, endSky) {
+		const dx = end[0] - start[0], dy = end[1] - start[1], dz = end[2] - start[2];
+		const horizontal = Math.hypot(dx, dz);
+		const offsetFactor = horizontal > 1e-6 ? 0.05 / 2 / horizontal : 0;
+		const dxOff = dz * offsetFactor, dzOff = dx * offsetFactor;
+		const strip = [];
+		const pair = (k, fudge, backwards) => {
+			const progress = k / 24;
+			const block = Math.trunc(lerp(startBlock, endBlock, progress)), sky = Math.trunc(lerp(startSky, endSky, progress));
+			const shade = k % 2 === (backwards ? 1 : 0) ? 0.7 : 1;
+			const color = [0.5 * shade, 0.4 * shade, 0.3 * shade];
+			const x = dx * progress, z = dz * progress;
+			const y = slack ? (dy > 0 ? dy * progress * progress : dy - dy * (1 - progress) * (1 - progress)) : dy * progress;
+			strip.push([x - dxOff, y + fudge, z + dzOff, color, block, sky], [x + dxOff, y + 0.05 - fudge, z - dzOff, color, block, sky]);
+		};
+		for (let k = 0; k <= 24; k++) pair(k, 0.05, false);
+		for (let k = 24; k >= 0; k--) pair(k, 0, true);
+		const sink = this.sink, startCount = sink.count;
+		sink.ensure((strip.length - 2) * 3);
+		const out = sink.data;
+		for (let i = 0; i + 2 < strip.length; i++) {
+			for (let j = 0; j < 3; j++) {
+				const v = strip[i + j], q = sink.count++ * FLOATS;
+				out[q] = start[0] + v[0]; out[q + 1] = start[1] + v[1]; out[q + 2] = start[2] + v[2];
+				out[q + 3] = 0; out[q + 4] = 1; out[q + 5] = 0;
+				out[q + 6] = 0.5; out[q + 7] = 0.5;
+				out[q + 8] = v[3][0]; out[q + 9] = v[3][1]; out[q + 10] = v[3][2]; out[q + 11] = 1;
+				out[q + 12] = v[4] * 16; out[q + 13] = v[5] * 16;
+				out[q + 14] = 0; out[q + 15] = 0;
+			}
+		}
+		this.batch(this.white, MODE_NOCULL, startCount, false);
 	}
 
 	/**
