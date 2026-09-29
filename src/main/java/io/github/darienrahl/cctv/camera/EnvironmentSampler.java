@@ -75,6 +75,8 @@ final class EnvironmentSampler {
 
 		color(json, "skyLight", attributes.getValue(EnvironmentAttributes.SKY_LIGHT_COLOR, pos));
 		json.field("skyFactor", attributes.getValue(EnvironmentAttributes.SKY_LIGHT_FACTOR, pos), 4);
+		// Level#getSkyDarken: how much the sky light is lowered for brightness checks (entity shadows)
+		json.field("skyDarken", level.getSkyDarken());
 		color(json, "ambient", attributes.getValue(EnvironmentAttributes.AMBIENT_LIGHT_COLOR, pos));
 		color(json, "blockTint", attributes.getValue(EnvironmentAttributes.BLOCK_LIGHT_TINT, pos));
 		color(json, "nightVision", attributes.getValue(EnvironmentAttributes.NIGHT_VISION_COLOR, pos));

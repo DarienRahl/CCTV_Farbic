@@ -46,6 +46,7 @@ import io.github.darienrahl.cctv.assets.ClientAssets;
  * GET /assets/names.json         entity names in the configured language
  * GET /assets/entities.json      list of entity textures
  * GET /assets/entity/{path}.png  one entity texture
+ * GET /assets/misc/{path}.png    one texture of textures/misc (entity shadow, enchantment glint)
  * GET /assets/font/{path}         the game's font (definitions .json, glyph sheets .png)
  * GET /api/status                 state of the live camera sessions (troubleshooting)
  * </pre>
@@ -302,9 +303,10 @@ public final class WebServer {
 			}
 			headers.add("Cache-Control", "max-age=86400");
 			sendBytes(exchange, 200, path.endsWith(".png") ? "image/png" : "application/json", data);
-		} else if ((path.startsWith("entity/") || path.startsWith("painting/")) && path.endsWith(".png")) {
+		} else if ((path.startsWith("entity/") || path.startsWith("painting/") || path.startsWith("misc/")) && path.endsWith(".png")) {
 			String name = path.substring(path.indexOf('/') + 1, path.length() - ".png".length());
-			byte[] png = path.startsWith("entity/") ? assets.entityTexture(name) : assets.paintingTexture(name);
+			byte[] png = path.startsWith("entity/") ? assets.entityTexture(name)
+					: path.startsWith("misc/") ? assets.miscTexture(name) : assets.paintingTexture(name);
 			if (png == null) {
 				sendText(exchange, 404, "text/plain", "Not found");
 				return;

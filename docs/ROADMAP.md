@@ -86,8 +86,10 @@ to the milestone it belongs to.
       their equipment
 - [x] Capes (from the player's Mojang profile, swinging like ClientAvatarState's cloak), elytra
       (ElytraAnimationState, the cape as elytra texture), the skin layers a player turned off
-- [ ] Entity details: the game's shadow texture projected on blocks, enchantment glint, armour
-      trims, item frames with maps, leashes, fishing lines, glowing outlines
+- [x] **Entity shadows** like EntityRenderer.extractShadow: `shadow.png` on the tops of the blocks
+      below, fading with depth and in the dark, only within 16 blocks of the camera
+- [ ] Entity details: enchantment glint, armour trims, item frames with maps, leashes, fishing
+      lines, glowing outlines
 - [ ] Terrain: the game's chunk occlusion culling (visibility graph), block breaking progress,
       remaining fluid edge cases, the biome blend setting
 - [ ] Camera in water, lava and powder snow: the game's overlays and fog

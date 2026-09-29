@@ -187,34 +187,37 @@ void main() {
 	if (texture(uTexture, vUv).a < 0.1) discard;
 }`;
 
-const BLOB_VS = `
-const vec2 C[4] = vec2[4](vec2(-1.0, -1.0), vec2(1.0, -1.0), vec2(1.0, 1.0), vec2(-1.0, 1.0));
+// RenderPipelines.ENTITY_SHADOW (rendertype_entity_shadow): shadow.png times the vertex alpha, with fog.
+const SHADOW_VS = `
+layout(location = 0) in vec3 aPos;
+layout(location = 1) in vec2 aUv;
+layout(location = 2) in float aAlpha;
 uniform mat4 uViewProj;
-uniform vec3 uCenter;
-uniform float uRadius;
-out vec2 vCorner;
+out vec2 vUv;
+out float vAlpha;
 out float vSph;
 out float vCyl;
 void main() {
-	vCorner = C[gl_VertexID];
-	vec3 p = uCenter + vec3(vCorner.x, 0.0, vCorner.y) * uRadius;
-	vSph = length(p);
-	vCyl = max(length(p.xz), abs(p.y));
-	gl_Position = uViewProj * vec4(p, 1.0);
+	vUv = aUv;
+	vAlpha = aAlpha;
+	vSph = length(aPos);
+	vCyl = max(length(aPos.xz), abs(aPos.y));
+	gl_Position = uViewProj * vec4(aPos, 1.0);
 }`;
 
-const BLOB_FS = `
-in vec2 vCorner;
+const SHADOW_FS = `
+in vec2 vUv;
+in float vAlpha;
 in float vSph;
 in float vCyl;
-uniform float uAlpha;
+uniform sampler2D uTexture;
 ${FOG_GLSL}
 out vec4 outColor;
 void main() {
-	float d = length(vCorner);
-	if (d > 1.0) discard;
-	float a = uAlpha * (1.0 - smoothstep(0.35, 1.0, d)) * (1.0 - total_fog_value(vSph, vCyl));
-	outColor = vec4(0.0, 0.0, 0.0, a);
+	vec4 color = texture(uTexture, clamp(vUv, 0.0, 1.0));
+	color.a *= vAlpha;
+	if (color.a <= 0.0) discard;
+	outColor = apply_fog(color, vSph, vCyl);
 }`;
 
 const LIGHT0 = normalize3([0.2, 1, -0.7]);
@@ -362,7 +365,7 @@ export class EntityRenderer {
 		this.shadows = [];
 		this.programs = {};
 		this.depthProgram = program(this.gl, DEPTH_VS, DEPTH_FS);
-		this.blobProgram = program(this.gl, BLOB_VS, BLOB_FS);
+		this.shadowProgram = program(this.gl, SHADOW_VS, SHADOW_FS);
 		this.portalProgram = null;
 		this.portals = { endPortal: [], endGateway: [] };
 		const gl = this.gl;
@@ -377,7 +380,17 @@ export class EntityRenderer {
 		};
 		attrib(0, 3, 0); attrib(1, 3, 3); attrib(2, 2, 6); attrib(3, 4, 8); attrib(4, 2, 12); attrib(5, 2, 14);
 		gl.bindVertexArray(null);
-		this.blobVao = gl.createVertexArray();
+		this.shadowVao = gl.createVertexArray();
+		this.shadowVbo = gl.createBuffer();
+		gl.bindVertexArray(this.shadowVao);
+		gl.bindBuffer(gl.ARRAY_BUFFER, this.shadowVbo);
+		gl.enableVertexAttribArray(0);
+		gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 24, 0);
+		gl.enableVertexAttribArray(1);
+		gl.vertexAttribPointer(1, 2, gl.FLOAT, false, 24, 12);
+		gl.enableVertexAttribArray(2);
+		gl.vertexAttribPointer(2, 1, gl.FLOAT, false, 24, 20);
+		gl.bindVertexArray(null);
 		this.white = this.createTexture(new ImageData(new Uint8ClampedArray([255, 255, 255, 255]), 1, 1));
 	}
 
@@ -969,17 +982,44 @@ export class EntityRenderer {
 		}
 	}
 
-	/** Round shadow on the first solid block below, fading with height (EntityRenderer shadow). */
-	shadowFor(e, pos, radius, world) {
-		if (!radius) return;
-		const fx = Math.floor(e.x), fz = Math.floor(e.z);
-		for (let y = Math.floor(e.y + 0.01); y >= Math.floor(e.y) - 2; y--) {
-			const info = world.infoAt(fx, y - 1, fz);
-			if (info && info.fullCollision) {
-				const height = e.y - y;
-				const alpha = 0.5 * Math.max(0, 1 - height / 2.5);
-				if (alpha > 0.02) this.shadows.push({ center: [pos[0], pos[1] - height + 0.002, pos[2]], radius: Math.min(32, radius), alpha });
-				return;
+	/**
+	 * EntityRenderer.extractShadow: a piece of textures/misc/shadow.png on top of every full block under the
+	 * entity's shadow radius, fading with the depth below the entity and in the dark, and only within 16 blocks
+	 * of the camera. Drawn by drawShadows like ShadowFeatureRenderer.
+	 */
+	shadowFor(e, pos, radius, world, strength = 1) {
+		radius = Math.min(radius || 0, 32);
+		if (radius <= 0) return;
+		const pow = (1 - (pos[0] * pos[0] + pos[1] * pos[1] + pos[2] * pos[2]) / 256) * strength;
+		if (pow <= 0) return;
+		const x0 = Math.floor(e.x - radius), x1 = Math.floor(e.x + radius);
+		const z0 = Math.floor(e.z - radius), z1 = Math.floor(e.z + radius);
+		const depth = Math.min(pow / 0.5 - 1, radius);
+		const y0 = Math.floor(e.y - depth), y1 = Math.floor(e.y);
+		const sample = this.env && this.env.current;
+		const skyDarken = sample && typeof sample.skyDarken === 'number' ? sample.skyDarken : 0;
+		const ambient = (this.env && this.env.dim && this.env.dim.ambient) || 0;
+		const out = this.shadows;
+		for (let z = z0; z <= z1; z++) {
+			for (let x = x0; x <= x1; x++) {
+				for (let y = y0; y <= y1; y++) {
+					// extractShadowPiece: on a visible block with a full collision shape, lit above 3
+					const below = world.infoAt(x, y - 1, z);
+					if (!below || !below.fullCollision || below.name === 'minecraft:barrier') continue;
+					const [sky, block] = world.lightAt(x, y, z);
+					const brightness = Math.max(block, sky - skyDarken);
+					if (brightness <= 3) continue;
+					// Lightmap.getBrightness
+					const v = brightness / 15, curved = v / (4 - 3 * v);
+					const alpha = clamp((pow - (e.y - y) * 0.5) * 0.5 * (curved + (1 - curved) * ambient), 0, 1);
+					const rx0 = x - e.x, rx1 = rx0 + 1, rz0 = z - e.z, rz1 = rz0 + 1, ry = y - e.y;
+					const u0 = -rx0 / 2 / radius + 0.5, u1 = -rx1 / 2 / radius + 0.5;
+					const v0 = -rz0 / 2 / radius + 0.5, v1 = -rz1 / 2 / radius + 0.5;
+					const px0 = pos[0] + rx0, px1 = pos[0] + rx1, py = pos[1] + ry, pz0 = pos[2] + rz0, pz1 = pos[2] + rz1;
+					out.push(
+						px0, py, pz0, u0, v0, alpha, px0, py, pz1, u0, v1, alpha, px1, py, pz1, u1, v1, alpha,
+						px0, py, pz0, u0, v0, alpha, px1, py, pz1, u1, v1, alpha, px1, py, pz0, u1, v0, alpha);
+				}
 			}
 		}
 	}
@@ -1233,7 +1273,7 @@ export class EntityRenderer {
 			: { translation: [0, 2, 0], scale: [0.5, 0.5, 0.5] };
 		this.applyDisplay(m, this.displayTransform(e.item, 'ground', fallback), false);
 		this.emitItem(mesh, m, style);
-		this.shadowFor(e, pos, 0.15, this.world);
+		this.shadowFor(e, pos, 0.15, this.world, 0.75);
 	}
 
 	drawThrown(pos, style, item) {
@@ -1838,24 +1878,27 @@ export class EntityRenderer {
 
 	drawShadows(frame) {
 		if (!this.shadows.length) return;
+		const texture = this.texture('shadow', 'misc');
+		if (!texture) return;
 		const gl = this.gl;
-		const p = this.blobProgram;
+		const p = this.shadowProgram;
 		gl.useProgram(p.program);
 		gl.uniformMatrix4fv(p.u.uViewProj, false, frame.viewProj);
 		setFog(gl, p.u, frame.fog);
+		gl.activeTexture(gl.TEXTURE0);
+		gl.bindTexture(gl.TEXTURE_2D, texture);
+		gl.uniform1i(p.u.uTexture, 0);
 		gl.enable(gl.BLEND);
 		gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ZERO, gl.ONE);
 		gl.depthMask(false);
 		gl.disable(gl.CULL_FACE);
+		// VIEW_OFFSET_Z_LAYERING: drawn just in front of the block tops
 		gl.enable(gl.POLYGON_OFFSET_FILL);
 		gl.polygonOffset(-2, -2);
-		gl.bindVertexArray(this.blobVao);
-		for (const s of this.shadows) {
-			gl.uniform3fv(p.u.uCenter, s.center);
-			gl.uniform1f(p.u.uRadius, s.radius);
-			gl.uniform1f(p.u.uAlpha, s.alpha);
-			gl.drawArrays(gl.TRIANGLE_FAN, 0, 4);
-		}
+		gl.bindVertexArray(this.shadowVao);
+		gl.bindBuffer(gl.ARRAY_BUFFER, this.shadowVbo);
+		gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(this.shadows), gl.STREAM_DRAW);
+		gl.drawArrays(gl.TRIANGLES, 0, this.shadows.length / 6);
 		gl.disable(gl.POLYGON_OFFSET_FILL);
 		gl.depthMask(true);
 		gl.enable(gl.CULL_FACE);

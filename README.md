@@ -181,6 +181,7 @@ All endpoints support CORS and `?token=` (when a token is set).
 | `GET /assets/bundle.json` | Block states, block models and textures (from client.jar) |
 | `GET /assets/models.json` | Mob model geometry (layers from `LayerDefinitions`) |
 | `GET /assets/entities.json`, `/assets/entity/{path}.png` | Mob textures |
+| `GET /assets/misc/{path}.png` | Textures of `textures/misc` (the entity shadow) |
 | `GET /assets/painting/{name}.png` | Paintings |
 | `GET /assets/font/{path}` | The game's font (`default.json`, glyph sheets such as `ascii.png`) |
 | `GET /api/viewer` | Viewer defaults, list of shaders and sky boxes |

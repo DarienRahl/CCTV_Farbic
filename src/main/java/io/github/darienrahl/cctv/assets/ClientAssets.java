@@ -141,6 +141,11 @@ public final class ClientAssets implements AutoCloseable {
 		return texture("entity", path);
 	}
 
+	/** @param path path below {@code textures/misc/} without extension, e.g. {@code shadow} */
+	public byte[] miscTexture(String path) {
+		return texture("misc", path);
+	}
+
 	/** @param path path below {@code textures/painting/} without extension, e.g. {@code kebab} */
 	public byte[] paintingTexture(String path) {
 		return texture("painting", path);
