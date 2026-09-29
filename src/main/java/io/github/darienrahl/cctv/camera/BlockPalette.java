@@ -3,7 +3,9 @@ package io.github.darienrahl.cctv.camera;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -15,7 +17,9 @@ import net.minecraft.core.Direction;
 import net.minecraft.core.particles.ColorParticleOption;
 import net.minecraft.core.particles.ParticleOptions;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.tags.BlockTags;
 import net.minecraft.tags.FluidTags;
+import net.minecraft.tags.TagKey;
 import net.minecraft.util.Mth;
 import net.minecraft.world.level.EmptyBlockGetter;
 import net.minecraft.world.level.block.Block;
@@ -24,6 +28,7 @@ import net.minecraft.world.level.block.FireBlock;
 import net.minecraft.world.level.block.HalfTransparentBlock;
 import net.minecraft.world.level.block.LeavesBlock;
 import net.minecraft.world.level.block.RenderShape;
+import net.minecraft.world.level.block.sounds.AmbientLeavesBlockSoundPlayer;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.material.FluidState;
@@ -180,6 +185,50 @@ final class BlockPalette {
 		return json.toString();
 	}
 
+	private static @Nullable List<TagKey<Block>> viewerTags;
+
+	/**
+	 * The block tags the viewer's ports of animateTick check ({@code tg}): the desert, dried ghast and pale oak
+	 * ambience, and the blocks leaves need around them for their ambient sound.
+	 */
+	private static List<TagKey<Block>> viewerTags() {
+		if (viewerTags == null) {
+			LinkedHashSet<TagKey<Block>> tags = new LinkedHashSet<>(List.of(
+					BlockTags.TRIGGERS_AMBIENT_DESERT_SAND_BLOCK_SOUNDS,
+					BlockTags.TRIGGERS_AMBIENT_DESERT_DRY_VEGETATION_BLOCK_SOUNDS,
+					BlockTags.TERRACOTTA,
+					BlockTags.PALE_OAK_LOGS,
+					BlockTags.TRIGGERS_AMBIENT_DRIED_GHAST_BLOCK_SOUNDS));
+			for (Block block : BuiltInRegistries.BLOCK) {
+				if (block instanceof LeavesBlock) {
+					AmbientLeavesBlockSoundPlayer sounds = leavesSounds(block);
+					if (sounds != null) {
+						sounds.satisfyingBlocks().ifPresent(tags::add);
+					}
+				}
+			}
+			viewerTags = List.copyOf(tags);
+		}
+		return viewerTags;
+	}
+
+	/** LeavesBlock.ambientLeavesBlockSoundPlayer (found by its type). */
+	private static @Nullable AmbientLeavesBlockSoundPlayer leavesSounds(Block block) {
+		try {
+			for (Class<?> type = block.getClass(); type != null && type != Block.class; type = type.getSuperclass()) {
+				for (Field field : type.getDeclaredFields()) {
+					if (!Modifier.isStatic(field.getModifiers()) && field.getType() == AmbientLeavesBlockSoundPlayer.class) {
+						field.setAccessible(true);
+						return (AmbientLeavesBlockSoundPlayer) field.get(block);
+					}
+				}
+			}
+		} catch (ReflectiveOperationException | RuntimeException e) {
+			Problems.report(null, "leaves sounds", e);
+		}
+		return null;
+	}
+
 	private static final @Nullable Method CAN_BURN = findCanBurn();
 
 	private static @Nullable Method findCanBurn() {
@@ -195,8 +244,10 @@ final class BlockPalette {
 	/**
 	 * What the viewer's ports of the blocks' animateTick need from the game's block objects: the falling leaf
 	 * particle of leaves ({@code lp: [chance, particle id]}, no id for leaves tinted by the biome, {@code lpc}
-	 * for a fixed colour) and whether fire burns the block ({@code fb}, fire next to it smokes). Read from the
-	 * block instances, so new leaves and their chances come with a game version.
+	 * for a fixed colour), the ambient sound of leaves ({@code las}: [sound, chance, tag of the blocks needed next
+	 * to them, how many, how many of the same leaves]), the block tags the viewer checks ({@code tg}) and whether
+	 * fire burns the block ({@code fb}, fire next to it smokes). Read from the block instances, so new leaves and
+	 * their chances come with a game version.
 	 */
 	private static void writeParticleHints(Json json, BlockState state) {
 		Block block = state.getBlock();
@@ -228,6 +279,35 @@ final class BlockPalette {
 			} catch (ReflectiveOperationException | RuntimeException e) {
 				Problems.report(null, "leaf particles", e);
 			}
+		}
+		if (block instanceof LeavesBlock) {
+			AmbientLeavesBlockSoundPlayer sounds = leavesSounds(block);
+			if (sounds != null && sounds.ambientSound().isPresent()) {
+				json.name("las").beginArray()
+						.value(sounds.ambientSound().get().value().location().toString())
+						.value(sounds.chance())
+						.value(sounds.satisfyingBlocks().map(tag -> tag.location().toString()).orElse(null))
+						.value(sounds.nearbySatisfyingBlocksRequired())
+						.value(sounds.nearbySameLeavesRequired())
+						.endArray();
+			}
+		}
+		try {
+			List<String> tags = new ArrayList<>(2);
+			for (TagKey<Block> tag : viewerTags()) {
+				if (state.is(tag)) {
+					tags.add(tag.location().toString());
+				}
+			}
+			if (!tags.isEmpty()) {
+				json.name("tg").beginArray();
+				for (String tag : tags) {
+					json.value(tag);
+				}
+				json.endArray();
+			}
+		} catch (RuntimeException e) {
+			Problems.report(null, "block tags", e);
 		}
 		if (CAN_BURN != null) {
 			try {

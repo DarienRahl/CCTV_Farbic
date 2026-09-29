@@ -68,6 +68,7 @@ def wait_for_server(timeout=600):
 class StreamReader(threading.Thread):
     def __init__(self, camera):
         super().__init__(daemon=True)
+        self.block_tags = {}
         self.url = f"{WEB}/api/cameras/{camera}/stream"
         self.events = {}
         self.first = {}
@@ -127,6 +128,10 @@ class StreamReader(threading.Thread):
                                 self.effects.add(fx[0] + ":" + str(fx[6] if fx[0] == "ex" else fx[4] if fx[0] == "be" else fx[1]))
                         elif event == "blocks":
                             self.block_updates.extend(data["b"])
+                        elif event == "palette":
+                            for entry in data.get("s", []):
+                                if entry.get("tg"):
+                                    self.block_tags.setdefault(entry["n"], set()).update(entry["tg"])
                         elif event == "section":
                             self.sections.add((data["x"], data["y"], data["z"]))
                             for block_entity in data.get("be", []):
@@ -269,6 +274,9 @@ def main():
     rcon.command("setblock 4 -60 -4 minecraft:air destroy")
     rcon.command("summon minecraft:tnt -20 -59 -24 {fuse:0}")
     # a note block played by redstone: a block event (the viewer shows its note)
+    # blocks whose client ambience needs block tags (desert sand, creaking heart logs)
+    rcon.command("setblock 6 -60 3 minecraft:sand")
+    rcon.command("setblock 7 -60 3 minecraft:pale_oak_log")
     rcon.command("setblock 5 -60 -5 minecraft:note_block")
     rcon.command("setblock 5 -60 -6 minecraft:redstone_block")
     rcon.command('data merge block -3 -60 0 {front_text:{messages:["CCTV","edited","",""]}}')
@@ -347,6 +355,11 @@ def main():
     for key in ("sky", "fog", "sunAngle", "skyFactor", "ambient", "blockTint"):
         if key not in env:
             failures.append(f"env sample has no {key}")
+    print("block tags:", {name: sorted(tags) for name, tags in stream.block_tags.items()}, flush=True)
+    for block, tag in (("minecraft:sand", "minecraft:triggers_ambient_desert_sand_block_sounds"),
+                       ("minecraft:pale_oak_log", "minecraft:pale_oak_logs")):
+        if tag not in stream.block_tags.get(block, set()):
+            failures.append(f"the palette entry of {block} does not list the tag {tag}")
     # the overworld's ambient sounds: cave sounds in the dark (AmbientMoodSettings.LEGACY_CAVE_SETTINGS)
     mood = (env.get("amb") or {}).get("mood") or []
     if not mood or mood[0] != "minecraft:ambient.cave":

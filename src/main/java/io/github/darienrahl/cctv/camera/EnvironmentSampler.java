@@ -92,6 +92,13 @@ final class EnvironmentSampler {
 				.field("waterFogEnd", attributes.getValue(EnvironmentAttributes.WATER_FOG_END_DISTANCE, pos), 2);
 
 		writeAmbientSounds(json, attributes.getValue(EnvironmentAttributes.AMBIENT_SOUNDS, pos));
+		// block ambience that depends on the time and place: creaking hearts creak, firefly bushes chirp
+		if (attributes.getValue(EnvironmentAttributes.CREAKING_ACTIVE, pos)) {
+			json.field("creaking", true);
+		}
+		if (attributes.getValue(EnvironmentAttributes.FIREFLY_BUSH_SOUNDS, pos)) {
+			json.field("fireflies", true);
+		}
 
 		BlockPos blockPos = BlockPos.containing(pos);
 		if (level.getChunkSource().getChunkNow(blockPos.getX() >> 4, blockPos.getZ() >> 4) != null) {

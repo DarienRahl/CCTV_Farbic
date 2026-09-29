@@ -553,6 +553,92 @@ class WaterDropParticle extends QuadParticle {
 	}
 }
 
+/** ReversePortalParticle (respawn anchors, crying obsidian): a portal speck that rises and shrinks. */
+class ReversePortalParticle extends PortalParticle {
+	constructor(level, x, y, z, xd, yd, zd, sprite) {
+		super(level, x, y, z, xd, yd, zd, sprite);
+		this.quadSize *= 1.5;
+		this.lifetime = Math.trunc(nextFloat() * 2) + 60;
+	}
+
+	quadSizeAt(a) {
+		return this.quadSize * (1 - (this.age + a) / (this.lifetime * 1.5));
+	}
+
+	tick() {
+		this.xo = this.x; this.yo = this.y; this.zo = this.z;
+		if (this.age++ >= this.lifetime) {
+			this.remove();
+			return;
+		}
+		const speed = this.age / this.lifetime;
+		this.x += this.xd * speed;
+		this.y += this.yd * speed;
+		this.z += this.zd * speed;
+	}
+}
+
+/** BubbleParticle and BubbleColumnUpParticle: air bubbles that pop when they leave the water. */
+class BubbleParticle extends QuadParticle {
+	constructor(level, x, y, z, xa, ya, za, sprite, column) {
+		super(level, x, y, z, undefined, undefined, undefined, sprite);
+		if (column) {
+			this.gravity = -0.125;
+			this.friction = 0.85;
+		}
+		this.column = column;
+		this.setSize(0.02, 0.02);
+		this.quadSize *= nextFloat() * 0.6 + 0.2;
+		this.xd = xa * 0.2 + (nextFloat() * 2 - 1) * 0.02;
+		this.yd = ya * 0.2 + (nextFloat() * 2 - 1) * 0.02;
+		this.zd = za * 0.2 + (nextFloat() * 2 - 1) * 0.02;
+		this.lifetime = Math.trunc((column ? 40 : 8) / (nextFloat() * 0.8 + 0.2));
+	}
+
+	tick() {
+		if (this.column) {
+			super.tick();
+		} else {
+			this.xo = this.x; this.yo = this.y; this.zo = this.z;
+			if (this.lifetime-- <= 0) {
+				this.remove();
+				return;
+			}
+			this.yd += 0.002;
+			this.move(this.xd, this.yd, this.zd);
+			this.xd *= 0.85; this.yd *= 0.85; this.zd *= 0.85;
+		}
+		if (!this.removed && !this.level.inWater(this.x, this.y, this.z)) this.remove();
+	}
+}
+
+/** WaterCurrentDownParticle: whirlpool bubbles circling down a magma block's bubble column. */
+class CurrentDownParticle extends QuadParticle {
+	constructor(level, x, y, z, sprite) {
+		super(level, x, y, z, undefined, undefined, undefined, sprite);
+		this.lifetime = Math.trunc(nextFloat() * 60) + 30;
+		this.hasPhysics = false;
+		this.xd = 0; this.yd = -0.05; this.zd = 0;
+		this.setSize(0.02, 0.02);
+		this.quadSize *= nextFloat() * 0.6 + 0.2;
+		this.gravity = 0.002;
+		this.angle = 0;
+	}
+
+	tick() {
+		this.xo = this.x; this.yo = this.y; this.zo = this.z;
+		if (this.age++ >= this.lifetime) {
+			this.remove();
+			return;
+		}
+		this.xd = (this.xd + 0.6 * Math.cos(this.angle)) * 0.07;
+		this.zd = (this.zd + 0.6 * Math.sin(this.angle)) * 0.07;
+		this.move(this.xd, this.yd, this.zd);
+		if (!this.level.inWater(this.x, this.y, this.z) || this.onGround) this.remove();
+		this.angle += 0.08;
+	}
+}
+
 class FireflyParticle extends QuadParticle {
 	constructor(level, x, y, z, xa, ya, za, sprite) {
 		super(level, x, y, z, xa, ya, za, sprite);
@@ -914,6 +1000,16 @@ const PROVIDERS = {
 		return p;
 	},
 	portal: (l, x, y, z, xa, ya, za, s) => new PortalParticle(l, x, y, z, xa, ya, za, s.random()),
+	reverse_portal: (l, x, y, z, xa, ya, za, s) => new ReversePortalParticle(l, x, y, z, xa, ya, za, s.random()),
+	bubble: (l, x, y, z, xa, ya, za, s) => new BubbleParticle(l, x, y, z, xa, ya, za, s.random(), false),
+	bubble_column_up: (l, x, y, z, xa, ya, za, s) => new BubbleParticle(l, x, y, z, xa, ya, za, s.random(), true),
+	current_down: (l, x, y, z, xa, ya, za, s) => new CurrentDownParticle(l, x, y, z, s.random()),
+	// WhiteSmokeParticle: BaseAshSmokeParticle like smoke, in a fixed pale colour
+	white_smoke: (l, x, y, z, xa, ya, za, s) => {
+		const p = new SmokeParticle(l, x, y, z, xa, ya, za, 1, s);
+		p.setColor(0.7294118, 0.69411767, 0.7607843);
+		return p;
+	},
 	end_rod: (l, x, y, z, xa, ya, za, s) => new EndRodParticle(l, x, y, z, xa, ya, za, s),
 	dust: (l, x, y, z, xa, ya, za, s, options) => new DustParticle(l, x, y, z, xa, ya, za, (options && options.color) || REDSTONE, (options && options.scale) || 1, s),
 	rain: (l, x, y, z, xa, ya, za, s) => new WaterDropParticle(l, x, y, z, s.random()),
@@ -1065,6 +1161,55 @@ function weatherColumn(columns, x, z) {
 /** Block.isFaceSturdy for the face towards a direction, approximated by a full collision box. */
 const sturdy = info => !!(info && info.f & FLAG_FULL_COLLISION);
 const isAir = info => !info || !!(info.f & FLAG_AIR);
+/** BlockState.is(tag) for the tags the server lists with the block (BlockPalette.viewerTags). */
+const hasTag = (info, tag) => !!(info && info.tg && info.tg.includes(tag));
+
+/** AmbientDesertBlockSoundsPlayer.shouldPlayDesertDryVegetationBlockSounds: two soil blocks under the plant. */
+const dryVegetationSoil = (level, x, y, z) => hasTag(level.info(x, y, z), 'minecraft:triggers_ambient_desert_dry_vegetation_block_sounds')
+	&& hasTag(level.info(x, y - 1, z), 'minecraft:triggers_ambient_desert_dry_vegetation_block_sounds');
+
+/** The top non-air block of a column near y (the WORLD_SURFACE height map minus one), or null. */
+function surfaceNear(level, x, y, z, range) {
+	for (let sy = y + range; sy >= y - range; sy--) if (!isAir(level.info(x, sy, z))) return sy;
+	return null;
+}
+
+/** AmbientDesertBlockSoundsPlayer.shouldPlayAmbientSandSound: desert sand in at least three directions 8 blocks away. */
+function desertAround(level, x, y, z) {
+	const sand = info => hasTag(info, 'minecraft:triggers_ambient_desert_sand_block_sounds');
+	const column = (cx, cz) => {
+		const surface = surfaceNear(level, cx, y, cz, 48);
+		if (surface === null || Math.abs(surface - y) > 5) {
+			let above = level.info(cx, y + 6, cz);
+			for (let i = 0, cy = y + 5; i < 10; i++, cy--) {
+				const current = level.info(cx, cy, cz);
+				if (isAir(above) && sand(current)) return true;
+				above = current;
+			}
+			return false;
+		}
+		return isAir(level.info(cx, surface + 1, cz)) && sand(level.info(cx, surface, cz));
+	};
+	let found = 0, checked = 0;
+	for (const d of [DIRS.north, DIRS.east, DIRS.south, DIRS.west]) {
+		if (column(x + d[0] * 8, z + d[2] * 8) && found++ >= 3) return true;
+		checked++;
+		if (4 - checked + found < 3) return false;
+	}
+	return false;
+}
+
+/** The MOTION_BLOCKING (or MOTION_BLOCKING_NO_LEAVES) height map is at or below the block: nothing above it. */
+function openAbove(level, x, y, z, ignoreLeaves) {
+	for (let sy = y + 1; sy <= y + 64; sy++) {
+		const at = level.info(x, sy, z);
+		if (!at) return true;
+		if (isAir(at)) continue;
+		const blocks = !(at.f & FLAG_NO_COLLISION) || at.f & (FLAG_WATER | FLAG_LAVA);
+		if (blocks && !(ignoreLeaves && at.lp)) return false;
+	}
+	return true;
+}
 
 const CANDLE_OFFSETS = {
 	1: [[8, 8, 8]], 2: [[6, 7, 8], [10, 8, 7]], 3: [[8, 5, 10], [6, 7, 8], [9, 8, 7]], 4: [[7, 5, 9], [10, 7, 9], [6, 7, 6], [9, 8, 6]],
@@ -1169,8 +1314,100 @@ function animateBlock(level, name, info, x, y, z) {
 			}
 		}
 	} else if (name === 'firefly_bush') {
+		// FireflyBushBlock: chirps at night under the open sky (leaves do not count)
+		if (nextInt(30) === 0 && level.attribute('fireflies') && openAbove(level, x, y, z, true)) {
+			level.sound('minecraft:block.firefly_bush.idle', x, y, z, 'ambient', 1, 1);
+		}
 		if (level.maxLight(x, y, z) <= 13 && nextDouble() <= 0.7) {
 			level.add('minecraft:firefly', x + nextDouble() * 10 - 5, y + nextDouble() * 5, z + nextDouble() * 10 - 5, 0, 0, 0);
+		}
+	} else if (name === 'sand' || name === 'red_sand') {
+		// SandBlock: AmbientDesertBlockSoundsPlayer.playAmbientSandSounds
+		if (isAir(level.info(x, y + 1, z)) && nextInt(2100) === 0 && desertAround(level, x, y, z)) {
+			level.sound('minecraft:block.sand.idle', x, y, z, 'ambient', 1, 1);
+		}
+	} else if (name === 'short_dry_grass' || name === 'tall_dry_grass') {
+		// playAmbientDryGrassSounds: heard at the player
+		if (nextInt(200) === 0 && dryVegetationSoil(level, x, y - 1, z)) level.soundAtListener('minecraft:block.dry_grass.ambient', 'ambient', 1, 1);
+	} else if (name === 'dead_bush') {
+		// DryVegetationBlock: playAmbientDeadBushSounds (less often on badlands soil)
+		if (nextInt(130) === 0) {
+			const below = level.info(x, y - 1, z);
+			if (!((blockName(below) === 'red_sand' || hasTag(below, 'minecraft:terracotta')) && nextInt(3) !== 0) && dryVegetationSoil(level, x, y - 1, z)) {
+				level.sound('minecraft:block.deadbush.idle', x, y, z, 'ambient', 1, 1);
+			}
+		}
+	} else if (name === 'pale_hanging_moss') {
+		if (nextInt(500) === 0) {
+			const above = level.info(x, y + 1, z);
+			if (hasTag(above, 'minecraft:pale_oak_logs') || blockName(above) === 'pale_oak_leaves') {
+				level.sound('minecraft:block.pale_hanging_moss.idle', x, y, z, 'ambient', 1, 1);
+			}
+		}
+	} else if (name === 'open_eyeblossom') {
+		if (nextInt(700) === 0 && blockName(level.info(x, y - 1, z)) === 'pale_moss_block') {
+			level.sound('minecraft:block.eyeblossom.idle', x, y, z, 'ambient', 1, 1);
+		}
+	} else if (name === 'creaking_heart') {
+		// CreakingHeartBlock: creaks at night when logs surround it on all sides
+		if (level.attribute('creaking') && p.creaking_heart_state !== 'uprooted' && nextInt(16) === 0
+			&& Object.values(DIRS).every(d => hasTag(level.info(x + d[0], y + d[1], z + d[2]), 'minecraft:pale_oak_logs'))) {
+			level.sound('minecraft:block.creaking_heart.idle', x, y, z, 'block', 1, 1);
+		}
+	} else if (name === 'dried_ghast') {
+		const cx = x + 0.5, cy = y + 0.5, cz = z + 0.5;
+		if (p.waterlogged !== 'true') {
+			if (nextInt(40) === 0 && hasTag(level.info(x, y - 1, z), 'minecraft:triggers_ambient_dried_ghast_block_sounds')) {
+				level.sound('minecraft:block.dried_ghast.ambient', cx, cy, cz, 'block', 1, 1);
+			}
+			if (nextInt(6) === 0) level.add('minecraft:white_smoke', cx, cy, cz, 0, 0.02, 0);
+		} else {
+			if (nextInt(40) === 0) level.sound('minecraft:block.dried_ghast.ambient_water', cx, cy, cz, 'block', 1, 1);
+			if (nextInt(6) === 0) {
+				level.add('minecraft:happy_villager', cx + (nextFloat() * 2 - 1) / 3, cy + 0.4, cz + (nextFloat() * 2 - 1) / 3, 0, nextFloat(), 0);
+			}
+		}
+	} else if (name === 'respawn_anchor') {
+		if (p.charges !== undefined && p.charges !== '0') {
+			if (nextInt(100) === 0) level.sound('minecraft:block.respawn_anchor.ambient', x + 0.5, y + 0.5, z + 0.5, 'block', 1, 1);
+			level.add('minecraft:reverse_portal', x + 0.5 + (0.5 - nextDouble()), y + 1, z + 0.5 + (0.5 - nextDouble()), 0, nextFloat() * 0.04, 0);
+		}
+	} else if (name === 'bubble_column') {
+		if (p.drag === 'true') {
+			level.add('minecraft:current_down', x + 0.5, y + 0.8, z, 0, 0, 0);
+			if (nextInt(200) === 0) {
+				level.sound('minecraft:block.bubble_column.whirlpool_ambient', x, y, z, 'block', 0.2 + nextFloat() * 0.2, 0.9 + nextFloat() * 0.15);
+			}
+		} else {
+			level.add('minecraft:bubble_column_up', x + 0.5, y, z + 0.5, 0, 0.04, 0);
+			level.add('minecraft:bubble_column_up', x + nextFloat(), y + nextFloat(), z + nextFloat(), 0, 0.04, 0);
+			if (nextInt(200) === 0) {
+				level.sound('minecraft:block.bubble_column.upwards_ambient', x, y, z, 'block', 0.2 + nextFloat() * 0.2, 0.9 + nextFloat() * 0.15);
+			}
+		}
+	} else if (name === 'potent_sulfur') {
+		// PotentSulfurBlock: bubbles and noxious gas under a water source
+		const above = level.info(x, y + 1, z);
+		if (!Object.values(p).includes('dry') && above && above.f & FLAG_WATER && !(above.lv > 0 && above.lv < 8)) {
+			for (let i = 0; i < 2; i++) level.add('minecraft:sulfur_bubbles', x + nextFloat(), y + 1 + nextFloat(), z + nextFloat(), 0, 0, 0);
+			if (nextInt(10) === 0) level.sound('minecraft:block.potent_sulfur.noxious_gas', x, y, z, 'ambient', 1, 1);
+		}
+	}
+
+	if (info && info.las) {
+		// AmbientLeavesBlockSoundPlayer: leaves with the right blocks and leaves around them (horizontally)
+		const [sound, chance, tag, satisfying, same] = info.las;
+		if (chance > 0 && nextInt(chance) === 0) {
+			let logs = 0, leaves = 0;
+			for (const d of [DIRS.north, DIRS.east, DIRS.south, DIRS.west]) {
+				const neighbour = level.info(x + d[0], y, z + d[2]);
+				if (tag && hasTag(neighbour, tag)) logs++;
+				if (neighbour && neighbour.n === info.n) leaves++;
+				if (logs === satisfying && leaves === same) {
+					level.sound(sound, x, y, z, 'ambient', 1, 1);
+					break;
+				}
+			}
 		}
 	}
 
@@ -1211,7 +1448,6 @@ function particleOptions(raw) {
 	return options;
 }
 
-/** AbstractCandleBlock.addParticlesAndSound */
 /** AbstractCandleBlock.addParticlesAndSound */
 function candleFlame(level, x, y, z) {
 	const chance = nextFloat();
@@ -1486,6 +1722,18 @@ export class Particles {
 				continue;
 			}
 			const p = props(info);
+			const name = blockName(info);
+			if (name === 'trial_spawner' || name === 'vault') {
+				// TrialSpawner.tickClient / VaultBlockEntity.Client.playIdleSounds (a vault with its item on show)
+				const on = name === 'vault' ? p.vault_state === 'active' || p.vault_state === 'unlocking'
+					: p.trial_spawner_state === 'waiting_for_players' || p.trial_spawner_state === 'active';
+				if (on && nextFloat() <= 0.02) {
+					const sound = name === 'vault' ? 'minecraft:block.vault.ambient'
+						: p.ominous === 'true' ? 'minecraft:block.trial_spawner.ambient_ominous' : 'minecraft:block.trial_spawner.ambient';
+					level.sound(sound, x + 0.5, y + 0.5, z + 0.5, 'block', nextFloat() * 0.25 + 0.75, nextFloat() + 0.5);
+				}
+				continue;
+			}
 			if (p.lit !== 'true') continue;
 			if (nextFloat() < 0.11) {
 				for (let i = 0; i < nextInt(2) + 2; i++) campfireSmoke(level, x, y, z, p.signal_fire === 'true', false);
@@ -1825,6 +2073,16 @@ export class Particles {
 			sound(id, x, y, z, source, volume, pitch, delay = false) {
 				if (engine.onSound) engine.onSound(id, x, y, z, source, volume, pitch, delay);
 			},
+			/** Level.playPlayerSound: at the player (the camera). */
+			soundAtListener(id, source, volume, pitch) {
+				const c = engine.camera;
+				if (engine.onSound && c) engine.onSound(id, c.x, c.y, c.z, source, volume, pitch, false);
+			},
+			/** An environment attribute at the camera (the viewer's closest to the block's position). */
+			attribute(name) {
+				const current = engine.environment && engine.environment.current;
+				return current ? current[name] : undefined;
+			},
 			lightCoords(x, y, z) {
 				const [sky, block] = world.lightAt(Math.floor(x), Math.floor(y), Math.floor(z));
 				return [block * 16, sky * 16];
@@ -1835,6 +2093,11 @@ export class Particles {
 			},
 			isAir(x, y, z) {
 				return isAir(info(Math.floor(x), Math.floor(y), Math.floor(z)));
+			},
+			/** The fluid state at the position is water (any height). */
+			inWater(x, y, z) {
+				const at = info(Math.floor(x), Math.floor(y), Math.floor(z));
+				return !!(at && at.f & FLAG_WATER);
 			},
 			inFluid(fluid, x, y, z) {
 				const at = info(Math.floor(x), Math.floor(y), Math.floor(z));

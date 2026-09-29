@@ -42,6 +42,17 @@ function sample(value, random) {
 	return 1;
 }
 
+/** Sounds the client plays in handleEntityEvent: type -> (event, entity) -> [id, x, y, z, source, volume, pitch]. */
+const EVENT_SOUNDS = {
+	// ArmorStand: hit
+	'minecraft:armor_stand': (id, e) => (id === 32 ? ['minecraft:entity.armor_stand.hit', e.x, e.y, e.z, 'neutral', 0.3, 1] : null),
+	// ZombieVillager: cured (at the eyes)
+	'minecraft:zombie_villager': (id, e) => (id === 16
+		? ['minecraft:entity.zombie_villager.cure', e.x, e.y + (e.baby ? 0.93 : 1.74), e.z, 'hostile', 1 + Math.random(), Math.random() * 0.7 + 0.3] : null),
+	// EvokerFangs: the bite starts
+	'minecraft:evoker_fangs': (id, e) => (id === 4 ? ['minecraft:entity.evoker_fangs.attack', e.x, e.y, e.z, 'hostile', 1, Math.random() * 0.2 + 0.85] : null),
+};
+
 export class Sounds {
 	constructor(query) {
 		this.query = query;
@@ -117,10 +128,22 @@ export class Sounds {
 		if (this.ctx) this.ctx.suspend();
 	}
 
-	/** Entity frames: keeps the sound effects until the frame is drawn. */
-	queue(t, fx) {
-		if (!this.enabled || !fx) return;
-		const sounds = fx.filter(e => e[0] === 's' || e[0] === 'se' || e[0] === 'sg' || e[0] === 'js' || e[0] === 'jx');
+	/**
+	 * Entity frames: keeps the sound effects until the frame is drawn, with the sounds the client plays itself
+	 * for entity events (handleEntityEvent).
+	 */
+	queue(t, fx, entities) {
+		if (!this.enabled) return;
+		const sounds = (fx || []).filter(e => e[0] === 's' || e[0] === 'se' || e[0] === 'sg' || e[0] === 'js' || e[0] === 'jx');
+		for (const e of entities || []) {
+			if (!e.ev) continue;
+			const handler = EVENT_SOUNDS[e.type];
+			if (!handler) continue;
+			for (const id of e.ev) {
+				const sound = handler(id, e);
+				if (sound) sounds.push(['s', sound[0], sound[1], sound[2], sound[3], sound[4], sound[5], sound[6], String(Math.floor(Math.random() * 2 ** 31)), false]);
+			}
+		}
 		if (!sounds.length) return;
 		this.pending.push({ t, sounds });
 		if (this.pending.length > 200) this.pending.shift();
@@ -182,7 +205,7 @@ export class Sounds {
 	/**
 	 * Once per game tick: the client's ambient sound handlers for a player at the camera. at: {world, camera,
 	 * ambience (the "amb" environment attribute), inWater (eyes in water), block (world.entryAt the camera),
-	 * flash (the End flash: {intensity, xAngle, yAngle})}.
+	 * flash (the End flash: {intensity, xAngle, yAngle}), entities (the entity list)}.
 	 */
 	ambient(at) {
 		if (!this.enabled || !this.events || !this.ctx || !at.camera) return;
@@ -190,6 +213,49 @@ export class Sounds {
 		this.underwaterAmbience(at);
 		this.bubbleColumn(at);
 		this.endFlash(at);
+		this.entitySounds(at.entities);
+	}
+
+	/**
+	 * The sounds entities make in their client tick: blazes burning (Blaze.aiStep), phantoms flapping when their
+	 * wings go down (Phantom.tick) and the warden's heartbeat (Warden.tick; its anger is not known, so the calm pace).
+	 */
+	entitySounds(entities) {
+		const ages = this.entityAges || (this.entityAges = new Map());
+		const seen = new Set();
+		for (const e of entities || []) {
+			const type = e.type;
+			if (type !== 'minecraft:blaze' && type !== 'minecraft:phantom' && type !== 'minecraft:warden') continue;
+			seen.add(e.id);
+			const age = Math.floor(e.age || 0);
+			const last = ages.get(e.id);
+			ages.set(e.id, age);
+			if (e.dead) continue;
+			if (type === 'minecraft:blaze') {
+				if (Math.floor(Math.random() * 24) === 0) {
+					this.local('minecraft:entity.blaze.burn', e.x + 0.5, e.y + 0.5, e.z + 0.5, 'hostile', 1 + Math.random(), Math.random() * 0.7 + 0.3);
+				}
+				continue;
+			}
+			if (last === undefined || age <= last) continue;
+			for (let t = Math.max(last + 1, age - 4); t <= age; t++) {
+				if (type === 'minecraft:phantom') {
+					const flap = tick => Math.cos((e.id * 3 + tick) * 7.448451 * Math.PI / 180 + Math.PI);
+					if (flap(t) > 0 && flap(t + 1) <= 0) {
+						this.entityLocal('minecraft:entity.phantom.flap', e, 'hostile', 0.95 + Math.random() * 0.05, 0.95 + Math.random() * 0.05);
+					}
+				} else if (t % 40 === 0) {
+					this.local('minecraft:entity.warden.heartbeat', e.x, e.y, e.z, 'hostile', 5, (Math.random() - Math.random()) * 0.2 + 1);
+				}
+			}
+		}
+		for (const id of ages.keys()) if (!seen.has(id)) ages.delete(id);
+	}
+
+	/** Level.playLocalSound(entity, ...): a sound that follows the entity. */
+	entityLocal(id, e, source, volume, pitch) {
+		if (!this.enabled || !this.events || !this.ctx) return;
+		this.play(id, source, volume, pitch, unseeded(), { x: e.x, y: e.y, z: e.z, entity: e.id });
 	}
 
 	/**

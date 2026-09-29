@@ -61,6 +61,7 @@ const post = new PostProcessor(gl, renderer);
 const entities = new EntityRenderer(renderer);
 const particles = new Particles(gl);
 const sounds = new Sounds(query);
+particles.environment = environment;
 const world = new World((key, section, message) => {
 	renderer.setSectionMesh(key, section, message, performance.now());
 });
@@ -274,7 +275,7 @@ function connect() {
 		// particles from level events, particle packets, explosions and entity events, due at the frame's tick
 		if (data.fx) {
 			particles.queueEffects(data.t, data.fx);
-			sounds.queue(data.t, data.fx);
+			sounds.queue(data.t, data.fx, data.e);
 		}
 	});
 	on('env', data => environment.push(data, performance.now()));
@@ -536,7 +537,7 @@ function frame(now) {
 			const eyeInfo = world.infoAt(Math.floor(c0.x), Math.floor(c0.y), Math.floor(c0.z));
 			for (let i = Math.min(deltaTicks, 4) - 1; i >= 0; i--) {
 				particles.tick(world, c0, environment.current.rain || 0, entities.tick, state.entityList, weather.columns, gameTime - i);
-				sounds.ambient({ world, camera: c0, ambience: environment.current.amb, inWater: !!(eyeInfo && eyeInfo.water), block: eye, flash: environment.flash });
+				sounds.ambient({ world, camera: c0, ambience: environment.current.amb, inWater: !!(eyeInfo && eyeInfo.water), block: eye, flash: environment.flash, entities: state.entityList });
 			}
 		}
 		state.gameTick = tick;
