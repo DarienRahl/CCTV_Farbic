@@ -85,6 +85,30 @@ net/minecraft/world/entity/animal/rabbit/Rabbit
 net/minecraft/world/entity/animal/golem/CopperGolem
 net/minecraft/world/entity/animal/axolotl/Axolotl
 
+# models animated by entity events (mobs.js ANIMS golem, sheep, wolf, ravager, hoglin, goat and CLIENT)
+net/minecraft/client/model/animal/golem/IronGolemModel
+net/minecraft/client/renderer/entity/IronGolemRenderer
+net/minecraft/world/entity/animal/golem/IronGolem
+net/minecraft/client/model/animal/sheep/SheepModel
+net/minecraft/client/model/animal/sheep/BabySheepModel
+net/minecraft/world/entity/animal/sheep/Sheep
+net/minecraft/client/model/animal/wolf/WolfModel
+net/minecraft/client/model/animal/wolf/AdultWolfModel
+net/minecraft/client/model/animal/wolf/BabyWolfModel
+net/minecraft/client/renderer/entity/WolfRenderer
+net/minecraft/client/renderer/entity/state/WolfRenderState
+net/minecraft/world/entity/animal/wolf/Wolf
+net/minecraft/client/model/monster/ravager/RavagerModel
+net/minecraft/client/renderer/entity/RavagerRenderer
+net/minecraft/world/entity/monster/Ravager
+net/minecraft/client/model/monster/hoglin/HoglinModel
+net/minecraft/client/model/monster/hoglin/BabyHoglinModel
+net/minecraft/world/entity/monster/hoglin/Hoglin
+net/minecraft/world/entity/monster/Zoglin
+net/minecraft/client/model/animal/goat/GoatModel
+net/minecraft/client/model/animal/goat/BabyGoatModel
+net/minecraft/world/entity/animal/goat/Goat
+
 # particles (particles.js; definitions and textures are read from the client jar)
 net/minecraft/client/multiplayer/ClientLevel
 net/minecraft/client/particle/SingleQuadParticle

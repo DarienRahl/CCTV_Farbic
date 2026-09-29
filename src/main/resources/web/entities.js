@@ -221,6 +221,7 @@ export class EntityRenderer {
 		this.textures = new Map();
 		this.skins = new Map();
 		this.states = new Map();
+		this.events = new Map();
 		this.motion = new Map();
 		this.itemMeshes = new Map();
 		this.frames = [];
@@ -259,6 +260,7 @@ export class EntityRenderer {
 		this.frames = [];
 		this.offset = null;
 		this.states.clear();
+		this.events.clear();
 		this.motion.clear();
 	}
 
@@ -356,12 +358,19 @@ export class EntityRenderer {
 		const map = new Map();
 		for (const e of frame.e) {
 			map.set(e.id, e);
-			// Running AnimationStates as start ticks (entity tickCount), events tagged with their frame.
+			// Running AnimationStates as start ticks (entity tickCount).
 			if (e.anim) {
 				e.animStart = {};
 				for (const [name, millis] of Object.entries(e.anim)) e.animStart[name] = (e.age || 0) - millis / 50;
 			}
-			if (e.ev) e.evTick = frame.t;
+			// Entity events are queued, not read from the drawn frame: rendering skips frames when it runs
+			// slower than the server's 20 frames per second, the events must not be lost with them.
+			if (e.ev && CLIENT[strip(e.type)] && CLIENT[strip(e.type)].event) {
+				let queue = this.events.get(e.id);
+				if (!queue) this.events.set(e.id, queue = []);
+				queue.push({ t: frame.t, age: e.age || 0, ids: e.ev });
+				if (queue.length > 16) queue.shift();
+			}
 		}
 		this.animateMotion(frame.t, map);
 		this.frames.push({ t: frame.t, map });
@@ -496,9 +505,15 @@ export class EntityRenderer {
 		const client = CLIENT[type];
 		if (!client) return states;
 		const tick = Math.floor(e.age || 0);
-		if (client.event && e.ev && e.evTick !== states.eventTick) {
-			states.eventTick = e.evTick;
-			for (const id of e.ev) client.event(e, states, id, tick);
+		const queue = this.events.get(e.id);
+		if (queue) {
+			// Events of the frames the (delayed) render time has reached, at the entity age they happened;
+			// the ones of an entity that was not drawn for a while are dropped.
+			while (queue.length && queue[0].t <= this.tick + 1e-3) {
+				const event = queue.shift();
+				if (this.tick - event.t < 40) for (const id of event.ids) client.event(e, states, id, Math.floor(event.age));
+			}
+			if (!queue.length) this.events.delete(e.id);
 		}
 		if (client.tick) {
 			if (states.lastTick === null || tick < states.lastTick || tick - states.lastTick > 40) states.lastTick = tick - 1;
@@ -508,6 +523,7 @@ export class EntityRenderer {
 	}
 
 	cleanupStates(now) {
+		for (const [id, queue] of this.events) if (!queue.length || this.tick - queue[queue.length - 1].t > 200) this.events.delete(id);
 		if (this.states.size < 64) return;
 		for (const [id, s] of this.states) if (now - s.seen > 5000) this.states.delete(id);
 	}
@@ -658,6 +674,11 @@ export class EntityRenderer {
 			translate(m, 0, ((e.h || 1) + 0.1) / entityScale, 0);
 			rotate(m, 2, Math.PI);
 		}
+		if (def.walkRoll && anim.walkSpeed >= 0.01) {
+			// IronGolemRenderer.setupRotations: the golem rocks from side to side while walking.
+			const wave = (Math.abs((anim.walk + 6) % 13 - 6.5) - 3.25) / 3.25;
+			rotate(m, 2, 6.5 * wave * DEG);
+		}
 		if (def.fish) {
 			const inWater = world.infoAt(Math.floor(e.x), Math.floor(e.y + 0.1), Math.floor(e.z));
 			rotate(m, 1, 4.3 * Math.sin(0.6 * age) * DEG);
@@ -697,6 +718,7 @@ export class EntityRenderer {
 		translate(m, 0, -1.501, 0);
 
 		let base = null;
+		anim.tint = null;
 		for (const layer of mob.layers) {
 			const model = this.library.get(layer.layer);
 			if (!model) continue;
@@ -712,7 +734,9 @@ export class EntityRenderer {
 			}
 			if (!base) base = model;
 			const start = this.sink.count;
-			emitModel(this.sink, model, m, { ...style, color: layer.color || [1, 1, 1, 1] });
+			// getModelTint (e.g. a wet wolf) tints the entity's own model, not the layers drawn over it.
+			const color = layer.color || (model === base && layer === mob.layers[0] && anim.tint) || [1, 1, 1, 1];
+			emitModel(this.sink, model, m, { ...style, color });
 			const mode = MODES[layer.mode] ?? MODE_CUTOUT;
 			this.batch(texture, mode, start, mode !== MODE_NOCULL && mode !== MODE_TRANSLUCENT);
 		}

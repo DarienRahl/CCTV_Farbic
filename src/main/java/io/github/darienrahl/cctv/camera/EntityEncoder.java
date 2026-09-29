@@ -139,6 +139,9 @@ final class EntityEncoder {
 			// Methods every entity has: only sent for the types that need them (third column).
 			{"isInWater", "inWater", "minecraft:frog minecraft:axolotl"},
 			{"onGround", "onGround", "minecraft:axolotl"},
+			{"isInterested", "interested", "minecraft:wolf"},
+			{"getHealth", "health", "minecraft:wolf"},
+			{"getMaxHealth", "maxHealth", "minecraft:wolf"},
 	};
 
 	/** Entities that hang on a block face (their direction is the face they are on). */

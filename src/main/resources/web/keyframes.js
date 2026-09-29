@@ -85,7 +85,6 @@ export class AnimationStates {
 		this.server = new Map();
 		this.suppressed = new Map();
 		this.lastTick = null;
-		this.eventTick = null;
 		this.memory = {};
 	}
 

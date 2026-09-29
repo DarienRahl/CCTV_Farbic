@@ -55,8 +55,11 @@ to the milestone it belongs to.
 - [ ] **Automatic entity mapping**: read `EntityRenderers` from `client.jar` (bytecode) to map each
       entity type to its model layers and textures; the hand-written table only overrides. New
       mobs appear with their real model without code changes
-- [ ] More client-side animations from entity events (iron golem and ravager attacks, sheep
-      eating grass, wolf shaking, evoker fangs…); the events already reach the viewer
+- [x] Client-side animations from entity events: iron golem, ravager, hoglin and zoglin attacks,
+      the ravager's stun and roar, sheep eating grass, wolves shaking off water and begging, goats
+      ramming (events are queued, so none is lost when the viewer draws fewer frames than it gets)
+- [ ] More of them: evoker fangs and spells, horse rearing and eating, fox and panda poses, the
+      iron golem offering a flower
 
 ## 1.3 — 1:1 picture
 

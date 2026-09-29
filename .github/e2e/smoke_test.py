@@ -184,6 +184,8 @@ def main():
     rcon.command("fill -8 -61 6 -4 -61 12 minecraft:water")
     rcon.command("fill -9 -60 3 -9 -60 14 minecraft:oak_fence")
     rcon.command("setblock 1 -60 3 minecraft:chest[facing=north]")
+    # a lit campfire: its smoke column is the viewer's surest particle (screenshot.mjs checks it)
+    rcon.command("setblock -1 -60 3 minecraft:campfire[lit=true]")
     rcon.command("setblock 0 -60 5 minecraft:poppy")
     rcon.command("setblock 1 -60 6 minecraft:dandelion")
     rcon.command('setblock -3 -60 0 minecraft:oak_sign[rotation=8]{front_text:{messages:["CCTV","Camera ci","",""]}}')

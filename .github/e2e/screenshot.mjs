@@ -52,3 +52,7 @@ if (!vanilla.textures || vanilla.units === 0 || !vanilla.models) {
 	console.error('viewer did not render a textured world with entity models');
 	process.exit(1);
 }
+if (vanilla.particles === 0) {
+	console.error('viewer shows no particles (the campfire in front of the camera smokes)');
+	process.exit(1);
+}

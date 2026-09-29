@@ -224,18 +224,56 @@ const ANIMS = {
 		if (p.left_chest) p.left_chest.visible = chest;
 		if (p.right_chest) p.right_chest.visible = chest;
 	},
+	/** WolfModel, AdultWolfModel and BabyWolfModel.setupAnim with the WolfRenderer state (shaking off water: event 8). */
 	wolf(p, a, e) {
-		headLook(p, a);
-		quadrupedLegs(p, a);
-		const tail = p.real_tail || p.tail;
-		if (tail) tail.yRot = e.d && e.d.angry ? 0 : cos(a.walk * 0.6662) * 1.4 * a.walkSpeed;
-		if (e.d && e.d.sitting) {
-			if (p.upper_body) { p.upper_body.xRot = PI * 0.4; }
-			if (p.body) { p.body.xRot = PI / 4; p.body.y += 2; }
-			if (p.right_hind_leg) { p.right_hind_leg.xRot = PI * 1.5; p.right_hind_leg.y += 6.7; p.right_hind_leg.z -= 5; }
-			if (p.left_hind_leg) { p.left_hind_leg.xRot = PI * 1.5; p.left_hind_leg.y += 6.7; p.left_hind_leg.z -= 5; }
-			if (p.right_front_leg) { p.right_front_leg.xRot = PI * 1.85; p.right_front_leg.y += 1; }
-			if (p.left_front_leg) { p.left_front_leg.xRot = PI * 1.85; p.left_front_leg.y += 1; }
+		const d = e.d || {};
+		const ageScale = e.baby ? 0.5 : 1;
+		const w = a.walk * 0.6662, s = a.walkSpeed;
+		const { tail, body } = p;
+		if (tail) tail.yRot = d.angry ? 0 : cos(w) * 1.4 * s;
+		if (d.sitting) {
+			// WolfModel.setSittingPose
+			if (body) { body.y += 4 * ageScale; body.z -= 2 * ageScale; body.xRot = PI / 4; }
+			if (tail) { tail.y += 9 * ageScale; tail.z -= 2 * ageScale; }
+			for (const leg of [p.right_hind_leg, p.left_hind_leg]) if (leg) { leg.y += 6.7 * ageScale; leg.z -= 5 * ageScale; leg.xRot = PI * 3 / 2; }
+			if (p.right_front_leg) { p.right_front_leg.xRot = 5.811947; p.right_front_leg.x += 0.01 * ageScale; p.right_front_leg.y += ageScale; }
+			if (p.left_front_leg) { p.left_front_leg.xRot = 5.811947; p.left_front_leg.x -= 0.01 * ageScale; p.left_front_leg.y += ageScale; }
+			if (e.baby) { if (body) body.xRot -= 1; }
+			else if (p.upper_body) { p.upper_body.y += 2; p.upper_body.xRot = PI * 2 / 5; p.upper_body.yRot = 0; }
+		} else {
+			if (p.right_hind_leg) p.right_hind_leg.xRot = cos(w) * 1.4 * s;
+			if (p.left_hind_leg) p.left_hind_leg.xRot = cos(w + PI) * 1.4 * s;
+			if (p.right_front_leg) p.right_front_leg.xRot = cos(w + PI) * 1.4 * s;
+			if (p.left_front_leg) p.left_front_leg.xRot = cos(w) * 1.4 * s;
+		}
+		// shakeOffWater: WolfRenderState.getBodyRollAngle with Wolf.getShakeAnim, the head roll of a begging wolf
+		const m = a.memory;
+		const shake = m.shakeAt !== undefined ? Math.max(0, (a.age - m.shakeAt) * 0.05) : 0;
+		const roll = offset => {
+			const progress = Math.min(1, Math.max(0, (shake + offset) / 1.8));
+			return sin(progress * PI) * sin(progress * PI * 11) * 0.15 * PI;
+		};
+		const partial = a.age - Math.floor(a.age);
+		const headRoll = ((m.interestO ?? 0) + ((m.interest ?? 0) - (m.interestO ?? 0)) * partial) * 0.15 * PI;
+		if (body) body.zRot = roll(-0.16);
+		if (e.baby) {
+			if (p.head) p.head.zRot = headRoll + roll(0);
+			if (tail) tail.zRot = roll(-0.2);
+		} else {
+			if (p.real_head) p.real_head.zRot = headRoll + roll(0);
+			if (p.upper_body) p.upper_body.zRot = roll(-0.08);
+			if (p.real_tail) p.real_tail.zRot = roll(-0.2);
+		}
+		if (p.head) { p.head.xRot = a.headPitch * DEG; p.head.yRot = a.netHeadYaw * DEG; }
+		// Wolf.getTailAngle
+		let tailAngle = PI / 5;
+		if (d.angry) tailAngle = 1.5393804;
+		else if (d.tame) tailAngle = (0.55 - (d.maxHealth > 0 ? (d.maxHealth - (d.health ?? d.maxHealth)) / d.maxHealth : 0) * 0.4) * PI;
+		if (tail) tail.xRot = tailAngle;
+		// WolfRenderer.getModelTint: Wolf.getWetShade while shaking
+		if (shake > 0) {
+			const shade = Math.min(0.75 + shake / 2 * 0.25, 1);
+			a.tint = [shade, shade, shade, 1];
 		}
 	},
 	cat(p, a, e) {
@@ -319,13 +357,96 @@ const ANIMS = {
 		if (p.tail_base) p.tail_base.xRot = -(5 + cos(f * 2) * 5) * DEG;
 		if (p.tail_tip) p.tail_tip.xRot = -(5 + cos(f * 2) * 5) * DEG;
 	},
+	/** IronGolemModel.setupAnim; the attack swing starts with entity event 4 (CLIENT.iron_golem). */
 	golem(p, a) {
 		headLook(p, a);
 		const s = a.walkSpeed;
+		// IronGolemRenderer.extractRenderState: attackAnimationTick - partialTicks
+		const attack = a.memory.attackAt !== undefined ? 9 - (a.age - a.memory.attackAt) : 0;
+		if (attack > 0) {
+			if (p.right_arm) p.right_arm.xRot = -2 + 1.5 * triangleWave(attack, 10);
+			if (p.left_arm) p.left_arm.xRot = -2 + 1.5 * triangleWave(attack, 10);
+		} else {
+			if (p.right_arm) p.right_arm.xRot = (-0.2 + 1.5 * triangleWave(a.walk, 13)) * s;
+			if (p.left_arm) p.left_arm.xRot = (-0.2 - 1.5 * triangleWave(a.walk, 13)) * s;
+		}
 		if (p.right_leg) p.right_leg.xRot = -1.5 * triangleWave(a.walk, 13) * s;
 		if (p.left_leg) p.left_leg.xRot = 1.5 * triangleWave(a.walk, 13) * s;
-		if (p.right_arm) p.right_arm.xRot = (-0.2 + 1.5 * triangleWave(a.walk, 13)) * s;
-		if (p.left_arm) p.left_arm.xRot = (-0.2 - 1.5 * triangleWave(a.walk, 13)) * s;
+	},
+	/** SheepModel.setupAnim with Sheep.getHeadEatPositionScale / getHeadEatAngleScale (eating grass: entity event 10). */
+	sheep(p, a, e) {
+		headLook(p, a);
+		quadrupedLegs(p, a);
+		const at = a.memory.eatAt;
+		if (at === undefined || !p.head) return;
+		const partial = a.age - Math.floor(a.age);
+		const tick = 39 - (Math.floor(a.age) - at); // eatAnimationTick, counted down by Sheep.aiStep
+		if (tick <= 0) return;
+		const position = tick >= 4 && tick <= 36 ? 1 : tick < 4 ? (tick - partial) / 4 : -(tick - 40 - partial) / 4;
+		p.head.y += position * 9 * (e.baby ? 0.5 : 1);
+		p.head.xRot = tick > 4 && tick <= 36 ? PI / 5 + 0.21991149 * sin((tick - 4 - partial) / 32 * 28.7) : PI / 5;
+	},
+	/** RavagerModel.setupAnim: attack (event 4), stun (event 39) and the roar that follows it. */
+	ravager(p, a) {
+		const m = a.memory, age = a.age;
+		const attack = m.attackAt !== undefined ? 9 - (age - m.attackAt) : 0;
+		const stunned = m.stunAt !== undefined ? 39 - (age - m.stunAt) : 0;
+		// Ravager.aiStep: the roar (roarTick = 20) starts when the stun ends; RavagerRenderer: (20 - roarTick + partial) / 20
+		const sinceRoar = m.stunAt !== undefined ? age - (m.stunAt + 39) : -1;
+		const roar = sinceRoar > 0 && sinceRoar < 20 ? sinceRoar / 20 : 0;
+		const neck = p.neck, mouth = p.mouth;
+		if (neck && mouth) {
+			if (attack > 0) {
+				const scaled = (1 + triangleWave(attack, 10)) * 0.5;
+				const headPos = scaled * scaled * scaled * 12;
+				neck.z = -6.5 + headPos;
+				neck.y = -7 - headPos * sin(neck.xRot);
+				mouth.xRot = attack > 5 ? sin((-4 + attack) / 4) * PI * 0.4 : PI / 20 * sin(PI * attack / 10);
+			} else {
+				neck.x = 0;
+				neck.y = -7 + sin(neck.xRot);
+				neck.z = 5.5;
+				const isStunned = stunned > 0;
+				neck.xRot = isStunned ? 0.21991149 : 0;
+				mouth.xRot = PI * (isStunned ? 0.05 : 0.01);
+				if (isStunned) neck.x = sin(stunned / 40 * 10) * 3;
+				else if (roar > 0) mouth.xRot = PI / 2 * sin(roar * PI * 0.25);
+			}
+		}
+		headLook(p, a);
+		const w = a.walk * 0.6662, legRot = 0.4 * a.walkSpeed;
+		if (p.right_hind_leg) p.right_hind_leg.xRot = cos(w) * legRot;
+		if (p.left_hind_leg) p.left_hind_leg.xRot = cos(w + PI) * legRot;
+		if (p.right_front_leg) p.right_front_leg.xRot = cos(w + PI) * legRot;
+		if (p.left_front_leg) p.left_front_leg.xRot = cos(w) * legRot;
+	},
+	/** HoglinModel / BabyHoglinModel.setupAnim (hoglin and zoglin): ears, the headbutt (event 4) and legs. */
+	hoglin(p, a, e) {
+		const s = a.walkSpeed, w = a.walk;
+		if (p.right_ear) p.right_ear.zRot = -PI * 2 / 9 - s * sin(w);
+		if (p.left_ear) p.left_ear.zRot = PI * 2 / 9 + s * sin(w);
+		if (p.head) p.head.yRot = a.netHeadYaw * DEG;
+		const at = a.memory.attackAt;
+		const remaining = at !== undefined ? Math.max(0, 9 - (Math.floor(a.age) - at)) : 0;
+		const f = 1 - abs(10 - 2 * remaining) / 10;
+		if (p.head) p.head.xRot = 0.87266463 + (-PI / 9 - 0.87266463) * f;
+		if (e.baby && p.head) p.head.y += f * 2.5; // BabyHoglinModel.animateHeadbutt
+		if (p.right_front_leg) p.right_front_leg.xRot = cos(w) * 1.2 * s;
+		if (p.left_front_leg) p.left_front_leg.xRot = cos(w + PI) * 1.2 * s;
+		if (p.right_hind_leg && p.left_front_leg) p.right_hind_leg.xRot = p.left_front_leg.xRot;
+		if (p.left_hind_leg && p.right_front_leg) p.left_hind_leg.xRot = p.right_front_leg.xRot;
+	},
+	/** GoatModel / BabyGoatModel.setupAnim: horns and ramming (Goat.getRammingXHeadRot, events 58/59). */
+	goat(p, a, e) {
+		headLook(p, a);
+		quadrupedLegs(p, a);
+		const d = e.d || {};
+		const head = p.head;
+		if (p.left_horn) p.left_horn.visible = d.leftHorn !== false;
+		if (p.right_horn) p.right_horn.visible = d.rightHorn !== false;
+		const lower = a.memory.lowerHeadTick || 0;
+		if (head && lower > 0) head.xRot = lower / 20 * (e.baby ? 52.5 : 30) * DEG;
+		else if (head && e.baby) head.xRot = PI / 8; // BabyGoatModel.setupAnim
 	},
 	fish(p, a) {
 		const tail = p.tail_fin || p.tail || p.body_back;
@@ -746,6 +867,57 @@ export const CLIENT = {
 	},
 };
 CLIENT.camel_husk = CLIENT.camel;
+/** IronGolem.handleEntityEvent: 4 starts the attack swing (attackAnimationTick = 10). */
+CLIENT.iron_golem = {
+	event(e, st, id, tick) {
+		if (id === 4) st.memory.attackAt = tick;
+	},
+};
+/** Sheep.handleEntityEvent: 10 starts eating grass (eatAnimationTick = 40). */
+CLIENT.sheep = {
+	event(e, st, id, tick) {
+		if (id === 10) st.memory.eatAt = tick;
+	},
+};
+/** Wolf.handleEntityEvent (8 starts shaking off water, 56 cancels it) and Wolf.tick (shake, begging head roll). */
+CLIENT.wolf = {
+	event(e, st, id, tick) {
+		if (id === 8) st.memory.shakeAt = tick;
+		else if (id === 56) st.memory.shakeAt = undefined;
+	},
+	tick(e, st, tick) {
+		const m = st.memory;
+		m.interestO = m.interest ?? 0;
+		m.interest = m.interestO + ((e.d && e.d.interested ? 1 : 0) - m.interestO) * 0.4;
+		// shakeAnimO >= 2: the shake is over
+		if (m.shakeAt !== undefined && (tick - m.shakeAt) * 0.05 > 2.05) m.shakeAt = undefined;
+	},
+};
+/** Ravager.handleEntityEvent: 4 attack (attackTick = 10), 39 stunned (stunnedTick = 40). */
+CLIENT.ravager = {
+	event(e, st, id, tick) {
+		if (id === 4) st.memory.attackAt = tick;
+		else if (id === 39) st.memory.stunAt = tick;
+	},
+};
+/** Hoglin / Zoglin.handleEntityEvent: 4 starts the headbutt (attackAnimationRemainingTicks = 10). */
+CLIENT.hoglin = {
+	event(e, st, id, tick) {
+		if (id === 4) st.memory.attackAt = tick;
+	},
+};
+CLIENT.zoglin = CLIENT.hoglin;
+/** Goat.handleEntityEvent (58 lowers the head to ram, 59 raises it) and Goat.aiStep (lowerHeadTick). */
+CLIENT.goat = {
+	event(e, st, id) {
+		if (id === 58) st.memory.lowering = true;
+		else if (id === 59) st.memory.lowering = false;
+	},
+	tick(e, st) {
+		const m = st.memory;
+		m.lowerHeadTick = Math.min(20, Math.max(0, (m.lowerHeadTick || 0) + (m.lowering ? 1 : -2)));
+	},
+};
 
 // --- per type definitions ----------------------------------------------------------------------------------
 
@@ -819,7 +991,7 @@ const MOBS = {
 	ghast: { layer: 'ghast#main', texture: e => (e.d && e.d.charging ? 'ghast/ghast_shooting' : 'ghast/ghast'), shadow: 1.5, anim: 'ghast', fullBright: true },
 	giant: { layer: 'giant#main', texture: 'zombie/zombie', shadow: 3, anim: 'zombie' },
 	glow_squid: { layer: e => (e.baby ? 'glow_squid_baby#main' : 'glow_squid#main'), texture: e => 'squid/glow_squid' + baby(e), shadow: 0.7, anim: 'squid', squid: true, fullBright: true },
-	goat: { layer: e => (e.baby ? 'goat_baby#main' : 'goat#main'), texture: e => 'goat/goat' + baby(e), shadow: 0.7, anim: 'quadruped', goat: true },
+	goat: { layer: e => (e.baby ? 'goat_baby#main' : 'goat#main'), texture: e => 'goat/goat' + baby(e), shadow: 0.7, anim: 'goat' },
 	guardian: { layer: 'guardian#main', texture: 'guardian/guardian', shadow: 0.5, anim: 'guardian' },
 	happy_ghast: {
 		layer: e => (e.baby ? 'happy_ghast_baby#main' : 'happy_ghast#main'), texture: e => (e.baby ? 'ghast/happy_ghast_baby' : 'ghast/happy_ghast'),
@@ -829,7 +1001,7 @@ const MOBS = {
 			{ layer: e => (e.baby ? 'happy_ghast_baby_ropes#main' : 'happy_ghast_ropes#main'), texture: 'ghast/happy_ghast_ropes', when: e => e.d && e.d.leashed },
 		],
 	},
-	hoglin: { layer: e => (e.baby ? 'hoglin_baby#main' : 'hoglin#main'), texture: e => 'hoglin/hoglin' + baby(e), shadow: 0.7, anim: 'quadruped' },
+	hoglin: { layer: e => (e.baby ? 'hoglin_baby#main' : 'hoglin#main'), texture: e => 'hoglin/hoglin' + baby(e), shadow: 0.7, anim: 'hoglin' },
 	horse: {
 		layer: e => (e.baby ? 'horse_baby#main' : 'horse#main'),
 		texture: e => 'horse/horse_' + (variant(e, 'white').replace('dark_brown', 'darkbrown')) + baby(e),
@@ -845,7 +1017,7 @@ const MOBS = {
 	husk: { layer: e => (e.baby ? 'husk_baby#main' : 'husk#main'), texture: e => 'zombie/husk' + baby(e), shadow: 0.5, anim: 'zombie', armor: 'husk' },
 	illusioner: { layer: 'illusioner#main', texture: 'illager/illusioner', shadow: 0.5, anim: 'illager' },
 	iron_golem: {
-		layer: 'iron_golem#main', texture: 'iron_golem/iron_golem', shadow: 0.7, anim: 'golem',
+		layer: 'iron_golem#main', texture: 'iron_golem/iron_golem', shadow: 0.7, anim: 'golem', walkRoll: true,
 		layers: [{ layer: 'iron_golem#main', texture: e => 'iron_golem/iron_golem_crackiness_' + e.d.crackiness, when: e => e.d && e.d.crackiness && e.d.crackiness !== 'none' }],
 	},
 	llama: {
@@ -895,13 +1067,13 @@ const MOBS = {
 		},
 		shadow: 0.3, anim: 'rabbit',
 	},
-	ravager: { layer: 'ravager#main', texture: 'illager/ravager', shadow: 1.1, anim: 'quadruped' },
+	ravager: { layer: 'ravager#main', texture: 'illager/ravager', shadow: 1.1, anim: 'ravager' },
 	salmon: {
 		layer: e => ({ small: 'salmon_small#main', large: 'salmon_large#main' })[variant(e, 'medium')] || 'salmon#main',
 		texture: 'fish/salmon', shadow: 0.4, anim: 'fish', fish: true,
 	},
 	sheep: {
-		layer: e => (e.baby ? 'sheep_baby#main' : 'sheep#main'), texture: e => 'sheep/sheep' + baby(e), shadow: 0.7, anim: 'quadruped',
+		layer: e => (e.baby ? 'sheep_baby#main' : 'sheep#main'), texture: e => 'sheep/sheep' + baby(e), shadow: 0.7, anim: 'sheep',
 		layers: [
 			{ layer: 'sheep#wool_undercoat', texture: 'sheep/sheep_wool_undercoat', when: e => !e.baby && !(e.d && e.d.sheared), color: e => sheepColor(e) },
 			{ layer: e => (e.baby ? 'sheep_baby#wool' : 'sheep#wool'), texture: e => 'sheep/sheep_wool' + baby(e), when: e => !(e.d && e.d.sheared), color: e => sheepColor(e) },
@@ -951,7 +1123,7 @@ const MOBS = {
 			{ layer: 'wolf_armor#main', texture: 'equipment/wolf_body/armadillo_scute', when: e => !e.baby && /wolf_armor/.test(e.bodyArmor || '') },
 		],
 	},
-	zoglin: { layer: e => (e.baby ? 'zoglin_baby#main' : 'zoglin#main'), texture: e => 'hoglin/zoglin' + baby(e), shadow: 0.7, anim: 'quadruped' },
+	zoglin: { layer: e => (e.baby ? 'zoglin_baby#main' : 'zoglin#main'), texture: e => 'hoglin/zoglin' + baby(e), shadow: 0.7, anim: 'hoglin' },
 	zombie: { layer: e => (e.baby ? 'zombie_baby#main' : 'zombie#main'), texture: e => 'zombie/zombie' + baby(e), shadow: 0.5, anim: 'zombie', armor: 'zombie' },
 	zombie_horse: { layer: e => (e.baby ? 'zombie_horse_baby#main' : 'zombie_horse#main'), texture: e => 'horse/horse_zombie' + baby(e), shadow: 0.75, anim: 'horse', saddle: ['zombie_horse#saddle', 'equipment/zombie_horse_saddle/saddle'] },
 	zombie_nautilus: {
