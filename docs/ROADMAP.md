@@ -37,7 +37,7 @@ to the milestone it belongs to.
 - [x] **1.1.3:** cameras stream again after a quiet minute (the empty server paused itself; a
       watched camera now keeps it awake); `/api/status` shows the session state
 
-## 1.2 — easy updates
+## 1.2 — easy updates (released: 1.2.0)
 
 - [x] `docs/UPDATING.md`: the step-by-step update procedure and the list of game touch points
 - [x] **Update workflow** (`update-minecraft.yml`): for a given game version it resolves Fabric
