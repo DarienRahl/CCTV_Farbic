@@ -61,7 +61,7 @@ to the milestone it belongs to.
 - [ ] More of them: evoker fangs and spells, horse rearing and eating, fox and panda poses, the
       iron golem offering a flower
 
-## 1.3 — 1:1 picture
+## 1.3 — 1:1 picture (first part released: 1.3.0)
 
 - [ ] **Reference renders in CI**: a Fabric client game test builds the CI scene in single
       player, takes a screenshot from the camera position with the game, and the viewer takes
