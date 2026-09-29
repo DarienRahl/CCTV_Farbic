@@ -31,6 +31,15 @@ const loadingText = $('loading-text');
 const messageEl = $('message');
 
 document.body.classList.toggle('embed', embed);
+
+// Video wall tiles (embed): nothing is drawn while the tile is off screen or the tab is hidden, the frame rate
+// is capped (lower for small tiles) and the picture uses one pixel per CSS pixel. The stream keeps running, so
+// a tile is current the moment it shows again.
+let onScreen = true;
+if (embed && 'IntersectionObserver' in window) {
+	new IntersectionObserver(entries => { onScreen = entries.some(entry => entry.isIntersecting); }).observe(canvas);
+}
+const frameInterval = () => (!embed ? 0 : canvas.clientWidth * canvas.clientHeight < 480 * 270 ? 1000 / 20 : 1000 / 30);
 $('cam-name').textContent = cameraName.toUpperCase();
 document.title = 'CCTV · ' + cameraName;
 
@@ -101,7 +110,7 @@ const shaderSources = new Map();
 function applySettings() {
 	document.body.dataset.mode = settings.mode;
 	document.body.classList.toggle('fx', !!settings.cctvEffect);
-	renderer.configure({ graphics: settings.graphics, quality: settings.shaderQuality, renderScale: Number(settings.renderScale) || 1 });
+	renderer.configure({ graphics: settings.graphics, quality: settings.shaderQuality, renderScale: Number(settings.renderScale) || 1, maxPixelRatio: embed ? 1 : 2 });
 	entities.showLabels = !!settings.labels;
 	entities.showMobLabels = !!settings.mobLabels;
 	const name = settings.postShader || '';
@@ -443,6 +452,8 @@ function updateHud(now) {
 
 function frame(now) {
 	requestAnimationFrame(frame);
+	if (embed && (!onScreen || document.hidden)) return;
+	if (now - state.lastFrame < frameInterval() - 2) return;
 	const dt = now - state.lastFrame;
 	state.lastFrame = now;
 	state.fps = lerp(state.fps, 1000 / Math.max(1, dt), 0.05);

@@ -493,7 +493,7 @@ export class Renderer {
 	}
 
 	resize() {
-		const dpr = Math.min(window.devicePixelRatio || 1, 2);
+		const dpr = Math.min(window.devicePixelRatio || 1, this.settings.maxPixelRatio || 2);
 		const width = Math.max(1, Math.round(this.canvas.clientWidth * dpr));
 		const height = Math.max(1, Math.round(this.canvas.clientHeight * dpr));
 		if (this.canvas.width !== width || this.canvas.height !== height) {
