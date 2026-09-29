@@ -11,6 +11,7 @@ import { SkyRenderer, customBrightness } from './sky.js';
 import { CloudRenderer } from './clouds.js';
 import { WeatherRenderer } from './weather.js';
 import { PostProcessor } from './post.js';
+import { Particles } from './particles.js';
 import { perspective, lookDir, multiply, direction, lerp, transformPoint } from './math.js';
 
 const params = new URLSearchParams(location.search);
@@ -57,6 +58,7 @@ const clouds = new CloudRenderer(gl);
 const weather = new WeatherRenderer(gl);
 const post = new PostProcessor(gl, renderer);
 const entities = new EntityRenderer(renderer);
+const particles = new Particles(gl);
 const world = new World((key, section, message) => {
 	renderer.setSectionMesh(key, section, message, performance.now());
 });
@@ -65,7 +67,7 @@ const world = new World((key, section, message) => {
 
 const DEFAULTS = {
 	graphics: 'vanilla', shaderQuality: 'medium', postShader: '', clouds: 'fancy', labels: true, mobLabels: false,
-	mode: 'color', cctvEffect: false, skybox: 'default', renderScale: 1,
+	mode: 'color', cctvEffect: false, skybox: 'default', renderScale: 1, particles: true,
 };
 const viewerInfo = { defaults: { ...DEFAULTS, skyboxes: {} }, locked: false, skyboxes: {}, shaders: [] };
 let settings = { ...DEFAULTS };
@@ -97,7 +99,7 @@ async function loadViewerInfo() {
 	const d = viewerInfo.defaults || {};
 	const server = {
 		graphics: d.graphics, shaderQuality: d.shaderQuality, postShader: d.postShader || '', clouds: d.clouds,
-		labels: d.labels, mobLabels: d.mobLabels, mode: d.mode, cctvEffect: d.cctvEffect,
+		labels: d.labels, mobLabels: d.mobLabels, particles: d.particles, mode: d.mode, cctvEffect: d.cctvEffect,
 	};
 	for (const key of Object.keys(server)) if (server[key] === undefined) delete server[key];
 	settings = { ...DEFAULTS, ...server, ...(viewerInfo.locked ? {} : loadLocal()) };
@@ -113,6 +115,8 @@ function applySettings() {
 	renderer.configure({ graphics: settings.graphics, quality: settings.shaderQuality, renderScale: Number(settings.renderScale) || 1, maxPixelRatio: embed ? 1 : 2 });
 	entities.showLabels = !!settings.labels;
 	entities.showMobLabels = !!settings.mobLabels;
+	particles.enabled = settings.particles !== false;
+	if (!particles.enabled) particles.clear();
 	const name = settings.postShader || '';
 	if (name !== (post.customName || '')) {
 		if (!name) {
@@ -227,6 +231,7 @@ function connect() {
 		const c = data.camera;
 		const origin = [Math.floor(c.x), Math.floor(c.y), Math.floor(c.z)];
 		world.reset(origin);
+		particles.clear();
 		world.setDimension(data.dim || { hasSky: c.dimension !== 'minecraft:the_nether', cardinal: c.dimension === 'minecraft:the_nether' ? 'nether' : 'default' });
 		world.setBiomes(data.biomes || {});
 		environment.setDimension(data.dim || { id: c.dimension, skybox: c.dimension === 'minecraft:the_end' ? 'end' : c.dimension === 'minecraft:the_nether' ? 'none' : 'overworld' });
@@ -282,6 +287,7 @@ function loadAssets() {
 			renderer.atlas = assets.texture;
 			world.setAssets(assets);
 			entities.setAssets(assets);
+			particles.setAssets(assets.bundle, assets.colormaps).catch(err => console.warn('CCTV: particles unavailable', err));
 			clouds.setTexture(assets.environment.clouds);
 			state.assets = assets;
 		})
@@ -476,6 +482,7 @@ function frame(now) {
 	if (tick !== state.gameTick) {
 		deltaTicks = Math.min(20, tick - state.gameTick);
 		for (let i = 0; i < Math.min(deltaTicks, 4); i++) environment.tick();
+		if (state.camera) for (let i = 0; i < Math.min(deltaTicks, 4); i++) particles.tick(world, state.camera, environment.current.rain || 0);
 		state.gameTick = tick;
 		if (state.assets) state.assets.tick(tick);
 	}
@@ -535,6 +542,7 @@ function frame(now) {
 		sky: () => sky.render(frameData, skyState, state.assets ? state.assets.environment : null, custom && custom.ready ? custom : null),
 		entities: (pass, shadowInfo) => entities.draw(pass, frameData, shadowInfo),
 		translucent: () => {
+			particles.render(frameData, renderer.lightmap, { x: c.x, y: c.y, z: c.z }, (now / 50) % 1);
 			entities.drawNameTags(frameData);
 			const showClouds = !(custom && custom.ready && custom.options && custom.options.showClouds === false);
 			if (cloudRadius > 0 && showClouds) {
@@ -576,4 +584,4 @@ loadViewerInfo().finally(() => {
 });
 
 // Handy for debugging from the browser console.
-window.cctv = { world, renderer, entities, state, environment, settings: () => settings, sky, clouds, weather, post };
+window.cctv = { world, renderer, entities, particles, state, environment, settings: () => settings, sky, clouds, weather, post };

@@ -43,6 +43,7 @@ final class CustomContent {
 				.field("clouds", viewer.clouds)
 				.field("labels", viewer.labels)
 				.field("mobLabels", viewer.mobLabels)
+				.field("particles", viewer.particles)
 				.field("mode", viewer.mode)
 				.field("cctvEffect", viewer.cctvEffect)
 				.name("skyboxes").beginObject();

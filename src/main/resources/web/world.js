@@ -43,6 +43,11 @@ export class World {
 		this.onMesh = onMesh;
 		this.infos = [];
 		this.entries = [];
+		/** Palette entries as the server sent them, by state id (particles read their hints). */
+		this.raw = [];
+		this.campfireIds = new Set();
+		/** Campfire positions per section key (CampfireBlockEntity.particleTick runs for each). */
+		this.campfireSections = new Map();
 		this.biomeIndex = new Map();
 		this.biomeNames = [];
 		this.biomeDefs = {};
@@ -94,6 +99,7 @@ export class World {
 		/** Block entity details by block position ("x,y,z"): banner patterns, pot sherds, head owners. */
 		this.blockEntityData = new Map();
 		this.blockEntitySections = new Map();
+		this.campfireSections = new Map();
 		this.dirty = new Set();
 		this.generation++;
 		this.pending = new Map();
@@ -142,7 +148,9 @@ export class World {
 	addPalette(entries) {
 		for (const entry of entries) {
 			this.entries.push(entry);
+			this.raw[entry.id] = entry;
 			this.infos[entry.id] = describeState(entry, parseProps, blockFaceColors);
+			if (/^minecraft:(soul_)?campfire$/.test(entry.n || '')) this.campfireIds.add(entry.id);
 		}
 		this.broadcast({ type: 'palette', entries });
 	}
@@ -209,13 +217,40 @@ export class World {
 			blockEntities: this.sections.get(key)?.blockEntities || [],
 		});
 		this.markDirty(message.x, message.y, message.z);
+		this.findCampfires(this.sections.get(key));
+	}
+
+	findCampfires(section) {
+		const found = [];
+		if (this.campfireIds.size) {
+			const states = section.states;
+			for (let i = 0; i < 4096; i++) {
+				if (this.campfireIds.has(states[i])) found.push([section.x * 16 + (i & 15), section.y * 16 + (i >> 8), section.z * 16 + ((i >> 4) & 15)]);
+			}
+		}
+		if (found.length) this.campfireSections.set(section.key, found);
+		else this.campfireSections.delete(section.key);
+	}
+
+	/** Campfires within a distance of a block: [x, y, z, palette entry]. */
+	*campfires(cx, cy, cz, range) {
+		for (const list of this.campfireSections.values()) {
+			for (const [x, y, z] of list) {
+				if (Math.abs(x - cx) > range || Math.abs(y - cy) > range || Math.abs(z - cz) > range) continue;
+				const entry = this.entryAt(x, y, z);
+				if (entry && this.campfireIds.has(entry.id)) yield [x, y, z, entry];
+			}
+		}
 	}
 
 	setBlock(x, y, z, id) {
 		const sx = x >> 4, sy = y >> 4, sz = z >> 4;
 		const section = this.sections.get(World.key(sx, sy, sz));
 		if (!section) return;
-		section.states[((y & 15) << 8) | ((z & 15) << 4) | (x & 15)] = id;
+		const index = ((y & 15) << 8) | ((z & 15) << 4) | (x & 15);
+		const old = section.states[index];
+		section.states[index] = id;
+		if (this.campfireIds.has(id) || this.campfireIds.has(old)) this.findCampfires(section);
 		// Smooth lighting, culling and fluids look at neighbours, so rebuild the touching sections too.
 		const lx = x & 15, ly = y & 15, lz = z & 15;
 		for (let dx = -1; dx <= 1; dx++) {
@@ -307,6 +342,18 @@ export class World {
 			if (info && info.opaque && info.fullCollision) return true;
 		}
 		return false;
+	}
+
+	/** The palette entry of the block at a position (as the server sent it), or null. */
+	entryAt(x, y, z) {
+		const id = this.getBlockId(x, y, z);
+		return id < 0 ? null : this.raw[id] || null;
+	}
+
+	/** The biome definition (temperature, downfall, colours) at a position, or null. */
+	biomeInfoAt(x, y, z) {
+		const name = this.biomeNameAt(x, y, z);
+		return name ? this.biomeDefs[name] || null : null;
 	}
 
 	biomeNameAt(x, y, z) {

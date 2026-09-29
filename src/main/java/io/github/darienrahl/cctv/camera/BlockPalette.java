@@ -1,17 +1,26 @@
 package io.github.darienrahl.cctv.camera;
 
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+
+import org.jspecify.annotations.Nullable;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.particles.ColorParticleOption;
+import net.minecraft.core.particles.ParticleOptions;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.tags.FluidTags;
 import net.minecraft.util.Mth;
 import net.minecraft.world.level.EmptyBlockGetter;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.FireBlock;
 import net.minecraft.world.level.block.HalfTransparentBlock;
 import net.minecraft.world.level.block.LeavesBlock;
 import net.minecraft.world.level.block.RenderShape;
@@ -154,6 +163,7 @@ final class BlockPalette {
 			json.field("l", light);
 		}
 		writeRenderHints(json, state);
+		writeParticleHints(json, state);
 
 		json.name("b").beginArray();
 		int count = 0;
@@ -168,6 +178,66 @@ final class BlockPalette {
 		}
 		json.endArray().endObject();
 		return json.toString();
+	}
+
+	private static final @Nullable Method CAN_BURN = findCanBurn();
+
+	private static @Nullable Method findCanBurn() {
+		try {
+			Method method = FireBlock.class.getDeclaredMethod("canBurn", BlockState.class);
+			method.setAccessible(true);
+			return method;
+		} catch (ReflectiveOperationException | RuntimeException e) {
+			return null;
+		}
+	}
+
+	/**
+	 * What the viewer's ports of the blocks' animateTick need from the game's block objects: the falling leaf
+	 * particle of leaves ({@code lp: [chance, particle id]}, no id for leaves tinted by the biome, {@code lpc}
+	 * for a fixed colour) and whether fire burns the block ({@code fb}, fire next to it smokes). Read from the
+	 * block instances, so new leaves and their chances come with a game version.
+	 */
+	private static void writeParticleHints(Json json, BlockState state) {
+		Block block = state.getBlock();
+		if (block instanceof LeavesBlock) {
+			try {
+				Float chance = null;
+				ParticleOptions particle = null;
+				for (Class<?> type = block.getClass(); type != null && type != Block.class; type = type.getSuperclass()) {
+					for (Field field : type.getDeclaredFields()) {
+						if (Modifier.isStatic(field.getModifiers())) {
+							continue;
+						}
+						if (field.getType() == float.class && field.getName().toLowerCase(Locale.ROOT).contains("chance")) {
+							field.setAccessible(true);
+							chance = field.getFloat(block);
+						} else if (ParticleOptions.class.isAssignableFrom(field.getType())) {
+							field.setAccessible(true);
+							particle = (ParticleOptions) field.get(block);
+						}
+					}
+				}
+				if (chance != null) {
+					json.name("lp").beginArray().value(chance, 4)
+							.value(particle == null ? null : BuiltInRegistries.PARTICLE_TYPE.getKey(particle.getType()).toString()).endArray();
+					if (particle instanceof ColorParticleOption color) {
+						json.field("lpc", Math.round(color.getRed() * 255) << 16 | Math.round(color.getGreen() * 255) << 8 | Math.round(color.getBlue() * 255));
+					}
+				}
+			} catch (ReflectiveOperationException | RuntimeException e) {
+				Problems.report(null, "leaf particles", e);
+			}
+		}
+		if (CAN_BURN != null) {
+			try {
+				if ((boolean) CAN_BURN.invoke(Blocks.FIRE, state)) {
+					json.field("fb", true);
+				}
+			} catch (ReflectiveOperationException | RuntimeException e) {
+				Problems.report(null, "flammability", e);
+			}
+		}
 	}
 
 	/**

@@ -100,6 +100,8 @@ public final class CctvConfig {
 		public boolean labels = true;
 		/** Names above all mobs (only when they are visible from the camera). */
 		public boolean mobLabels = false;
+		/** Particles of blocks and fluids (torch flames, campfire smoke, falling leaves, drips). */
+		public boolean particles = true;
 		/** Picture mode: "color", "mono" or "night". */
 		public String mode = "color";
 		/** CCTV look (scan lines, vignette). */

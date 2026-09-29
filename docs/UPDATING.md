@@ -56,6 +56,7 @@ of game APIs on the server and a set of client classes the viewer ports to JavaS
 | `BlockEntityRenderer`s (chest, shulker box, bell, banner, skull, decorated pot) | `entities.js`, `mobs.js` |
 | `KeyframeAnimation`, `AnimationChannel`, `AnimationState` | `keyframes.js` |
 | `setupAnim` of the keyframe animated models (warden, sniffer, frog, camel...) and the entities' client-side `setupAnimationStates` / `handleEntityEvent` | `mobs.js` (`KEYFRAME_ANIMS`, `CLIENT`) |
+| `ClientLevel#animateTick`, the particles (`FlameParticle`, `CampfireSmokeParticle`, `DripParticle`...) and the blocks' `animateTick` (torches, campfires, leaves, lava...) | `particles.js` (`PROVIDERS`, `animateBlock`, `animateFluid`) |
 
 The keyframe animations themselves (`net.minecraft.client.animation.definitions.*`) are read from the
 client jar at run time (`EntityModels.java`), so changed or new definitions need no work. A new mob

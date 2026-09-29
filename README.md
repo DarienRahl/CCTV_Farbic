@@ -82,7 +82,7 @@ Drag with the mouse to look around, use the wheel to zoom and double-click to go
 camera's view. The view turns only as far as the terrain the server streams around the camera's
 direction (about 20° beyond the picture); aim the camera with `/cctv aim` to look elsewhere. **⚙ Settings** has: graphics (vanilla / shaders) and shader quality, post effect
 (custom shader), sky (sky box), clouds, camera mode (colour / black and white / night vision),
-render resolution (for weak GPUs), name tags, mob labels and the CCTV effect. Each viewer's
+render resolution (for weak GPUs), name tags, mob labels, particles and the CCTV effect. Each viewer's
 choice is remembered in their browser.
 
 Name tags look exactly like in the game: Minecraft's own font from `client.jar`, floating half a
@@ -129,7 +129,7 @@ can really see. "Mob labels" adds tags for every other mob (its custom name or i
 | `skins` | `true` | Player skins (the server fetches them from the Mojang API and caches them) |
 | `markers` | `true` | Camera marker block in the world |
 | `maxViewersPerCamera` | `16` | Viewer limit per camera |
-| `viewer` | | Viewer defaults: `graphics` (`vanilla`/`shaders`), `shaderQuality` (`low`…`ultra`), `postShader`, `skyboxes` (dimension → name), `clouds` (`fancy`/`fast`/`off`), `labels`, `mobLabels`, `mode` (`color`/`mono`/`night`), `cctvEffect`, `lockSettings` |
+| `viewer` | | Viewer defaults: `graphics` (`vanilla`/`shaders`), `shaderQuality` (`low`…`ultra`), `postShader`, `skyboxes` (dimension → name), `clouds` (`fancy`/`fast`/`off`), `labels`, `mobLabels`, `particles`, `mode` (`color`/`mono`/`night`), `cctvEffect`, `lockSettings` |
 
 Resource packs (`*.zip`) put into `config/cctv/resourcepacks/` override block textures and models
 in the viewer, for example to match the server's resource pack.
@@ -216,10 +216,10 @@ Stream events:
 
 ## Limitations
 
-- Mob animations that use keyframes in the game (e.g. sniffer, warden, frog, armadillo) are
-  simplified: head and legs move, but without the full sequences. Banner and shield patterns are
-  not drawn (only the base colour).
-- Particles, sounds and chest opening animations are not drawn.
+- Shield patterns are not drawn (only the base colour).
+- Sounds and chest opening animations are not played. Particles are the ones blocks and fluids
+  make on their own (torches, campfires, leaves, lava, drips...); particles the server sends
+  (explosions, block breaking, potion effects) are not drawn yet.
 - Terrain in unloaded chunks shows the state of the last world save.
 - Textures and models from `client.jar` are not part of this repository. The mod downloads them
   from Mojang's servers on a server that runs the game.

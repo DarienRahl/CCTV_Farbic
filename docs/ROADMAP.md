@@ -69,8 +69,10 @@ to the milestone it belongs to.
       sherds on decorated pots
 - [ ] Conduit, lectern and enchanting table books, beacon beams, end portal and end gateway
       effect, spawner and trial spawner contents, campfire items, brushable blocks
-- [ ] **Particles** from `particles/*.json` and their textures: torch, candle and campfire flames
-      and smoke, lava pops, drips, portal, falling leaves, spore blossoms, rain splashes
+- [x] **Particles** from `particles/*.json` and their textures: torch, candle and campfire flames
+      and smoke, lava pops, drips, portal, falling leaves, spore blossoms, fireflies
+- [ ] More particles: rain splashes, entity particles (hearts, villager emotions, potion swirls),
+      block breaking, explosions and the particles the server sends (`ClientboundLevelParticlesPacket`)
 - [ ] Entity details: fire on burning entities, the game's shadow texture projected on blocks,
       enchantment glint, armour trims, capes and elytra, item frames with maps, leashes, fishing
       lines, glowing outlines

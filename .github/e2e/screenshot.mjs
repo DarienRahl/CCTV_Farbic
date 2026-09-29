@@ -25,6 +25,7 @@ async function shoot(name, settings, camera = 'ci') {
 		ready: !!(window.cctv && window.cctv.state.ready),
 		text: window.cctv ? window.cctv.entities.text.draws.length : 0,
 		signs: window.cctv ? window.cctv.world.signs.size : 0,
+		particles: window.cctv && window.cctv.particles ? window.cctv.particles.particles.length : 0,
 		stats: document.getElementById('stats').textContent,
 	}));
 	console.log(name + ':', JSON.stringify(info));
