@@ -48,7 +48,9 @@ import io.github.darienrahl.cctv.assets.ClientAssets;
  * GET /assets/entity/{path}.png  one entity texture
  * GET /assets/misc/{path}.png    one texture of textures/misc (entity shadow, enchantment glint)
  * GET /assets/font/{path}         the game's font (definitions .json, glyph sheets .png)
+ * GET /assets/{trims|palettes|map}/{path}.png[.mcmeta] armour trim patterns, trim palettes, map decorations
  * GET /api/status                 state of the live camera sessions (troubleshooting)
+ * GET /map/{id}                   the picture of a map in an item frame a camera sees (128 x 128 RGBA)
  * </pre>
  */
 public final class WebServer {
@@ -166,6 +168,8 @@ public final class WebServer {
 			cape(exchange, path.substring("/cape/".length()), query.get("name"));
 		} else if (path.startsWith("/assets/")) {
 			asset(exchange, path.substring("/assets/".length()));
+		} else if (path.startsWith("/map/")) {
+			map(exchange, path.substring("/map/".length()));
 		} else {
 			sendText(exchange, 404, "text/plain", "Not found");
 		}
@@ -255,6 +259,34 @@ public final class WebServer {
 		sendBytes(exchange, 200, contentType(file.getFileName().toString()), Files.readAllBytes(file));
 	}
 
+	/** The picture of a map in an item frame: raw RGBA, the viewer puts it into a texture as it is. */
+	private void map(HttpExchange exchange, String id) throws IOException {
+		Headers headers = exchange.getResponseHeaders();
+		headers.add("Access-Control-Allow-Origin", "*");
+		byte[] rgba = null;
+		try {
+			rgba = directory.mapPicture(Integer.parseInt(id));
+		} catch (NumberFormatException e) {
+			// not a map id
+		}
+		if (rgba == null) {
+			sendText(exchange, 404, "text/plain", "Not found");
+			return;
+		}
+		// the viewer asks with ?v=<picture version>, so a picture may be kept for good
+		headers.add("Cache-Control", "max-age=86400");
+		if (acceptsGzip(exchange)) {
+			ByteArrayOutputStream out = new ByteArrayOutputStream(8192);
+			try (GZIPOutputStream gzip = new GZIPOutputStream(out)) {
+				gzip.write(rgba);
+			}
+			headers.add("Content-Encoding", "gzip");
+			sendBytes(exchange, 200, "application/octet-stream", out.toByteArray());
+		} else {
+			sendBytes(exchange, 200, "application/octet-stream", rgba);
+		}
+	}
+
 	private void asset(HttpExchange exchange, String path) throws IOException {
 		Headers headers = exchange.getResponseHeaders();
 		headers.add("Access-Control-Allow-Origin", "*");
@@ -303,6 +335,14 @@ public final class WebServer {
 			}
 			headers.add("Cache-Control", "max-age=86400");
 			sendBytes(exchange, 200, path.endsWith(".png") ? "image/png" : "application/json", data);
+		} else if (path.startsWith("trims/") || path.startsWith("palettes/") || path.startsWith("map/")) {
+			byte[] data = assets.recolourTexture(path);
+			if (data == null) {
+				sendText(exchange, 404, "text/plain", "Not found");
+				return;
+			}
+			headers.add("Cache-Control", "max-age=86400");
+			sendBytes(exchange, 200, path.endsWith(".mcmeta") ? "application/json" : "image/png", data);
 		} else if ((path.startsWith("entity/") || path.startsWith("painting/") || path.startsWith("misc/")) && path.endsWith(".png")) {
 			String name = path.substring(path.indexOf('/') + 1, path.length() - ".png".length());
 			byte[] png = path.startsWith("entity/") ? assets.entityTexture(name)

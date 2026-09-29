@@ -30,12 +30,14 @@ of game APIs on the server and a set of client classes the viewer ports to JavaS
 
 | File | Game APIs used | Purpose |
 |---|---|---|
-| `mixin/ServerLevelMixin.java` | `ServerLevel#sendBlockUpdated`, `#broadcastEntityEvent` (inject) | instant block updates, entity events for animations |
+| `mixin/ServerLevelMixin.java` | `ServerLevel#sendBlockUpdated`, `#broadcastEntityEvent`, `#levelEvent`, `#sendParticles` (inject), `#explode` (wraps `ServerExplosion#explode`) | instant block updates, entity events for animations, the effects that make particles |
 | `mixin/ChunkMapAccessor.java` | `ChunkMap#readChunk` (invoker) | saved chunks for far terrain |
 | `camera/SectionCapture.java` | `LevelChunkSection`, `PalettedContainer`, `DataLayer`, light listeners | copying sections |
 | `camera/SavedChunks.java` | `SerializableChunkData`, `ChunkStatus`, heightmaps | parsing saved chunks |
 | `camera/BlockPalette.java` | `BlockState` properties, shapes, render shape, fluids | block state table for the viewer |
-| `camera/EntityEncoder.java` | entity getters, data components, equipment, `AnimationState` fields | entity frames |
+| `camera/EntityEncoder.java` | entity getters, data components, equipment (`Equippable`, `DyedItemColor`, `ArmorTrim`), `AnimationState` fields, `ItemFrame#getFramedMapId` | entity frames |
+| `camera/MapPictures.java` | `MapItemSavedData#colors`, `MapColor#getColorFromPackedId` | pictures of maps in item frames (`GET /map/{id}`) |
+| `camera/EffectEncoder.java` | level event ids, `ParticleTypes.CODEC`, `ExplosionParticleInfo`, `BonemealableBlock` | server particles |
 | `camera/EnvironmentSampler.java` | `EnvironmentAttributes`, `DimensionType` | sky, fog, light colours |
 | `camera/WeatherSampler.java`, `BiomeTable.java` | biome precipitation and colours | rain and snow columns, tints |
 | `camera/CameraSession.java`, `CameraManager.java` | chunk access, heightmaps, entity queries | streaming |
@@ -58,6 +60,9 @@ of game APIs on the server and a set of client classes the viewer ports to JavaS
 | `FlameFeatureRenderer`, `CapeLayer`/`PlayerCapeModel`/`ClientAvatarState`, `WingsLayer`/`ElytraModel`/`ElytraAnimationState` | `entities.js`, `mobs.js` |
 | `EntityRenderer#extractShadow`, `ShadowFeatureRenderer`, `Lightmap.getBrightness` (entity shadows; the server sends `Level#getSkyDarken`) | `entities.js` (`shadowFor`, `drawShadows`), `EnvironmentSampler.java` |
 | The enchantment glint: `TextureTransform.setupGlintTexturing`, the `GLINT` parts of `core/entity` and `core/item` shaders, `ItemStack#hasFoil` (the server's `foil` bits) | `entities.js` (`GLINTS`, `glintMatrix`, `ENTITY_FS`), `EntityEncoder.java` |
+| `EquipmentLayerRenderer`, `HumanoidArmorLayer`, `SimpleEquipmentLayer`, `EquipmentClientInfo` (the `equipment/*.json` files come from the jar), `PalettedTextureManager` and `PaletteMapping` (trim palettes) | `mobs.js` (`equipmentLayers`, `armorLayers`), `entities.js` (`palettedTexture`) |
+| `ItemFrameRenderer`, `MapRenderer`, `MapTextureManager` | `entities.js` (`drawItemFrame`, `drawMap`, `mapTexture`) |
+| `SkinTextureDownloader#processLegacySkin` | `entities.js` (`normalizeSkin`) |
 | `EntityRenderer#extractRenderState` leash states and `LeashFeatureRenderer` (the server sends `Leashable#getLeashOffset`, `Entity#getRopeHoldPosition` and the quad leash offsets) | `entities.js` (`drawLeashes`, `emitLeash`), `EntityEncoder.java` (`writeLeash`) |
 | Server particles: `LevelEventHandler`, `ClientPacketListener#handleParticleEvent`/`handleExplosion`, `ClientExplosionTracker`, `ClientLevel#addDestroyBlockEffect`, the `handleEntityEvent` particles, `ParticleResources` (which class draws a type). The server side hooks `ServerLevel#levelEvent`, `#sendParticles` and `#explode` | `particles.js` (`effect`, `PROVIDERS`), `EffectEncoder.java`, `ServerLevelMixin.java` |
 | `KeyframeAnimation`, `AnimationChannel`, `AnimationState` | `keyframes.js` |

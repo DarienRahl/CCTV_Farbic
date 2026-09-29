@@ -5,7 +5,7 @@
   <a href="https://github.com/DarienRahl/CCTV_Farbic/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/DarienRahl/CCTV_Farbic?style=for-the-badge&amp;label=release&amp;color=5d8c3e"></a>
   <img alt="Minecraft 26.3" src="https://img.shields.io/badge/minecraft-26.3-866043?style=for-the-badge">
   <img alt="Fabric, server side only" src="https://img.shields.io/badge/fabric-server%20side%20only-8b8b8b?style=for-the-badge">
-  <a href="#roadmap"><img alt="Roadmap" src="https://img.shields.io/badge/roadmap-28%2F42%20done-80ff20?style=for-the-badge"></a>
+  <a href="#roadmap"><img alt="Roadmap" src="https://img.shields.io/badge/roadmap-30%2F44%20done-80ff20?style=for-the-badge"></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-555555?style=for-the-badge"></a>
 </p>
 <!-- badges:end -->
@@ -24,7 +24,8 @@ in a web browser: players, mobs, opening doors and placed blocks show up right a
   from the same environment attributes as in the game.
 - **Every mob with its real model.** Model geometry is taken from `client.jar` (happy ghast, horses
   with coats and markings, wolves, cats, villagers with professions, cold/warm variants…), together
-  with saddles, armour, elytra, collars, wool, harnesses and glowing eyes. Players have their own
+  with saddles, dyed and trimmed armour, elytra, collars, wool, harnesses and glowing eyes; maps show
+  their pictures in item frames. Players have their own
   skins (or the game's default skin for their UUID) with the skin layers they chose, their capes
   (swinging as they move), and walk, sneak, swim and glide like in the game. Mobs play the game's
   own keyframe animations (sniffer, warden, frog, camel…) and react to entity events (attacks,
@@ -43,7 +44,7 @@ in a web browser: players, mobs, opening doors and placed blocks show up right a
 ## Roadmap
 
 <!-- roadmap:start -->
-<p align="center"><img src="docs/images/roadmap/banner.svg" width="100%" alt="CCTV roadmap: 28 of 42 done"></p>
+<p align="center"><img src="docs/images/roadmap/banner.svg" width="100%" alt="CCTV roadmap: 30 of 44 done"></p>
 
 What is done and what comes next, milestone by milestone (the full plan with its principles is in
 [docs/ROADMAP.md](docs/ROADMAP.md)).
@@ -80,10 +81,10 @@ What is done and what comes next, milestone by milestone (the full plan with its
 
 </details>
 
-<img src="docs/images/roadmap/1-3.svg" width="100%" alt="1.3 — 1:1 picture: in progress - 1.3.0 is out, 13 of 19 done">
+<img src="docs/images/roadmap/1-3.svg" width="100%" alt="1.3 — 1:1 picture: in progress - 1.3.0 is out, 15 of 21 done">
 
 <details open>
-<summary><b>1.3 — 1:1 picture</b> · in progress - 1.3.0 is out · 13 of 19 done</summary>
+<summary><b>1.3 — 1:1 picture</b> · in progress - 1.3.0 is out · 15 of 21 done</summary>
 
 - [ ] **Reference renders in CI**: a Fabric client game test builds the CI scene in single player, takes a screenshot from the camera position with the game, and the viewer takes one from the same camera; both are published side by side with a difference score
 - [x] **Signs and hanging signs** with their text in the game font (text sent by the server; boards and beds are block models in 26.3 and were already drawn)
@@ -101,7 +102,9 @@ What is done and what comes next, milestone by milestone (the full plan with its
 - [x] **Entity shadows** like EntityRenderer.extractShadow: `shadow.png` on the tops of the blocks below, fading with depth and in the dark, only within 16 blocks of the camera
 - [x] **Enchantment glint** on held, dropped and framed items, armour and elytra (the 26.3 glint pipelines: the glint texture through TextureTransform's moving matrix, added in the same pass)
 - [x] **Leashes** (LeashFeatureRenderer: the crossed ribbons from the entity to the holder's hand or the knot, sagging, lit at both ends; the four ropes of a happy ghast's harness)
-- [ ] Entity details: armour trims, item frames with maps, fishing lines, glowing outlines
+- [x] **Armour like EquipmentLayerRenderer**: the layers of the game's `equipment/*.json` (new materials come with the game), dyed leather armour, **armour trims** recoloured with the trim material's palette (the 26.3 PalettedTextureManager), body armour on horses, undead horses, wolves, llamas, nautiluses and happy ghasts
+- [x] **Maps in item frames** (MapRenderer: the map's picture and the decorations shown on frames); item frames turned like the game's and invisible frames showing their item; old 64x32 skins converted like SkinTextureDownloader
+- [ ] Entity details: fishing lines, glowing outlines, wolf armour cracks, names of map markers
 - [ ] Terrain: the game's chunk occlusion culling (visibility graph), block breaking progress, remaining fluid edge cases, the biome blend setting
 - [ ] Camera in water, lava and powder snow: the game's overlays and fog
 

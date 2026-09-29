@@ -21,6 +21,7 @@ import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.particles.ColorParticleOption;
 import net.minecraft.core.particles.ParticleOptions;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.network.chat.Component;
 import net.minecraft.util.StringRepresentable;
 import net.minecraft.world.entity.AnimationState;
 import net.minecraft.world.effect.MobEffectInstance;
@@ -30,12 +31,19 @@ import net.minecraft.world.entity.Leashable;
 import net.minecraft.world.entity.LightningBolt;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Pose;
+import net.minecraft.world.entity.decoration.ItemFrame;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.player.PlayerModelPart;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.component.DyedItemColor;
+import net.minecraft.world.item.equipment.Equippable;
+import net.minecraft.world.item.equipment.trim.ArmorTrim;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.saveddata.maps.MapDecoration;
+import net.minecraft.world.level.saveddata.maps.MapId;
+import net.minecraft.world.level.saveddata.maps.MapItemSavedData;
 import net.minecraft.world.phys.Vec3;
 
 import io.github.darienrahl.cctv.web.Json;
@@ -218,6 +226,7 @@ final class EntityEncoder {
 			writeItem(json, "saddle", living.getItemBySlot(EquipmentSlot.SADDLE));
 			writeItem(json, "bodyArmor", living.getItemBySlot(EquipmentSlot.BODY));
 			writeArmor(json, living);
+			writeEquipment(json, living);
 			writeEffectParticles(json, living);
 			foil = foil(living.getMainHandItem(), FOIL_HAND) | foil(living.getOffhandItem(), FOIL_OFFHAND)
 					| foil(living.getItemBySlot(EquipmentSlot.BODY), FOIL_BODY);
@@ -262,6 +271,9 @@ final class EntityEncoder {
 		}
 		if (foil != 0) {
 			json.field("foil", foil);
+		}
+		if (entity instanceof ItemFrame frame) {
+			writeFramedMap(json, frame);
 		}
 		if (entity instanceof Leashable leashable && leashable.getLeashHolder() != null) {
 			writeLeash(json, entity, leashable, leashable.getLeashHolder());
@@ -448,6 +460,86 @@ final class EntityEncoder {
 			json.value(item);
 		}
 		json.endArray();
+	}
+
+	/** The slots EquipmentLayerRenderer draws: the armour (as in "armor") and the body (horse armour, carpets...). */
+	private static final EquipmentSlot[] EQUIPMENT = {EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET,
+			EquipmentSlot.BODY};
+
+	/**
+	 * What EquipmentLayerRenderer needs of each worn piece, as "eq" [head, chest, legs, feet, body] (null for
+	 * nothing to draw): the equipment asset ("a", its layers are equipment/*.json of the client), the dye
+	 * ("c", DyedItemColor) and the trim ("t": pattern, its texture, material, the material's palette, decal).
+	 */
+	private static void writeEquipment(Json json, LivingEntity living) {
+		ItemStack[] stacks = new ItemStack[EQUIPMENT.length];
+		boolean any = false;
+		for (int i = 0; i < EQUIPMENT.length; i++) {
+			ItemStack stack = living.getItemBySlot(EQUIPMENT[i]);
+			Equippable equippable = stack.isEmpty() ? null : stack.get(DataComponents.EQUIPPABLE);
+			// HumanoidArmorLayer.shouldRender: an asset, worn in its own slot
+			if (equippable != null && equippable.assetId().isPresent() && equippable.slot() == EQUIPMENT[i]) {
+				stacks[i] = stack;
+				any = true;
+			}
+		}
+		if (!any) {
+			return;
+		}
+		json.name("eq").beginArray();
+		for (ItemStack stack : stacks) {
+			if (stack == null) {
+				json.value((String) null);
+				continue;
+			}
+			json.beginObject().field("a", stack.get(DataComponents.EQUIPPABLE).assetId().get().identifier().toString());
+			DyedItemColor dye = stack.get(DataComponents.DYED_COLOR);
+			if (dye != null) {
+				json.field("c", dye.rgb());
+			}
+			ArmorTrim trim = stack.get(DataComponents.TRIM);
+			if (trim != null) {
+				json.name("t").beginArray()
+						.value(trim.pattern().unwrapKey().map(key -> key.identifier().toString()).orElse(null))
+						.value(trim.pattern().value().assetId().toString())
+						.value(trim.material().unwrapKey().map(key -> key.identifier().toString()).orElse(null))
+						.value(trim.material().value().paletteId().toString())
+						.value(trim.pattern().value().decal())
+						.endArray();
+			}
+			json.endObject();
+		}
+		json.endArray();
+	}
+
+	/**
+	 * A filled map in an item frame (ItemFrameRenderer draws its picture instead of the item): its id, the
+	 * version of its picture (GET /map/{id}) and the decorations shown on frames (banners, markers...):
+	 * [sprite, x, y, rotation, name].
+	 */
+	private static void writeFramedMap(Json json, ItemFrame frame) {
+		ItemStack stack = frame.getItem();
+		MapId id = stack.isEmpty() ? null : frame.getFramedMapId(stack);
+		MapItemSavedData data = id == null ? null : frame.level().getMapData(id);
+		if (data == null) {
+			return;
+		}
+		json.field("map", id.id()).field("mapv", MapPictures.version(id.id(), data, frame.level().getGameTime()));
+		boolean open = false;
+		for (MapDecoration decoration : data.getDecorations()) {
+			if (!decoration.renderOnFrame()) {
+				continue;
+			}
+			if (!open) {
+				json.name("mapd").beginArray();
+				open = true;
+			}
+			json.beginArray().value(decoration.getSpriteLocation().toString()).value(decoration.x()).value(decoration.y())
+					.value(decoration.rot()).value(decoration.name().map(Component::getString).orElse(null)).endArray();
+		}
+		if (open) {
+			json.endArray();
+		}
 	}
 
 	private static final Map<Class<?>, Optional<Method>> ITEM_CACHE = new ConcurrentHashMap<>();

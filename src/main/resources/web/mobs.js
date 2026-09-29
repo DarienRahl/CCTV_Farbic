@@ -1113,8 +1113,8 @@ const MOBS = {
 	happy_ghast: {
 		layer: e => (e.baby ? 'happy_ghast_baby#main' : 'happy_ghast#main'), texture: e => (e.baby ? 'ghast/happy_ghast_baby' : 'ghast/happy_ghast'),
 		shadow: e => (e.baby ? 0.95 : 4), anim: 'ghast',
+		body: e => bodyLayers(e, 'happy_ghast_body', e.baby ? 'happy_ghast_baby_harness#main' : 'happy_ghast_harness#main'),
 		layers: [
-			{ layer: e => (e.baby ? 'happy_ghast_baby_harness#main' : 'happy_ghast_harness#main'), texture: e => 'equipment/happy_ghast_body/' + strip(e.bodyArmor), when: e => /_harness$/.test(e.bodyArmor || '') },
 			{ layer: e => (e.baby ? 'happy_ghast_baby_ropes#main' : 'happy_ghast_ropes#main'), texture: 'ghast/happy_ghast_ropes', when: e => e.d && e.d.leashed },
 		],
 	},
@@ -1128,8 +1128,8 @@ const MOBS = {
 				layer: e => (e.baby ? 'horse_baby#main' : 'horse#main'), when: e => e.d && e.d.markings && e.d.markings !== 'none',
 				texture: e => 'horse/horse_markings_' + e.d.markings.replace(/_/g, '') + baby(e),
 			},
-			{ layer: 'horse_armor#main', texture: e => 'equipment/horse_body/' + horseArmor(e.bodyArmor), when: e => !e.baby && !!horseArmor(e.bodyArmor), color: e => (horseArmor(e.bodyArmor) === 'leather' ? [0xa0 / 255, 0x65 / 255, 0x40 / 255, 1] : null) },
 		],
+		body: e => (e.baby ? [] : bodyLayers(e, 'horse_body', 'horse_armor#main')),
 	},
 	husk: { layer: e => (e.baby ? 'husk_baby#main' : 'husk#main'), texture: e => 'zombie/husk' + baby(e), shadow: 0.5, anim: 'zombie', armor: 'husk' },
 	illusioner: { layer: 'illusioner#main', texture: 'illager/illusioner', shadow: 0.5, anim: 'illager' },
@@ -1139,7 +1139,7 @@ const MOBS = {
 	},
 	llama: {
 		layer: e => (e.baby ? 'llama_baby#main' : 'llama#main'), texture: e => 'llama/llama_' + variant(e, 'creamy') + baby(e), shadow: 0.7, anim: 'llama',
-		layers: [{ layer: e => (e.baby ? 'llama_baby#decor' : 'llama#decor'), texture: e => 'equipment/llama_body/' + carpet(e.bodyArmor), when: e => !!carpet(e.bodyArmor) }],
+		body: e => bodyLayers(e, 'llama_body', e.baby ? 'llama_baby#decor' : 'llama#decor'),
 	},
 	trader_llama: {
 		layer: e => (e.baby ? 'trader_llama_baby#main' : 'trader_llama#main'), texture: e => 'llama/llama_' + variant(e, 'creamy') + baby(e), shadow: 0.7, anim: 'llama',
@@ -1148,7 +1148,7 @@ const MOBS = {
 	magma_cube: { layer: 'magma_cube#main', texture: 'slime/magmacube', shadow: 0.25, anim: 'none', slime: true, fullBright: true },
 	mooshroom: { layer: e => (e.baby ? 'mooshroom_baby#main' : 'mooshroom#main'), texture: e => 'cow/mooshroom_' + variant(e, 'red') + baby(e), shadow: 0.7, anim: 'quadruped' },
 	mule: { layer: e => (e.baby ? 'mule_baby#main' : 'mule#main'), texture: e => 'horse/mule' + baby(e), shadow: 0.75, anim: 'horse', saddle: ['mule#saddle', 'equipment/mule_saddle/saddle'] },
-	nautilus: { layer: e => (e.baby ? 'nautilus_baby#main' : 'nautilus#main'), texture: e => 'nautilus/nautilus' + baby(e), shadow: 0.7, anim: 'nautilus', saddle: ['nautilus#saddle', 'equipment/nautilus_saddle/saddle'] },
+	nautilus: { layer: e => (e.baby ? 'nautilus_baby#main' : 'nautilus#main'), texture: e => 'nautilus/nautilus' + baby(e), shadow: 0.7, anim: 'nautilus', body: e => (e.baby ? [] : bodyLayers(e, 'nautilus_body', 'nautilus_armor#main')), saddle: ['nautilus#saddle', 'equipment/nautilus_saddle/saddle'] },
 	ocelot: { layer: e => (e.baby ? 'ocelot_baby#main' : 'ocelot#main'), texture: e => 'cat/ocelot' + baby(e), shadow: 0.4, anim: 'cat' },
 	panda: {
 		layer: e => (e.baby ? 'panda_baby#main' : 'panda#main'),
@@ -1201,7 +1201,7 @@ const MOBS = {
 	},
 	silverfish: { layer: 'silverfish#main', texture: 'silverfish/silverfish', shadow: 0.3, anim: 'none' },
 	skeleton: { layer: 'skeleton#main', texture: 'skeleton/skeleton', shadow: 0.5, anim: 'skeleton', armor: 'skeleton' },
-	skeleton_horse: { layer: e => (e.baby ? 'skeleton_horse_baby#main' : 'skeleton_horse#main'), texture: e => 'horse/horse_skeleton' + baby(e), shadow: 0.75, anim: 'horse', saddle: ['skeleton_horse#saddle', 'equipment/skeleton_horse_saddle/saddle'] },
+	skeleton_horse: { layer: e => (e.baby ? 'skeleton_horse_baby#main' : 'skeleton_horse#main'), texture: e => 'horse/horse_skeleton' + baby(e), shadow: 0.75, anim: 'horse', body: e => (e.baby ? [] : bodyLayers(e, 'horse_body', 'undead_horse_armor#main')), saddle: ['skeleton_horse#saddle', 'equipment/skeleton_horse_saddle/saddle'] },
 	slime: { layer: 'slime#main', texture: 'slime/slime', shadow: 0.25, anim: 'none', slime: true, layers: [{ layer: 'slime#outer', texture: 'slime/slime', mode: 'translucent' }] },
 	sniffer: { layer: e => (e.baby ? 'sniffer_baby#main' : 'sniffer#main'), texture: e => (e.baby ? 'sniffer/snifflet' : 'sniffer/sniffer'), shadow: 1.1, anim: 'sniffer' },
 	snow_golem: { layer: 'snow_golem#main', texture: 'snow_golem/snow_golem', shadow: 0.5, anim: 'snowGolem' },
@@ -1234,33 +1234,22 @@ const MOBS = {
 			const mood = e.d && e.d.tame ? '_tame' : e.d && e.d.angry ? '_angry' : '';
 			return 'wolf/wolf' + (v === 'pale' ? '' : '_' + v) + mood + baby(e);
 		},
-		shadow: 0.5, anim: 'wolf',
+		shadow: 0.5, anim: 'wolf', body: e => (e.baby ? [] : bodyLayers(e, 'wolf_body', 'wolf_armor#main')),
 		layers: [
 			{ layer: e => (e.baby ? 'wolf_baby#main' : 'wolf#main'), texture: e => 'wolf/wolf_collar' + baby(e), when: e => e.d && e.d.tame, color: e => dyeRgb(e.d.collar || 'red') },
-			{ layer: 'wolf_armor#main', texture: 'equipment/wolf_body/armadillo_scute', when: e => !e.baby && /wolf_armor/.test(e.bodyArmor || '') },
 		],
 	},
 	zoglin: { layer: e => (e.baby ? 'zoglin_baby#main' : 'zoglin#main'), texture: e => 'hoglin/zoglin' + baby(e), shadow: 0.7, anim: 'hoglin' },
 	zombie: { layer: e => (e.baby ? 'zombie_baby#main' : 'zombie#main'), texture: e => 'zombie/zombie' + baby(e), shadow: 0.5, anim: 'zombie', armor: 'zombie' },
-	zombie_horse: { layer: e => (e.baby ? 'zombie_horse_baby#main' : 'zombie_horse#main'), texture: e => 'horse/horse_zombie' + baby(e), shadow: 0.75, anim: 'horse', saddle: ['zombie_horse#saddle', 'equipment/zombie_horse_saddle/saddle'] },
+	zombie_horse: { layer: e => (e.baby ? 'zombie_horse_baby#main' : 'zombie_horse#main'), texture: e => 'horse/horse_zombie' + baby(e), shadow: 0.75, anim: 'horse', body: e => (e.baby ? [] : bodyLayers(e, 'horse_body', 'undead_horse_armor#main')), saddle: ['zombie_horse#saddle', 'equipment/zombie_horse_saddle/saddle'] },
 	zombie_nautilus: {
 		layer: e => (variant(e, 'temperate') === 'warm' ? 'zombie_nautilus_coral#main' : 'zombie_nautilus#main'),
 		texture: e => (variant(e, 'temperate') === 'warm' ? 'nautilus/zombie_nautilus_coral' : 'nautilus/zombie_nautilus'), shadow: 0.7, anim: 'nautilus',
-		saddle: ['nautilus#saddle', 'equipment/nautilus_saddle/saddle'],
+		body: e => (e.baby ? [] : bodyLayers(e, 'nautilus_body', 'nautilus_armor#main')), saddle: ['nautilus#saddle', 'equipment/nautilus_saddle/saddle'],
 	},
 	zombie_villager: { villager: 'zombie_villager', shadow: 0.5, anim: 'zombie', armor: 'zombie_villager' },
 	zombified_piglin: { layer: e => (e.baby ? 'zombified_piglin_baby#main' : 'zombified_piglin#main'), texture: e => 'piglin/zombified_piglin' + baby(e), shadow: 0.5, anim: 'zombie', armor: 'zombified_piglin' },
 };
-
-function horseArmor(item) {
-	const m = /^(?:minecraft:)?([a-z]+)_horse_armor$/.exec(item || '');
-	return m ? m[1] : null;
-}
-
-function carpet(item) {
-	const m = /^(?:minecraft:)?([a-z_]+)_carpet$/.exec(item || '');
-	return m && DYE[m[1]] !== undefined ? m[1] : null;
-}
 
 function pandaGene(e) {
 	const main = strip(e.d && e.d.gene) || 'normal';
@@ -1280,28 +1269,93 @@ function sheepColor(e) {
 const TROPICAL_SMALL = ['kob', 'sunstreak', 'snooper', 'dasher', 'brinely', 'spotty'];
 const TROPICAL_LARGE = ['flopper', 'stripey', 'glitter', 'blockfish', 'betty', 'clayfish'];
 
-/** Armour materials of humanoid armour items. */
+/** Armour materials of humanoid armour items (only for a server that sends no equipment assets). */
 const ARMOR_MATERIAL = { leather: 'leather', chainmail: 'chainmail', iron: 'iron', golden: 'gold', diamond: 'diamond', netherite: 'netherite', copper: 'copper', turtle: 'turtle_scute' };
 const ARMOR_SLOTS = ['helmet', 'chestplate', 'leggings', 'boots'];
 
-export function armorLayers(prefix, e) {
-	if (!e.armor) return [];
+/** equipment/*.json of the client (EquipmentClientInfo) by equipment asset id, from the asset bundle. */
+let EQUIPMENT = {};
+export function setEquipment(map) {
+	EQUIPMENT = map || {};
+}
+
+const idPath = id => String(id).replace(/^minecraft:/, '');
+const opaqueRgb = argb => [((argb >> 16) & 255) / 255, ((argb >> 8) & 255) / 255, (argb & 255) / 255, 1];
+
+/**
+ * EquipmentLayerRenderer.renderLayers: what to draw for one worn piece ({a: equipment asset, c: dye,
+ * t: trim}, as the server sends it in "eq") with the layer type's textures on the model layer `layer`.
+ * Dyeable layers take the dye or their undyed colour (and are left out without either); the glint goes on
+ * the first layer drawn; the trim (not on baby armour) is its pattern texture recoloured with the material's
+ * palette, unless the equipment overrides it (iron trims on iron armour use the darker iron palette).
+ */
+export function equipmentLayers(entry, layerType, layer, foil = 0) {
+	const info = entry && EQUIPMENT[entry.a];
+	if (!info) return null;
 	const out = [];
+	let glint = foil;
+	for (const l of (info.layers && info.layers[layerType]) || []) {
+		let color = null;
+		if (l.dyeable) {
+			const rgb = entry.c ?? l.dyeable.color_when_undyed;
+			if (rgb === undefined || rgb === null) continue;
+			color = opaqueRgb(rgb);
+		}
+		out.push({ layer, texture: 'equipment/' + layerType + '/' + idPath(l.texture), color, foil: glint, playerTexture: !!l.use_player_texture });
+		glint = 0;
+	}
+	if (out.length && entry.t && layerType !== 'humanoid_baby') {
+		const [pattern, asset, material, palette] = entry.t;
+		let texture = asset;
+		let paletteId = palette;
+		for (const override of info.trim_overrides || []) {
+			const when = override.when || {};
+			if ((!when.material || when.material === material) && (!when.pattern || when.pattern === pattern)) {
+				texture = override.texture || texture;
+				paletteId = override.palette || null;
+				break;
+			}
+		}
+		const [ns, path] = String(texture).includes(':') ? String(texture).split(':') : ['minecraft', String(texture)];
+		out.push({ layer, texture: { paletted: ns + ':trims/entity/' + layerType + '/' + path, palette: paletteId }, color: null, foil: 0 });
+	}
+	return out;
+}
+
+export function armorLayers(prefix, e) {
+	if (!e.armor && !e.eq) return [];
+	const out = [];
+	const stand = strip(e.type) === 'armor_stand';
 	for (let i = 0; i < 4; i++) {
-		const item = strip(e.armor[i]);
+		const slot = ARMOR_SLOTS[i];
+		const layer = stand ? prefix + (e.baby ? '_small' : '') + '#' + slot : prefix + (e.baby ? '_baby' : '') + '#' + slot;
+		// foil: the "foil" bit of this slot (the piece has the enchantment glint)
+		const foil = 4 << i;
+		const entry = e.eq && e.eq[i];
+		if (entry) {
+			// HumanoidArmorLayer: baby armour (not on small armour stands), the inner model for leggings
+			const type = e.baby && !stand ? 'humanoid_baby' : slot === 'leggings' ? 'humanoid_leggings' : 'humanoid';
+			const layers = equipmentLayers(entry, type, layer, foil);
+			if (layers) {
+				out.push(...layers);
+				continue;
+			}
+		}
+		const item = strip(e.armor && e.armor[i]);
 		if (!item) continue;
 		const m = /^([a-z]+)_(helmet|chestplate|leggings|boots)$/.exec(item);
 		if (!m || !ARMOR_MATERIAL[m[1]]) continue;
 		const material = ARMOR_MATERIAL[m[1]];
-		const slot = ARMOR_SLOTS[i];
 		const folder = slot === 'leggings' ? 'humanoid_leggings' : (e.baby ? 'humanoid_baby' : 'humanoid');
-		const layer = prefix + (e.baby ? '_baby' : '') + '#' + slot;
-		// foil: the "foil" bit of this slot (the piece has the enchantment glint)
-		const foil = 4 << i;
 		out.push({ layer, texture: 'equipment/' + folder + '/' + material, color: material === 'leather' ? [0xa0 / 255, 0x65 / 255, 0x40 / 255, 1] : null, foil });
-		if (material === 'leather') out.push({ layer, texture: 'equipment/' + folder + '/leather_overlay', foil });
+		if (material === 'leather') out.push({ layer, texture: 'equipment/' + folder + '/leather_overlay' });
 	}
 	return out;
+}
+
+/** SimpleEquipmentLayer of mobs wearing body armour, a carpet or a harness: the layer type and model layer. */
+function bodyLayers(e, type, layer) {
+	return equipmentLayers(e.eq && e.eq[4], type, layer, 128) || [];
 }
 
 const VILLAGER_LEVELS = [null, 'stone', 'iron', 'gold', 'emerald', 'diamond'];
@@ -1357,7 +1411,9 @@ export function describeMob(e) {
 	}
 	// Equipment layers (saddle, armour) are drawn on invisible mobs too.
 	if (def.saddle && e.saddle) { add(def.saddle[0], def.saddle[1]); out[out.length - 1].equipment = true; }
-	if (def.armor) out.push(...armorLayers('minecraft:' + def.armor, e).map(l => ({ ...l, mode: 'cutout', equipment: true })));
+	// HumanoidArmorLayer and SimpleEquipmentLayer draw with armorCutoutNoCull
+	if (def.armor) out.push(...armorLayers('minecraft:' + def.armor, e).map(l => ({ ...l, mode: 'cutout_nocull', equipment: true })));
+	if (def.body) out.push(...def.body(e).map(l => ({ ...l, layer: 'minecraft:' + l.layer, mode: 'cutout_nocull', equipment: true })));
 	const chest = strip(e.armor && e.armor[1]);
 	const showCape = def.player && (e.parts === undefined || !!(e.parts & 1));
 	if (def.player && showCape && chest !== 'elytra' && e.uuid) {

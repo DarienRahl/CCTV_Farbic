@@ -96,7 +96,14 @@ to the milestone it belongs to. The roadmap on the README page is drawn from thi
       pipelines: the glint texture through TextureTransform's moving matrix, added in the same pass)
 - [x] **Leashes** (LeashFeatureRenderer: the crossed ribbons from the entity to the holder's hand
       or the knot, sagging, lit at both ends; the four ropes of a happy ghast's harness)
-- [ ] Entity details: armour trims, item frames with maps, fishing lines, glowing outlines
+- [x] **Armour like EquipmentLayerRenderer**: the layers of the game's `equipment/*.json` (new materials
+      come with the game), dyed leather armour, **armour trims** recoloured with the trim material's palette
+      (the 26.3 PalettedTextureManager), body armour on horses, undead horses, wolves, llamas, nautiluses
+      and happy ghasts
+- [x] **Maps in item frames** (MapRenderer: the map's picture and the decorations shown on frames); item
+      frames turned like the game's and invisible frames showing their item; old 64x32 skins converted like
+      SkinTextureDownloader
+- [ ] Entity details: fishing lines, glowing outlines, wolf armour cracks, names of map markers
 - [ ] Terrain: the game's chunk occlusion culling (visibility graph), block breaking progress,
       remaining fluid edge cases, the biome blend setting
 - [ ] Camera in water, lava and powder snow: the game's overlays and fog

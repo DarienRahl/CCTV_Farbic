@@ -74,6 +74,7 @@ class StreamReader(threading.Thread):
         self.entity_types = set()
         self.foil = set()
         self.leashed = set()
+        self.equipment = set()
         self.effects = set()
         self.block_updates = []
         self.sections = set()
@@ -116,6 +117,10 @@ class StreamReader(threading.Thread):
                                     self.foil.add((e["type"], e["foil"]))
                                 if e.get("leash"):
                                     self.leashed.add(e["type"])
+                                for piece in e.get("eq") or []:
+                                    if piece:
+                                        # equipment asset, whether it is dyed, its trim pattern
+                                        self.equipment.add((e["type"], piece["a"], "c" in piece, (piece.get("t") or [None])[0]))
                             self.names.update(e["name"] for e in data["e"] if e.get("nameVisible"))
                             for fx in data.get("fx", []):
                                 # level events by type, entity effects by kind, explosions by particle
@@ -194,6 +199,8 @@ def main():
     rcon.command("setblock 3 -58 8 minecraft:glass_pane")
     rcon.command("setblock 7 -58 8 minecraft:glass_pane")
     rcon.command("setblock 4 -58 7 minecraft:wall_torch[facing=north]")
+    # an item frame on the house wall, facing the camera (Facing 2 = north), with a turned sword
+    rcon.command('summon minecraft:item_frame 6 -58 7 {Facing:2b,ItemRotation:1b,Item:{id:"minecraft:diamond_sword",count:1}}')
     rcon.command("fill -8 -61 6 -4 -61 12 minecraft:water")
     rcon.command("fill -9 -60 3 -9 -60 14 minecraft:oak_fence")
     rcon.command("setblock 1 -60 3 minecraft:chest[facing=north]")
@@ -237,6 +244,9 @@ def main():
     rcon.command("summon minecraft:breeze 6 -60 2 {NoAI:1b}")
     rcon.command("item replace entity @e[type=minecraft:armor_stand,limit=1] armor.head"
                  " with minecraft:golden_helmet[enchantments={'minecraft:protection':1}]")
+    # a dyed leather chestplate with a gold coast trim (equipment layers, dye and trim palette)
+    rcon.command("item replace entity @e[type=minecraft:armor_stand,limit=1] armor.chest"
+                 " with minecraft:leather_chestplate[dyed_color=3364095,trim={material:'minecraft:gold',pattern:'minecraft:coast'}]")
 
     rcon.command("cctv create ci -1 -56 -8 10 30")
     listing = rcon.command("cctv list")
@@ -337,6 +347,9 @@ def main():
                          ("ex:minecraft:explosion_emitter", "the TNT explosion")):
         if effect not in stream.effects:
             failures.append(f"{what} ({effect}) was not streamed as an effect")
+    print("equipment:", sorted(stream.equipment, key=str), flush=True)
+    if ("minecraft:armor_stand", "minecraft:leather", True, "minecraft:coast") not in stream.equipment:
+        failures.append("the armour stand's dyed and trimmed leather chestplate was not streamed with its equipment asset")
     if "minecraft:pig" not in stream.leashed:
         failures.append("the pig on a lead was not streamed with its leash")
     if not any(t == "minecraft:armor_stand" and f & 4 for t, f in stream.foil):

@@ -36,6 +36,15 @@ net/minecraft/client/renderer/feature/LeashFeatureRenderer
 net/minecraft/client/renderer/rendertype/TextureTransform
 net/minecraft/client/renderer/Lightmap
 net/minecraft/client/renderer/entity/ItemFrameRenderer
+net/minecraft/client/renderer/MapRenderer
+net/minecraft/client/resources/MapTextureManager
+net/minecraft/client/renderer/entity/layers/EquipmentLayerRenderer
+net/minecraft/client/renderer/entity/layers/HumanoidArmorLayer
+net/minecraft/client/renderer/entity/layers/SimpleEquipmentLayer
+net/minecraft/client/resources/model/EquipmentClientInfo
+net/minecraft/client/resources/palette/PalettedTextureManager
+net/minecraft/client/resources/palette/PaletteMapping
+net/minecraft/client/renderer/texture/SkinTextureDownloader
 net/minecraft/client/renderer/entity/PaintingRenderer
 net/minecraft/client/renderer/entity/BoatRenderer
 net/minecraft/client/renderer/entity/MinecartRenderer

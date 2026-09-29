@@ -146,6 +146,26 @@ public final class ClientAssets implements AutoCloseable {
 		return texture("misc", path);
 	}
 
+	/**
+	 * Textures the viewer recolours or draws on maps: {@code trims/...} (armour trim patterns, with their
+	 * .mcmeta naming the base palette), {@code palettes/...} (trim material colours) and {@code map/...}
+	 * (map decorations).
+	 *
+	 * @param path path below {@code textures/}, e.g. {@code trims/entity/humanoid/bolt.png.mcmeta}
+	 */
+	public byte[] recolourTexture(String path) {
+		if (state != State.READY || path.contains("..")) {
+			return null;
+		}
+		boolean meta = path.endsWith(".png.mcmeta");
+		String name = path.substring(0, path.length() - (meta ? ".png.mcmeta" : ".png").length());
+		if (!(path.endsWith(".png") || meta) || !ENTITY_PATH.matcher(name).matches()
+				|| !(name.startsWith("trims/") || name.startsWith("palettes/") || name.startsWith("map/"))) {
+			return null;
+		}
+		return read("assets/minecraft/textures/" + path);
+	}
+
 	/** @param path path below {@code textures/painting/} without extension, e.g. {@code kebab} */
 	public byte[] paintingTexture(String path) {
 		return texture("painting", path);
@@ -444,6 +464,7 @@ public final class ClientAssets implements AutoCloseable {
 		Map<String, JsonElement> particles = new LinkedHashMap<>();
 		Map<String, String> particleTextures = new LinkedHashMap<>();
 		TreeSet<String> entityTextures = new TreeSet<>();
+		Map<String, JsonElement> equipment = new LinkedHashMap<>();
 
 		List<ZipFile> zips;
 		synchronized (this) {
@@ -479,6 +500,8 @@ public final class ClientAssets implements AutoCloseable {
 						colormaps.put(strip(rest, "textures/colormap/", ".png"), base64(zip, entry));
 					} else if (namespace.equals("minecraft") && rest.startsWith("textures/environment/") && rest.endsWith(".png")) {
 						environment.put(strip(rest, "textures/environment/", ".png"), base64(zip, entry));
+					} else if (rest.startsWith("equipment/") && rest.endsWith(".json")) {
+						equipment.put(namespace + ":" + strip(rest, "equipment/", ".json"), parse(zip, entry));
 					} else if (rest.startsWith("particles/") && rest.endsWith(".json")) {
 						particles.put(namespace + ":" + strip(rest, "particles/", ".json"), parse(zip, entry));
 					} else if (rest.startsWith("textures/particle/") && rest.endsWith(".png")) {
@@ -538,6 +561,8 @@ public final class ClientAssets implements AutoCloseable {
 		environment.forEach(environmentObject::addProperty);
 		root.add("environment", environmentObject);
 		root.add("particles", toObject(particles));
+		// EquipmentClientInfo: the layers of armour, carpets, harnesses... by equipment asset
+		root.add("equipment", toObject(equipment));
 		JsonObject particleTextureObject = new JsonObject();
 		particleTextures.forEach(particleTextureObject::addProperty);
 		root.add("particleTextures", particleTextureObject);

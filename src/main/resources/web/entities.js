@@ -6,7 +6,7 @@
 import {
 	ModelLibrary, VertexSink, FLOATS, emitModel, emitQuads, partMatrix, mat4, mul, translate, rotate, scale, DEG,
 } from './entity-models.js';
-import { describeMob, isKnownMob, blockEntityModel, dyeRgb, CLIENT, equipmentPose } from './mobs.js';
+import { describeMob, isKnownMob, blockEntityModel, dyeRgb, CLIENT, equipmentPose, setEquipment } from './mobs.js';
 import { Animator, AnimationStates } from './keyframes.js';
 import { collectParts } from './models.js';
 import { JavaRandom } from './rng.js';
@@ -39,6 +39,10 @@ function glintMatrix(scale, millisNow) {
 	const c = Math.cos(Math.PI / 18) * scale, s = Math.sin(Math.PI / 18) * scale;
 	return new Float32Array([c, s, 0, -s, c, 0, -offset0, offset1, 1]);
 }
+/** Direction.getStepX/Y/Z and toYRot of the facings. */
+const FACING_STEP = { north: [0, 0, -1], south: [0, 0, 1], west: [-1, 0, 0], east: [1, 0, 0], up: [0, 1, 0], down: [0, -1, 0] };
+const FACING_YROT = { south: 0, west: 90, north: 180, east: 270 };
+
 const MODES = { cutout: MODE_CUTOUT, cutout_nocull: MODE_NOCULL, translucent: MODE_TRANSLUCENT, eyes: MODE_EYES, energy: MODE_ENERGY };
 
 const ENTITY_VS = `
@@ -336,18 +340,57 @@ function hashColor(text) {
 	return [((h >> 16) & 255) / 255 * 0.5 + 0.35, ((h >> 8) & 255) / 255 * 0.5 + 0.35, (h & 255) / 255 * 0.5 + 0.35, 1];
 }
 
+/**
+ * SkinTextureDownloader.processLegacySkin: an old 64x32 skin gets the left arm and leg (the right ones'
+ * faces, each mirrored), the base layer has no transparency, and a legacy hat layer without any
+ * transparent pixel is cleared (the game's "Notch transparency hack": such skins filled it with black).
+ */
 function normalizeSkin(image) {
 	const canvas = document.createElement('canvas');
 	canvas.width = 64;
 	canvas.height = 64;
 	const g = canvas.getContext('2d');
 	g.drawImage(image, 0, 0);
-	if (image.height === 32) {
-		// Legacy 64x32 skins: the left limbs mirror the right ones.
-		g.drawImage(image, 0, 16, 16, 16, 16, 48, 16, 16);
-		g.drawImage(image, 40, 16, 16, 16, 32, 48, 16, 16);
+	const pixels = g.getImageData(0, 0, 64, 64);
+	const d = pixels.data;
+	const at = (x, y) => (y * 64 + x) * 4;
+	const legacy = image.height === 32;
+	if (legacy) {
+		// NativeImage.copyRect(srcX, srcY, offsetX, offsetY, width, height, mirrorX, false)
+		const copyRect = (sx, sy, ox, oy, w, h) => {
+			for (let y = 0; y < h; y++) {
+				for (let x = 0; x < w; x++) {
+					const from = at(sx + x, sy + y);
+					const to = at(sx + ox + (w - 1 - x), sy + oy + y);
+					for (let k = 0; k < 4; k++) d[to + k] = d[from + k];
+				}
+			}
+		};
+		copyRect(4, 16, 16, 32, 4, 4);
+		copyRect(8, 16, 16, 32, 4, 4);
+		copyRect(0, 20, 24, 32, 4, 12);
+		copyRect(4, 20, 16, 32, 4, 12);
+		copyRect(8, 20, 8, 32, 4, 12);
+		copyRect(12, 20, 16, 32, 4, 12);
+		copyRect(44, 16, -8, 32, 4, 4);
+		copyRect(48, 16, -8, 32, 4, 4);
+		copyRect(40, 20, 0, 32, 4, 12);
+		copyRect(44, 20, -8, 32, 4, 12);
+		copyRect(48, 20, -16, 32, 4, 12);
+		copyRect(52, 20, -8, 32, 4, 12);
 	}
-	return canvas;
+	const setNoAlpha = (x0, y0, x1, y1) => {
+		for (let x = x0; x < x1; x++) for (let y = y0; y < y1; y++) d[at(x, y) + 3] = 255;
+	};
+	setNoAlpha(0, 0, 32, 16);
+	if (legacy) {
+		let opaque = true;
+		for (let x = 32; x < 64 && opaque; x++) for (let y = 0; y < 32; y++) if (d[at(x, y) + 3] < 128) { opaque = false; break; }
+		if (opaque) for (let x = 32; x < 64; x++) for (let y = 0; y < 32; y++) d[at(x, y) + 3] = 0;
+	}
+	setNoAlpha(0, 16, 64, 32);
+	setNoAlpha(16, 48, 48, 64);
+	return pixels;
 }
 
 const DEFAULT_SKINS = ['alex', 'ari', 'efe', 'kai', 'makena', 'noor', 'steve', 'sunny', 'zuri'];
@@ -385,6 +428,7 @@ export class EntityRenderer {
 		this.textures = new Map();
 		this.skins = new Map();
 		this.capes = new Map();
+		this.maps = new Map();
 		this.states = new Map();
 		this.events = new Map();
 		// EnchantingTableBlockEntity animation state by block position
@@ -449,6 +493,7 @@ export class EntityRenderer {
 
 	setAssets(assets) {
 		this.assets = assets;
+		setEquipment(assets.bundle && assets.bundle.equipment);
 		const query = tokenSuffix('?');
 		fetch('/assets/entities.json' + query, { credentials: 'same-origin' })
 			.then(r => (r.ok ? r.json() : []))
@@ -480,6 +525,7 @@ export class EntityRenderer {
 	texture(path, folder = 'entity') {
 		if (!path) return null;
 		if (typeof path === 'object' && path.skin) return this.skin(path.skin).texture;
+		if (typeof path === 'object' && path.paletted) return this.palettedTexture(path.paletted, path.palette);
 		if (typeof path === 'object' && path.cape) {
 			const cape = this.cape(path.cape, path.name);
 			if (cape.texture) return cape.texture;
@@ -503,6 +549,96 @@ export class EntityRenderer {
 					entry.height = image.height;
 				})
 				.catch(() => { entry.failed = true; });
+		}
+		return entry.texture;
+	}
+
+	/**
+	 * PalettedTextureManager.getOrPrepare: a texture recoloured with a palette (armour trims: the pattern's
+	 * grey texture with the trim material's colours). The texture's .mcmeta names its base palette; each
+	 * colour of the base palette becomes the colour at the same place in the target palette (PaletteMapping).
+	 * Without a palette (a trim override may say so) the texture is used as it is.
+	 */
+	palettedTexture(base, palette) {
+		const key = 'paletted/' + base + '|' + (palette || '');
+		let entry = this.textures.get(key);
+		if (entry) return entry.texture;
+		entry = { texture: null };
+		this.textures.set(key, entry);
+		const query = tokenSuffix('?');
+		const url = id => {
+			const [ns, path] = id.includes(':') ? id.split(':') : ['minecraft', id];
+			return ns === 'minecraft' ? '/assets/' + path : null;
+		};
+		const image = id => {
+			const u = url(id);
+			if (!u) return Promise.reject(new Error('unknown namespace'));
+			return fetch(u + '.png' + query, { credentials: 'same-origin' })
+				.then(r => { if (!r.ok) throw new Error('missing'); return r.blob(); })
+				.then(blob => createImageBitmap(blob, { premultiplyAlpha: 'none', colorSpaceConversion: 'none' }))
+				.then(bitmap => {
+					const canvas = document.createElement('canvas');
+					canvas.width = bitmap.width;
+					canvas.height = bitmap.height;
+					const g = canvas.getContext('2d');
+					g.drawImage(bitmap, 0, 0);
+					return g.getImageData(0, 0, bitmap.width, bitmap.height);
+				});
+		};
+		const meta = palette
+			? fetch(url(base) + '.png.mcmeta' + query, { credentials: 'same-origin' }).then(r => (r.ok ? r.json() : null)).catch(() => null)
+			: Promise.resolve(null);
+		Promise.all([image(base), meta])
+			.then(([pixels, mcmeta]) => {
+				const basePalette = mcmeta && mcmeta.palette && mcmeta.palette.base_palette;
+				if (!palette || !basePalette) return pixels;
+				const ns = id => (id.includes(':') ? id : 'minecraft:' + id);
+				const [from, to] = [ns(basePalette), ns(palette)].map(id => id.replace(':', ':palettes/'));
+				return Promise.all([image(from), image(to)]).then(([a, b]) => {
+					if (a.data.length !== b.data.length) return pixels;
+					// PaletteMapping.create / apply
+					const map = new Map();
+					for (let i = 0; i < a.data.length; i += 4) {
+						if (a.data[i + 3] !== 0) map.set((a.data[i] << 16) | (a.data[i + 1] << 8) | a.data[i + 2], i);
+					}
+					const d = pixels.data;
+					for (let i = 0; i < d.length; i += 4) {
+						if (d[i + 3] === 0) continue;
+						const at = map.get((d[i] << 16) | (d[i + 1] << 8) | d[i + 2]);
+						if (at === undefined) continue;
+						d[i] = b.data[at]; d[i + 1] = b.data[at + 1]; d[i + 2] = b.data[at + 2];
+						d[i + 3] = Math.floor(d[i + 3] * b.data[at + 3] / 255);
+					}
+					return pixels;
+				}, () => pixels);
+			})
+			.then(pixels => { entry.texture = this.createTexture(pixels); })
+			.catch(() => { entry.failed = true; });
+		return null;
+	}
+
+	/**
+	 * The picture of a map in an item frame (MapTextureManager: the map's colours, sent by the server as
+	 * RGBA), fetched again when the server reports a new version of it.
+	 */
+	mapTexture(id, version) {
+		let entry = this.maps.get(id);
+		if (!entry) {
+			entry = { texture: null, version: null, loading: false };
+			this.maps.set(id, entry);
+		}
+		if (entry.version !== version && !entry.loading) {
+			entry.loading = true;
+			const wanted = version;
+			fetch('/map/' + id + '?v=' + encodeURIComponent(version) + tokenSuffix('&'), { credentials: 'same-origin' })
+				.then(r => { if (!r.ok) throw new Error('missing'); return r.arrayBuffer(); })
+				.then(buffer => {
+					const pixels = new ImageData(new Uint8ClampedArray(buffer), 128, 128);
+					if (entry.texture) this.gl.deleteTexture(entry.texture);
+					entry.texture = this.createTexture(pixels);
+				})
+				.catch(() => {})
+				.finally(() => { entry.version = wanted; entry.loading = false; });
 		}
 		return entry.texture;
 	}
@@ -771,15 +907,17 @@ export class EntityRenderer {
 				this.bolts.push({ x: rx, y: ry, z: rz, seed: e.seed || '0' });
 				continue;
 			}
-			// Invisible mobs still show their equipment (and flames); other invisible entities show nothing.
-			if (e.invisible && !e.burning && !isKnownMob(type)) continue;
+			// Invisible mobs still show their equipment (and flames), invisible item frames their item or map;
+			// other invisible entities show nothing.
+			const showsInvisible = isKnownMob(type) || type === 'item_frame' || type === 'glow_item_frame';
+			if (e.invisible && !e.burning && !showsInvisible) continue;
 			const radius = Math.max(e.w || 1, e.h || 1) + 1;
 			if (!frame.frustum(rx, ry + (e.h || 1) / 2, rz, radius * (type === 'happy_ghast' || type === 'ghast' ? 2 : 1))) continue;
 			if (Math.hypot(rx, rz) > frame.fogEnd + 8) continue;
 			visible++;
 			const light = this.lightFor(e, world);
 			try {
-				if (!e.invisible || isKnownMob(type)) this.drawEntity(e, type, [rx, ry, rz], light, now, world);
+				if (!e.invisible || showsInvisible) this.drawEntity(e, type, [rx, ry, rz], light, now, world);
 				// EntityRenderer.submit: burning entities (invisible ones too) are wrapped in flames.
 				if (e.burning) this.drawFlame(e, [rx, ry, rz], light, frame.viewRotation);
 			} catch (error) {
@@ -1468,31 +1606,92 @@ export class EntityRenderer {
 		this.emitItem(mesh, pm, style);
 	}
 
+	/**
+	 * ItemFrameRenderer.submit: the frame block model (the bigger one around a map, none when the frame is
+	 * invisible) around its block's centre, turned to its facing; then the map picture (MapRenderer) or the
+	 * item with its "fixed" display transform, turned in eighths.
+	 */
 	drawItemFrame(e, type, pos, style) {
 		const d = e.d || {};
-		const facing = d.facing || 'south';
-		const rot = { south: [0, 0], north: [0, 180], west: [0, 90], east: [0, 270], up: [-90, 0], down: [90, 0] }[facing] || [0, 0];
+		const facing = FACING_STEP[d.facing] ? d.facing : 'south';
+		const step = FACING_STEP[facing];
 		const m = mat4();
-		translate(m, pos[0], pos[1], pos[2]);
-		rotate(m, 1, -rot[1] * DEG);
-		rotate(m, 0, -rot[0] * DEG);
-		const frame = new Float32Array(m);
-		translate(frame, -0.5, -0.5, -0.5);
-		this.emitBlock(type === 'glow_item_frame' ? 'minecraft:glow_item_frame' : 'minecraft:item_frame', frame, style, false, true);
-		if (e.item) {
+		// the entity hangs 0.46875 off its block's centre, towards the wall
+		translate(m, pos[0] + step[0] * 0.46875, pos[1] + step[1] * 0.46875, pos[2] + step[2] * 0.46875);
+		const horizontal = step[1] === 0;
+		rotate(m, 0, (horizontal ? 0 : -90 * step[1]) * DEG);
+		rotate(m, 1, (horizontal ? 180 - FACING_YROT[facing] : 180) * DEG);
+		const glow = type === 'glow_item_frame';
+		const hasMap = e.map !== undefined;
+		if (!e.invisible) {
+			const frame = new Float32Array(m);
+			translate(frame, -0.5, -0.5, -0.5);
+			this.emitBlock(glow ? 'minecraft:glow_item_frame' : 'minecraft:item_frame', frame, style, false, hasMap ? 'map' : true);
+		}
+		translate(m, 0, 0, e.invisible ? 0.5 : 0.4375);
+		const rotation = Number(d.rotation) || 0;
+		if (hasMap) {
+			const texture = this.mapTexture(e.map, e.mapv);
+			rotate(m, 2, (rotation % 4) * 2 * 45 * DEG);
+			rotate(m, 2, 180 * DEG);
+			scale(m, 1 / 128);
+			translate(m, -64, -64, -1);
+			// getLightCoords: a glow frame lights its map at 15728850 (block 210, sky 240)
+			if (texture) this.drawMap(e, m, glow ? { ...style, light: [210, 240] } : style, texture);
+		} else if (e.item) {
 			const mesh = this.itemMesh(e.item);
 			if (mesh) {
-				const im = new Float32Array(m);
-				translate(im, 0, 0, 0.4375);
-				rotate(im, 2, -(Number(d.rotation) || 0) * 45 * DEG);
-				scale(im, 0.5);
-				if (mesh.kind === 'block') scale(im, 0.5);
-				translate(im, -0.5, -0.5, -0.5);
-				const itemStyle = type === 'glow_item_frame' ? { ...style, light: [240, 240] } : { ...style };
+				rotate(m, 2, rotation * 45 * DEG);
+				scale(m, 0.5);
+				const fallback = mesh.kind === 'block' ? { scale: [0.5, 0.5, 0.5] } : { rotation: [0, 180, 0] };
+				this.applyDisplay(m, this.displayTransform(e.item, 'fixed', fallback), false);
+				// getLightCoords: a glow frame lights its item at 15728880 (full)
+				const itemStyle = glow ? { ...style, light: [240, 240] } : { ...style };
 				if (e.foil & FOIL_ITEM) itemStyle.glint = GLINT_ITEM;
-				this.emitItem(mesh, im, itemStyle);
+				this.emitItem(mesh, m, itemStyle);
 			}
 		}
+	}
+
+	/**
+	 * MapRenderer.render (showOnlyFrame): the 128 x 128 picture at z -0.01 and the decorations shown on
+	 * frames (banners, markers...) as sprites of textures/map/decorations, 8 map pixels big.
+	 */
+	drawMap(e, m, style, texture) {
+		this.emitFlat(new Float32Array([
+			0, 128, -0.01, 0, 1, 128, 128, -0.01, 1, 1,
+			128, 0, -0.01, 1, 0, 0, 0, -0.01, 0, 0,
+		]), m, style, texture);
+		let count = 0;
+		for (const [sprite, x, y, rot] of e.mapd || []) {
+			const icon = this.texture('decorations/' + String(sprite).replace(/^minecraft:/, ''), 'map');
+			if (icon) {
+				const dm = new Float32Array(m);
+				translate(dm, x / 2 + 64, y / 2 + 64, -0.02);
+				rotate(dm, 2, rot * 360 / 16 * DEG);
+				scale(dm, 4, 4, 3);
+				translate(dm, -0.125, 0.125, 0);
+				const z = count * -0.001;
+				this.emitFlat(new Float32Array([
+					-1, 1, z, 0, 0, 1, 1, z, 1, 0,
+					1, -1, z, 1, 1, -1, -1, z, 0, 1,
+				]), dm, style, icon);
+			}
+			count++;
+		}
+	}
+
+	/** A flat textured quad lit without the shading of entity faces (text render type). */
+	emitFlat(quad, m, style, texture) {
+		const start = this.sink.count;
+		this.sink.ensure(6);
+		emitQuads(this.sink, quad, m, { ...style, color: [1, 1, 1, 1] });
+		// upward normals: full brightness in the entity shader, like the text pipeline
+		const out = this.sink.data;
+		for (let i = start; i < this.sink.count; i++) {
+			out[i * FLOATS + 3] = 0; out[i * FLOATS + 4] = 1; out[i * FLOATS + 5] = 0;
+		}
+		this.batch(texture, MODE_NOCULL, start, false);
 	}
 
 	/** Emits a block model (by block name with default state) with the atlas texture. */
@@ -1511,12 +1710,12 @@ export class EntityRenderer {
 			}
 			return;
 		}
-		const key = 'block:' + name + (frameModel ? ':frame' : '');
+		const key = 'block:' + name + (frameModel ? ':frame' + (frameModel === 'map' ? ':map' : '') : '');
 		let mesh = this.itemMeshes.get(key);
 		if (mesh === undefined) {
 			mesh = null;
 			const models = this.assets.models;
-			const dispatch = models && models.dispatch(name, frameModel ? { map: 'false' } : { __item: true });
+			const dispatch = models && models.dispatch(name, frameModel ? { map: frameModel === 'map' ? 'true' : 'false' } : { __item: true });
 			if (dispatch) {
 				const parts = [];
 				const random = new JavaRandom();

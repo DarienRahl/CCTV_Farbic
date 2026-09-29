@@ -314,6 +314,11 @@ public final class CameraManager implements CameraDirectory {
 	}
 
 	@Override
+	public byte @Nullable [] mapPicture(int id) {
+		return MapPictures.rgba(id);
+	}
+
+	@Override
 	public String statusJson() {
 		Json json = new Json(1024);
 		json.beginObject().field("tick", tick).field("serverTick", server.getTickCount()).field("watched", isWatched()).name("sessions").beginArray();
