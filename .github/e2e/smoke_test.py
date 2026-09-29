@@ -202,6 +202,8 @@ def main():
                  'front:"minecraft:skull_pottery_sherd"}}')
     rcon.command('setblock 3 -60 -1 minecraft:player_head[rotation=8]{profile:{name:"Notch"}}')
     # a beacon on an iron pyramid with stained glass above: its beam turns on at the beacon's next check
+    # (block entities only tick in ticking chunks; nobody is online, so the chunk is force loaded)
+    rcon.command("forceload add 0 0 15 15")
     rcon.command("fill 5 -61 10 7 -61 12 minecraft:iron_block")
     rcon.command("setblock 6 -60 11 minecraft:beacon")
     rcon.command("setblock 6 -57 11 minecraft:red_stained_glass")
@@ -315,6 +317,7 @@ def main():
     while stream.beacon_beam is None and time.time() < deadline:
         time.sleep(0.5)
     print("block entities:", stream.block_entities, "beacon beam:", stream.beacon_beam, flush=True)
+    print("beacon:", rcon.command("data get block 6 -60 11 Levels"), flush=True)
     beam = stream.beacon_beam or {}
     if [section[0] for section in beam.get("s", [])][:2] != [0xF9FFFE, 0xB02E26]:
         failures.append(f"the beacon beam (white, then red above the glass) was not streamed (got {beam})")
