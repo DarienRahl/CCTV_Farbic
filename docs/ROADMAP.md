@@ -75,8 +75,9 @@ to the milestone it belongs to.
 - [x] **End portal and end gateway** with the game's own `rendertype_end_portal` shader (15 and
       16 layers over the End sky texture)
 - [x] Food cooking on campfires (CampfireRenderer)
-- [ ] Conduit, lectern and enchanting table books, the end gateway beam, spawner and trial
-      spawner contents, brushable blocks
+- [x] **Books on enchanting tables** (turning to the nearest player, opening and flipping pages)
+      **and lecterns**
+- [ ] Conduit, the end gateway beam, spawner and trial spawner contents, brushable blocks
 - [x] **Particles** from `particles/*.json` and their textures: torch, candle and campfire flames
       and smoke, lava pops, drips, portal, falling leaves, spore blossoms, fireflies
 - [ ] More particles: rain splashes, entity particles (hearts, villager emotions, potion swirls),

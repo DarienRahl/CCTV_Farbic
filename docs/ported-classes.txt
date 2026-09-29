@@ -60,6 +60,10 @@ net/minecraft/client/renderer/blockentity/CampfireRenderer
 net/minecraft/client/renderer/blockentity/AbstractEndPortalRenderer
 net/minecraft/client/renderer/blockentity/TheEndPortalRenderer
 net/minecraft/client/renderer/blockentity/TheEndGatewayRenderer
+net/minecraft/client/renderer/blockentity/EnchantTableRenderer
+net/minecraft/client/renderer/blockentity/LecternRenderer
+net/minecraft/client/model/object/book/BookModel
+net/minecraft/world/level/block/entity/EnchantingTableBlockEntity
 # shaders ported verbatim (entities.js PORTAL_VS/PORTAL_FS): assets/minecraft/shaders/core/rendertype_end_portal.vsh/.fsh
 
 # name tags and text (text.js, entities.js)

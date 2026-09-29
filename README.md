@@ -20,8 +20,9 @@ in a web browser: players, mobs, opening doors and placed blocks show up right a
   own keyframe animations (sniffer, warden, frog, camel…) and react to entity events (attacks,
   sheep eating grass, wolves shaking off water); burning entities are wrapped in flames.
 - **Blocks come alive.** Signs with their text, banners with patterns, decorated pots, player
-  heads with skins, beacon beams, end portals with the game's own shader, and the particles
-  blocks make on their own: torch and campfire flames and smoke, lava pops, drips, falling leaves.
+  heads with skins, beacon beams, end portals with the game's own shader, food on campfires, the
+  enchanting table's book turning to players, and the particles blocks make on their own: torch
+  and campfire flames and smoke, lava pops, drips, falling leaves.
 - **Huge view distance.** A camera also sees terrain in unloaded chunks (read from the region files
   off the main thread, much like Bobby does), up to 1024 blocks.
 - **Shaders and custom skies.** An optional "shaders" mode (sun shadows, waving plants, water with
