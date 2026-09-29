@@ -58,6 +58,8 @@ export class World {
 		this.assetsPayload = null;
 		this.workers = [];
 		this.reportedErrors = new Set();
+		// blocks the mesher drew as plain boxes (no model), for diagnosis
+		this.fallbackBlocks = new Set();
 		const count = Math.max(1, Math.min(4, (navigator.hardwareConcurrency || 4) - 1));
 		for (let i = 0; i < count; i++) this.addWorker();
 		this.reset([0, 0, 0]);
@@ -413,6 +415,7 @@ export class World {
 			console.error('CCTV: meshing failed for section', message.key, message.error);
 			return;
 		}
+		for (const name of message.fallbacks || []) this.fallbackBlocks.add(name);
 		for (const error of message.errors || []) {
 			if (this.reportedErrors.has(error.split(':')[0])) continue;
 			this.reportedErrors.add(error.split(':')[0]);

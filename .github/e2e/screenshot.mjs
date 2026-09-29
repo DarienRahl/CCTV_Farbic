@@ -30,6 +30,7 @@ async function shoot(name, settings, camera = 'ci') {
 		portals: window.cctv && window.cctv.entities.portals ? window.cctv.entities.portals.endPortal.length / 18 : 0,
 		books: window.cctv && window.cctv.entities.books ? window.cctv.entities.books.size : 0,
 		boxed: window.cctv && window.cctv.entities.boxed ? [...window.cctv.entities.boxed] : [],
+		fallbackBlocks: window.cctv && window.cctv.world.fallbackBlocks ? [...window.cctv.world.fallbackBlocks] : [],
 		stats: document.getElementById('stats').textContent,
 	}));
 	console.log(name + ':', JSON.stringify(info));
@@ -70,6 +71,10 @@ if (vanilla.books === 0) {
 }
 if (vanilla.boxed.length) {
 	console.error('entities drawn as plain boxes (model or texture missing): ' + vanilla.boxed.join(', '));
+	process.exit(1);
+}
+if (vanilla.fallbackBlocks.length) {
+	console.error('blocks drawn as plain boxes (no model, or a block entity the viewer does not draw): ' + vanilla.fallbackBlocks.join(', '));
 	process.exit(1);
 }
 if (vanilla.particles === 0) {

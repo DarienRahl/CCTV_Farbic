@@ -346,6 +346,8 @@ export class Mesher {
 		translucent.reset();
 		const blockEntities = [];
 		const errors = [];
+		// blocks drawn as a plain box because they have no model (reported so missing models show up)
+		this.fallbacks = new Set();
 		const wx0 = job.sx * 16, wy0 = job.sy * 16, wz0 = job.sz * 16;
 		const hide = job.hide || null;
 
@@ -369,12 +371,12 @@ export class Mesher {
 						if (info.water || info.lava) {
 							this.tesselateFluid(info, p, bx, by, bz, wx, wy, wz, info.water ? translucent : opaque);
 						}
-						// Block entities drawn on top of their block model (a beacon's beam).
-						if (DRAWN_OVER.has(info.name)) blockEntities.push(wx, wy, wz, id);
-						if (info.noModel) {
-							if (this.handledBlockEntities.has(info.name)) {
-								blockEntities.push(wx, wy, wz, id);
-							} else if (!info.water && !info.lava && info.boxes.length) {
+						// Block entities: drawn by the viewer instead of (chests, banners...) or on top of their block model
+						// (a beacon's beam). Since 26.3 most of them have an empty block model rather than none.
+						const handled = this.handledBlockEntities.has(info.name);
+						if (handled || DRAWN_OVER.has(info.name)) blockEntities.push(wx, wy, wz, id);
+						if (info.noModel || (handled && !this.dispatchFor(info))) {
+							if (!handled && !info.water && !info.lava && info.boxes.length) {
 								this.fallback(info, p, bx, by, bz, opaque);
 							}
 							continue;
@@ -396,7 +398,7 @@ export class Mesher {
 		}
 
 		translucent.sortQuads(job.eye);
-		return { opaque: opaque.take(), translucent: translucent.take(), blockEntities, errors };
+		return { opaque: opaque.take(), translucent: translucent.take(), blockEntities, errors, fallbacks: [...this.fallbacks] };
 	}
 
 	dispatchFor(info) {
@@ -923,6 +925,7 @@ export class Mesher {
 	// --- blocks without a model: flat coloured boxes from the server's shape ---
 
 	fallback(info, p, bx, by, bz, out) {
+		if (this.models) this.fallbacks.add(info.name);
 		const colors = info.colors;
 		for (const b of info.boxes) {
 			for (let d = 0; d < 6; d++) {
