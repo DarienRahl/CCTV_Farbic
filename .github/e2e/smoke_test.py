@@ -188,7 +188,9 @@ def main():
     rcon.command("fill -9 -60 3 -9 -60 14 minecraft:oak_fence")
     rcon.command("setblock 1 -60 3 minecraft:chest[facing=north]")
     # a lit campfire: its smoke column is the viewer's surest particle (screenshot.mjs checks it)
-    rcon.command('setblock -1 -60 3 minecraft:campfire[lit=true]{Items:[{Slot:0b,id:"minecraft:beef",count:1}]}')
+    rcon.command("setblock -1 -60 3 minecraft:campfire[lit=true]")
+    # food on an unlit campfire stays there (a lit one cooks and drops it after 30 seconds)
+    rcon.command('setblock -3 -60 4 minecraft:campfire[lit=false]{Items:[{Slot:0b,id:"minecraft:beef",count:1}]}')
     rcon.command("setblock 0 -60 5 minecraft:poppy")
     rcon.command("setblock 1 -60 6 minecraft:dandelion")
     rcon.command('setblock -3 -60 0 minecraft:oak_sign[rotation=8]{front_text:{messages:["CCTV","Camera ci","",""]}}')
@@ -201,12 +203,11 @@ def main():
                  '{sherds:{back:"minecraft:brick",left:"minecraft:angler_pottery_sherd",right:"minecraft:heart_pottery_sherd",'
                  'front:"minecraft:skull_pottery_sherd"}}')
     rcon.command('setblock 3 -60 -1 minecraft:player_head[rotation=8]{profile:{name:"Notch"}}')
-    # a beacon on an iron pyramid with stained glass above: its beam turns on at the beacon's next check
-    # (block entities only tick in ticking chunks; nobody is online, so the chunk is force loaded)
-    rcon.command("forceload add 0 0 15 15")
-    rcon.command("fill 5 -61 10 7 -61 12 minecraft:iron_block")
-    rcon.command("setblock 6 -60 11 minecraft:beacon")
-    rcon.command("setblock 6 -57 11 minecraft:red_stained_glass")
+    # a beacon on an iron pyramid with stained glass above, outside the house: its beam turns on at the
+    # beacon's next check (the scene's chunks are force loaded above, so block entities tick)
+    rcon.command("fill 9 -61 9 11 -61 11 minecraft:iron_block")
+    rcon.command("setblock 10 -60 10 minecraft:beacon")
+    rcon.command("setblock 10 -57 10 minecraft:red_stained_glass")
     rcon.command("setblock -3 -61 11 minecraft:end_portal")
     rcon.command("place feature minecraft:oak -6 -60 18")
     rcon.command("place feature minecraft:birch 12 -60 16")
@@ -317,7 +318,7 @@ def main():
     while stream.beacon_beam is None and time.time() < deadline:
         time.sleep(0.5)
     print("block entities:", stream.block_entities, "beacon beam:", stream.beacon_beam, flush=True)
-    print("beacon:", rcon.command("data get block 6 -60 11 Levels"), flush=True)
+    print("beacon:", rcon.command("data get block 10 -60 10 Levels"), flush=True)
     beam = stream.beacon_beam or {}
     if [section[0] for section in beam.get("s", [])][:2] != [0xF9FFFE, 0xB02E26]:
         failures.append(f"the beacon beam (white, then red above the glass) was not streamed (got {beam})")
