@@ -14,6 +14,7 @@ import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.Util;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.ItemStackTemplate;
 import net.minecraft.world.item.component.ResolvableProfile;
@@ -30,6 +31,8 @@ import net.minecraft.world.level.block.entity.SignBlockEntity;
 import net.minecraft.world.level.block.entity.SignText;
 import net.minecraft.world.level.block.entity.SignTextSlot;
 import net.minecraft.world.level.block.entity.SkullBlockEntity;
+import net.minecraft.world.level.block.entity.SpawnerBlockEntity;
+import net.minecraft.world.level.block.entity.TrialSpawnerBlockEntity;
 import net.minecraft.world.level.chunk.LevelChunk;
 
 import io.github.darienrahl.cctv.web.Json;
@@ -37,7 +40,7 @@ import io.github.darienrahl.cctv.web.Json;
 /**
  * Block entity details the viewer draws on top of the block models, per section. Only what cannot be
  * seen in the block state: the text of signs and hanging signs, banner patterns, pottery sherds on
- * decorated pots, the owners of player heads and beacon beams.
+ * decorated pots, the owners of player heads, beacon beams, food on campfires and the mobs in spawners.
  */
 final class BlockEntityEncoder {
 	private BlockEntityEncoder() {
@@ -60,6 +63,10 @@ final class BlockEntityEncoder {
 					case SkullBlockEntity skull -> skull(skull);
 					case BeaconBlockEntity beacon -> beacon(beacon);
 					case CampfireBlockEntity campfire -> campfire(campfire);
+					case SpawnerBlockEntity spawner -> spawner(spawner,
+							spawner.getSpawner().getOrCreateDisplayEntity(spawner.getLevel(), spawner.getBlockPos()));
+					case TrialSpawnerBlockEntity trial -> spawner(trial, trial.getTrialSpawner().getStateData()
+							.getOrCreateDisplayEntity(trial.getTrialSpawner(), trial.getLevel(), trial.getTrialSpawner().getState()));
 					default -> null;
 				};
 			} catch (RuntimeException | LinkageError e) {
@@ -92,6 +99,18 @@ final class BlockEntityEncoder {
 			json.beginArray().value(section.getColor() & 0xFFFFFF).value(section.getHeight()).endArray();
 		}
 		return json.endArray().endObject().toString();
+	}
+
+	/**
+	 * The mob turning inside a spawner or trial spawner (SpawnerRenderer: the spawner's display entity, none
+	 * while a trial spawner rests): {@code {"k":"spawner", "e": entity type, "w", "h": its size}}.
+	 */
+	private static @Nullable String spawner(BlockEntity spawner, @Nullable Entity display) {
+		if (display == null) {
+			return null;
+		}
+		return begin("spawner", spawner).field("e", BuiltInRegistries.ENTITY_TYPE.getKey(display.getType()).toString())
+				.field("w", display.getBbWidth(), 3).field("h", display.getBbHeight(), 3).endObject().toString();
 	}
 
 	/** Food cooking on a campfire, one item id (or null) per slot: {@code {"k":"campfire", "i": [...]}}; empty ones are left out. */

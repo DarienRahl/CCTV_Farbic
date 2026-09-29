@@ -73,6 +73,23 @@ public abstract class ServerLevelMixin {
 		}
 	}
 
+	/** A player breaking a block: the cracks (destroy stages) the other players see. */
+	@Inject(
+			method = "destroyBlockProgress(ILnet/minecraft/core/BlockPos;I)V",
+			at = @At("HEAD"),
+			require = 0
+	)
+	private void cctv$onBlockProgress(int breaker, BlockPos pos, int progress, CallbackInfo ci) {
+		CameraManager manager = CctvMod.manager();
+		if (manager != null) {
+			try {
+				manager.onBlockProgress((ServerLevel) (Object) this, breaker, pos, progress);
+			} catch (RuntimeException | LinkageError e) {
+				Problems.report(null, "block breaking tracking", e);
+			}
+		}
+	}
+
 	/** Particle packets: every sendParticles overload for all players ends up in this one. */
 	@Inject(
 			method = "sendParticles(Lnet/minecraft/core/particles/ParticleOptions;ZZDDDIDDDDDDLnet/minecraft/network/protocol/game/ClientboundLevelParticlesPacket$RandomizationType;)I",

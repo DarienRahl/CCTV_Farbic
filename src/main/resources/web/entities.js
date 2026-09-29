@@ -15,7 +15,7 @@ import { SHADOW_GLSL, SHADER_LIGHT_GLSL } from './renderer.js';
 import { lerp, lerpAngle, wrapDegrees } from './math.js';
 import { TextRenderer, rgb, matrixTransform, FULL_BRIGHT } from './text.js';
 
-const MODE_CUTOUT = 0, MODE_NOCULL = 1, MODE_TRANSLUCENT = 2, MODE_EYES = 3, MODE_ENERGY = 4;
+const MODE_CUTOUT = 0, MODE_NOCULL = 1, MODE_TRANSLUCENT = 2, MODE_EYES = 3, MODE_ENERGY = 4, MODE_CRUMBLING = 5;
 
 /**
  * Enchantment glint kinds (RenderTypes ITEM_CUTOUT_GLINT, ARMOR_CUTOUT_NO_CULL_GLINT, ENTITY_SOLID_GLINT): the glint
@@ -39,6 +39,19 @@ function glintMatrix(scale, millisNow) {
 	const c = Math.cos(Math.PI / 18) * scale, s = Math.sin(Math.PI / 18) * scale;
 	return new Float32Array([c, s, 0, -s, c, 0, -offset0, offset1, 1]);
 }
+/**
+ * SheetedDecalTextureGenerator: block coordinates turned by rotateY(PI), rotateX(-PI/2) and the face's
+ * Direction.getRotation(), then u = -x, v = -y.
+ */
+const DECAL_UV = {
+	up: (x, y, z) => [x, z],
+	down: (x, y, z) => [x, -z],
+	south: (x, y, z) => [x, -y],
+	north: (x, y, z) => [-x, -y],
+	west: (x, y, z) => [-z, -y],
+	east: (x, y, z) => [z, -y],
+};
+
 /** Direction.getStepX/Y/Z and toYRot of the facings. */
 const FACING_STEP = { north: [0, 0, -1], south: [0, 0, 1], west: [-1, 0, 0], east: [1, 0, 0], up: [0, 1, 0], down: [0, -1, 0] };
 const FACING_YROT = { south: 0, west: 90, north: 180, east: 270 };
@@ -77,8 +90,8 @@ void main() {
 	vCyl = max(length(aPos.xz), abs(aPos.y));
 	vec3 n = normalize(aNormal);
 	float light = min(1.0, (max(0.0, dot(uLight0, n)) + max(0.0, dot(uLight1, n))) * 0.6 + 0.4);
-	vColor = (uMode == 3 || uMode == 4) ? aColor : vec4(aColor.rgb * light, aColor.a);
-	vLightColor = uMode == 3 ? vec4(1.0) : texture(uLightmap, clamp(aLight / 256.0 + 0.5 / 16.0, vec2(0.5 / 16.0), vec2(15.5 / 16.0)));
+	vColor = uMode >= 3 ? aColor : vec4(aColor.rgb * light, aColor.a);
+	vLightColor = uMode == 3 || uMode == 5 ? vec4(1.0) : texture(uLightmap, clamp(aLight / 256.0 + 0.5 / 16.0, vec2(0.5 / 16.0), vec2(15.5 / 16.0)));
 	vUv = uMode == 4 ? aUv + vec2(uTime * 0.01) : aUv;
 	// entity.vsh / item.vsh GLINT: the texture matrix applied to the model's own texture coordinates
 	vGlintUv = (uGlintMatrix * vec3(aUv, 1.0)).xy;
@@ -115,6 +128,13 @@ ${SHADER_LIGHT_GLSL}
 out vec4 outColor;
 void main() {
 	vec4 color = texture(uTexture, vUv);
+	if (uMode == 5) {
+		// rendertype_crumbling: the destroy stage texture, blended as DST_COLOR * SRC_COLOR
+		color *= vColor;
+		if (color.a < 0.1) discard;
+		outColor = apply_fog(color, vSph, vCyl);
+		return;
+	}
 	if (uMode <= 1 && color.a < 0.1) discard;
 	if (uMode == 2 && color.a < 0.004) discard;
 	color *= vColor;
@@ -429,6 +449,8 @@ export class EntityRenderer {
 		this.skins = new Map();
 		this.capes = new Map();
 		this.maps = new Map();
+		this.spawners = new Map();
+		this.breaking = [];
 		this.states = new Map();
 		this.events = new Map();
 		// EnchantingTableBlockEntity animation state by block position
@@ -711,6 +733,8 @@ export class EntityRenderer {
 			}
 		}
 		this.animateMotion(frame.t, map);
+		// blocks being broken: [x, y, z, progress]
+		this.breaking = frame.bp || [];
 		this.frames.push({ t: frame.t, map });
 		while (this.frames.length > 40) this.frames.shift();
 		this.delayTicks = Math.max(2, entityTicks * 2);
@@ -1104,8 +1128,8 @@ export class EntityRenderer {
 		anim.memory = anim.states.memory;
 		if (def.fullBright) style.light = [240, style.light[1]];
 
-		// LivingEntityRenderer.submit / setupRotations
-		const m = mat4();
+		// LivingEntityRenderer.submit / setupRotations (a spawner's mob gets the spawner's pose)
+		const m = e.base ? Float32Array.from(e.base) : mat4();
 		translate(m, pos[0], pos[1], pos[2]);
 		// AvatarRenderer.getRenderOffset: crouching players sit 2 pixels lower.
 		if (type === 'player' && (e.sneak || e.pose === 'crouching')) translate(m, 0, -2 / 16 * (e.scale || 1), 0);
@@ -1218,7 +1242,7 @@ export class EntityRenderer {
 		}
 
 		// EntityRenderDispatcher: no shadow under invisible entities
-		if (!e.invisible) this.shadowFor(e, pos, typeof mob.shadow === 'number' ? mob.shadow * entityScale : 0.5, world);
+		if (!e.invisible && !e.base) this.shadowFor(e, pos, typeof mob.shadow === 'number' ? mob.shadow * entityScale : 0.5, world);
 	}
 
 	/** AvatarRenderer.setupRotations: players lie down while swimming, crawling and gliding with elytra. */
@@ -1761,8 +1785,119 @@ export class EntityRenderer {
 
 	// --- block entities (chests, shulker boxes, heads, banners, bells, pots) ---------------------------
 
+	/**
+	 * SpawnerRenderer / TrialSpawnerRenderer: the spawner's mob, small, tilted and spinning inside the cage.
+	 * A spawner spins its mob while a player (here: the camera) is within 16 blocks, faster as its next spawn
+	 * nears (BaseSpawner.clientTick); a trial spawner by its state. The mob is not ticked, so it does not move.
+	 */
+	drawSpawner(be, pos, world) {
+		const data = world.blockEntityAt(be.x, be.y, be.z);
+		if (!data || data.k !== 'spawner' || !data.e) return;
+		const key = be.x + ',' + be.y + ',' + be.z;
+		let s = this.spawners.get(key);
+		const tick = performance.now() / 50;
+		if (!s) this.spawners.set(key, s = { spin: 0, oSpin: 0, delay: 20, tick: Math.floor(tick) });
+		const trial = be.info.shortName === 'trial_spawner';
+		const trialSpeed = { waiting_for_players: 200, active: 1000 }[be.info.props && be.info.props.trial_spawner_state] || 0;
+		const near = Math.hypot(pos[0] + 0.5, pos[1] + 0.5, pos[2] + 0.5) <= 16;
+		for (let steps = 0; s.tick < Math.floor(tick) && steps < 40; steps++, s.tick++) {
+			s.oSpin = s.spin;
+			if (trial) {
+				s.spin = (s.spin + trialSpeed / 200) % 360;
+			} else if (near) {
+				if (s.delay > 0) s.delay--;
+				s.spin = (s.spin + 1000 / (s.delay + 200)) % 360;
+			}
+		}
+		s.tick = Math.floor(tick);
+		const spin = (s.oSpin + (s.spin - s.oSpin) * (tick % 1)) * 10;
+		const m = mat4();
+		translate(m, pos[0] + 0.5, pos[1] + 0.4, pos[2] + 0.5);
+		rotate(m, 1, spin * DEG);
+		translate(m, 0, -0.2, 0);
+		rotate(m, 0, -30 * DEG);
+		const size = Math.max(Number(data.w) || 0, Number(data.h) || 0);
+		scale(m, 0.53125 / (size > 1 ? size : 1));
+		const [sky, block] = world.lightAt(be.x, be.y, be.z);
+		const e = { id: -1 - (Math.abs(be.x * 31 + be.y * 17 + be.z * 13) % 100000), type: data.e, x: be.x + 0.5, y: be.y, z: be.z + 0.5,
+			yaw: 0, body: 0, head: 0, pitch: 0, age: 0, w: data.w, h: data.h, base: m };
+		this.drawEntity(e, strip(data.e), [0, 0, 0], [block * 16, sky * 16], performance.now(), world);
+	}
+
+	/**
+	 * LevelRenderer.submitBlockDestroyAnimation: the cracks of the blocks being broken within 32 blocks, the
+	 * block's own model drawn with the destroy stage texture, its coordinates projected on each face like
+	 * SheetedDecalTextureGenerator (the stage texture once per block face).
+	 */
+	drawBreaking(frame, world) {
+		if (!this.breaking || !this.breaking.length || !this.assets) return;
+		const o = frame.origin, cam = frame.camPos;
+		const stages = new Map();
+		for (const [x, y, z, progress] of this.breaking) {
+			const key = x + ',' + y + ',' + z;
+			stages.set(key, Math.max(stages.get(key) ?? -1, progress));
+		}
+		for (const [key, progress] of stages) {
+			const [x, y, z] = key.split(',').map(Number);
+			const bx = x - o[0] - cam[0], by = y - o[1] - cam[1], bz = z - o[2] - cam[2];
+			if ((bx + 0.5) ** 2 + (by + 0.5) ** 2 + (bz + 0.5) ** 2 > 1024) continue;
+			const texture = this.destroyStage(progress);
+			const info = world.infoAt(x, y, z);
+			if (!texture || !info || info.noModel) continue;
+			const dispatch = this.assets.models.dispatch(info.name, info.props);
+			if (!dispatch) continue;
+			const parts = [];
+			const random = new JavaRandom();
+			random.setSeedNumber(42);
+			collectParts(dispatch, random, parts);
+			const data = [];
+			for (const part of parts) {
+				for (const list of part.quads) {
+					for (const q of list) {
+						const p = q.pos;
+						const e1 = [p[3] - p[0], p[4] - p[1], p[5] - p[2]], e2 = [p[6] - p[0], p[7] - p[1], p[8] - p[2]];
+						const n = [e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]];
+						// Direction.getApproximateNearest, then the face's projection of the block coordinates
+						const axis = Math.abs(n[0]) >= Math.abs(n[1]) && Math.abs(n[0]) >= Math.abs(n[2]) ? 0 : Math.abs(n[1]) >= Math.abs(n[2]) ? 1 : 2;
+						const face = axis === 0 ? (n[0] > 0 ? 'east' : 'west') : axis === 1 ? (n[1] > 0 ? 'up' : 'down') : (n[2] > 0 ? 'south' : 'north');
+						for (let k = 0; k < 4; k++) {
+							const vx = p[k * 3], vy = p[k * 3 + 1], vz = p[k * 3 + 2];
+							const [u, v] = DECAL_UV[face](vx, vy, vz);
+							data.push(vx, vy, vz, u, v);
+						}
+					}
+				}
+			}
+			if (!data.length) continue;
+			const m = mat4();
+			translate(m, bx, by, bz);
+			const start = this.sink.count;
+			this.sink.ensure(data.length / 20 * 6);
+			emitQuads(this.sink, new Float32Array(data), m, { color: [1, 1, 1, 1], light: [240, 240], overlay: [0, 0] });
+			this.batch(texture, MODE_CRUMBLING, start, false);
+		}
+	}
+
+	/** The destroy_stage_N texture of the block textures, as its own repeating texture. */
+	destroyStage(progress) {
+		const key = 'destroy/' + progress;
+		let entry = this.textures.get(key);
+		if (entry) return entry.texture;
+		entry = { texture: null };
+		this.textures.set(key, entry);
+		const b64 = this.assets.bundle.textures && this.assets.bundle.textures['minecraft:block/destroy_stage_' + progress];
+		if (!b64) return null;
+		fetch('data:image/png;base64,' + b64)
+			.then(r => r.blob())
+			.then(blob => createImageBitmap(blob, { premultiplyAlpha: 'none', colorSpaceConversion: 'none' }))
+			.then(image => { entry.texture = this.createTexture(image); })
+			.catch(() => { entry.failed = true; });
+		return null;
+	}
+
 	prepareBlockEntities(frame, world, list) {
 		const o = frame.origin, cam = frame.camPos;
+		this.drawBreaking(frame, world);
 		this.portals.endPortal.length = 0;
 		this.portals.endGateway.length = 0;
 		for (const section of world.sections.values()) {
@@ -1780,6 +1915,10 @@ export class EntityRenderer {
 				}
 				if (be.info.shortName === 'end_portal' || be.info.shortName === 'end_gateway') {
 					this.addPortal(be, [bx, by, bz], frame, world);
+					continue;
+				}
+				if (be.info.shortName === 'spawner' || be.info.shortName === 'trial_spawner') {
+					if (Math.hypot(bx, by, bz) <= Math.min(frame.fogEnd, 64) && frame.frustum(bx + 0.5, by + 0.5, bz + 0.5, 1.5)) this.drawSpawner(be, [bx, by, bz], world);
 					continue;
 				}
 				if (be.info.shortName === 'enchanting_table' || be.info.shortName === 'lectern') {
@@ -2211,7 +2350,13 @@ export class EntityRenderer {
 		gl.depthMask(false);
 		drawBatches(b => b.mode === MODE_TRANSLUCENT);
 		gl.blendFunc(gl.ONE, gl.ONE);
-		drawBatches(b => b.mode >= MODE_EYES);
+		drawBatches(b => b.mode === MODE_EYES || b.mode === MODE_ENERGY);
+		// RenderPipelines.CRUMBLING: multiplied into the block, pulled towards the camera (depth bias 1, 10)
+		gl.blendFuncSeparate(gl.DST_COLOR, gl.SRC_COLOR, gl.ONE, gl.ZERO);
+		gl.enable(gl.POLYGON_OFFSET_FILL);
+		gl.polygonOffset(-1, -10);
+		drawBatches(b => b.mode === MODE_CRUMBLING);
+		gl.disable(gl.POLYGON_OFFSET_FILL);
 		gl.depthMask(true);
 		gl.enable(gl.CULL_FACE);
 		gl.bindVertexArray(null);

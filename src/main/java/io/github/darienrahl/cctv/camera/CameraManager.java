@@ -215,6 +215,13 @@ public final class CameraManager implements CameraDirectory {
 		}
 	}
 
+	/** Called (server thread) for every block breaking progress sent to players (ServerLevel#destroyBlockProgress). */
+	public void onBlockProgress(ServerLevel level, int breaker, BlockPos pos, int progress) {
+		for (CameraSession session : sessions.values()) {
+			session.onBlockProgress(level, breaker, pos, progress);
+		}
+	}
+
 	/** Called (server thread) for every level event sent to players (ServerLevel#levelEvent, 64 blocks). */
 	public void onLevelEvent(ServerLevel level, int type, BlockPos pos, int data) {
 		if (sessions.isEmpty()) {

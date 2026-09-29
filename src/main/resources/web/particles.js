@@ -1427,8 +1427,17 @@ export class Particles {
 			this.animateAt(level, cx, cy, cz, 16);
 			this.animateAt(level, cx, cy, cz, 32);
 		}
-		// CampfireBlockEntity.particleTick for every lit campfire in view.
-		for (const [x, y, z, info] of world.campfires ? world.campfires(cx, cy, cz, 64) : []) {
+		// CampfireBlockEntity.particleTick for every lit campfire in view; BaseSpawner.clientTick for spawners with
+		// a mob within 16 blocks of the camera (a smoke and a flame at one random point in the block).
+		for (const [x, y, z, info] of world.tickers ? world.tickers(cx, cy, cz, 64) : []) {
+			if (blockName(info) === 'spawner') {
+				const data = world.blockEntityAt(x, y, z);
+				if (!data || !data.e || (x + 0.5 - camera.x) ** 2 + (y + 0.5 - camera.y) ** 2 + (z + 0.5 - camera.z) ** 2 > 256) continue;
+				const px = x + nextDouble(), py = y + nextDouble(), pz = z + nextDouble();
+				this.addFx(level, 'smoke', px, py, pz, 0, 0, 0);
+				this.addFx(level, 'flame', px, py, pz, 0, 0, 0);
+				continue;
+			}
 			const p = props(info);
 			if (p.lit !== 'true') continue;
 			if (nextFloat() < 0.11) {

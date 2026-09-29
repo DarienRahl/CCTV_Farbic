@@ -1041,6 +1041,31 @@ final class CameraSession {
 		}
 	}
 
+	/** Blocks being broken (ClientboundBlockDestroyPacket) by breaker id: x, y, z, progress 0..9, last update tick. */
+	private final Map<Integer, long[]> breaking = new HashMap<>();
+	/** LevelRenderer forgets a breaking block 400 ticks after its last update. */
+	private static final long BREAKING_TIMEOUT = 400;
+
+	/**
+	 * Server thread: ServerLevel#destroyBlockProgress, which players within 32 blocks get; the viewer draws the
+	 * cracks. Progress outside 0..9 means the breaking stopped (or the block broke).
+	 */
+	void onBlockProgress(ServerLevel level, int breaker, BlockPos pos, int progress) {
+		if (level != this.level) {
+			return;
+		}
+		if (progress < 0 || progress >= 10) {
+			breaking.remove(breaker);
+			return;
+		}
+		Camera c = camera;
+		double dx = pos.getX() + 0.5 - c.x(), dy = pos.getY() + 0.5 - c.y(), dz = pos.getZ() + 0.5 - c.z();
+		if (dx * dx + dy * dy + dz * dz >= 1024) {
+			return;
+		}
+		breaking.put(breaker, new long[]{pos.getX(), pos.getY(), pos.getZ(), progress, level.getGameTime()});
+	}
+
 	/** Server thread: the entity event range of the camera (the entities it streams). */
 	double entityEffectRange() {
 		return Math.min(camera.range(), config.entityRange);
@@ -1097,6 +1122,15 @@ final class CameraSession {
 			effects.clear();
 			entityBlockStates.addAll(effectBlockStates);
 			effectBlockStates.clear();
+		}
+		if (!breaking.isEmpty()) {
+			long now = level.getGameTime();
+			breaking.values().removeIf(entry -> now - entry[4] > BREAKING_TIMEOUT);
+			json.name("bp").beginArray();
+			for (long[] entry : breaking.values()) {
+				json.beginArray().value(entry[0]).value(entry[1]).value(entry[2]).value(entry[3]).endArray();
+			}
+			json.endArray();
 		}
 		json.endObject();
 		return json.toString();

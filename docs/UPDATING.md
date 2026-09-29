@@ -30,7 +30,7 @@ of game APIs on the server and a set of client classes the viewer ports to JavaS
 
 | File | Game APIs used | Purpose |
 |---|---|---|
-| `mixin/ServerLevelMixin.java` | `ServerLevel#sendBlockUpdated`, `#broadcastEntityEvent`, `#levelEvent`, `#sendParticles` (inject), `#explode` (wraps `ServerExplosion#explode`) | instant block updates, entity events for animations, the effects that make particles |
+| `mixin/ServerLevelMixin.java` | `ServerLevel#sendBlockUpdated`, `#broadcastEntityEvent`, `#levelEvent`, `#sendParticles`, `#destroyBlockProgress` (inject), `#explode` (wraps `ServerExplosion#explode`) | instant block updates, entity events for animations, the effects that make particles |
 | `mixin/ChunkMapAccessor.java` | `ChunkMap#readChunk` (invoker) | saved chunks for far terrain |
 | `camera/SectionCapture.java` | `LevelChunkSection`, `PalettedContainer`, `DataLayer`, light listeners | copying sections |
 | `camera/SavedChunks.java` | `SerializableChunkData`, `ChunkStatus`, heightmaps | parsing saved chunks |
@@ -63,6 +63,8 @@ of game APIs on the server and a set of client classes the viewer ports to JavaS
 | `EquipmentLayerRenderer`, `HumanoidArmorLayer`, `SimpleEquipmentLayer`, `EquipmentClientInfo` (the `equipment/*.json` files come from the jar), `PalettedTextureManager` and `PaletteMapping` (trim palettes) | `mobs.js` (`equipmentLayers`, `armorLayers`), `entities.js` (`palettedTexture`) |
 | `ItemFrameRenderer`, `MapRenderer`, `MapTextureManager` | `entities.js` (`drawItemFrame`, `drawMap`, `mapTexture`) |
 | `SkinTextureDownloader#processLegacySkin` | `entities.js` (`normalizeSkin`) |
+| Block breaking: `LevelRenderer#submitBlockDestroyAnimation`, `SheetedDecalTextureGenerator`, `RenderPipelines.CRUMBLING` (blend and depth bias) | `entities.js` (`drawBreaking`, `DECAL_UV`, `MODE_CRUMBLING`) |
+| `SpawnerRenderer`, `TrialSpawnerRenderer#extractSpawnerData`, `BaseSpawner#clientTick` (spin and particles) | `entities.js` (`drawSpawner`), `particles.js` |
 | `EntityRenderer#extractRenderState` leash states and `LeashFeatureRenderer` (the server sends `Leashable#getLeashOffset`, `Entity#getRopeHoldPosition` and the quad leash offsets) | `entities.js` (`drawLeashes`, `emitLeash`), `EntityEncoder.java` (`writeLeash`) |
 | Server particles: `LevelEventHandler`, `ClientPacketListener#handleParticleEvent`/`handleExplosion`, `ClientExplosionTracker`, `ClientLevel#addDestroyBlockEffect`, the `handleEntityEvent` particles, `ParticleResources` (which class draws a type). The server side hooks `ServerLevel#levelEvent`, `#sendParticles` and `#explode` | `particles.js` (`effect`, `PROVIDERS`), `EffectEncoder.java`, `ServerLevelMixin.java` |
 | `KeyframeAnimation`, `AnimationChannel`, `AnimationState` | `keyframes.js` |

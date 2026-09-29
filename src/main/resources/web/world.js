@@ -45,9 +45,9 @@ export class World {
 		this.entries = [];
 		/** Palette entries as the server sent them, by state id (particles read their hints). */
 		this.raw = [];
-		this.campfireIds = new Set();
-		/** Campfire positions per section key (CampfireBlockEntity.particleTick runs for each). */
-		this.campfireSections = new Map();
+		this.tickerIds = new Set();
+		/** Campfire and spawner positions per section key (their block entities make particles every tick). */
+		this.tickerSections = new Map();
 		this.biomeIndex = new Map();
 		this.biomeNames = [];
 		this.biomeDefs = {};
@@ -101,7 +101,7 @@ export class World {
 		/** Block entity details by block position ("x,y,z"): banner patterns, pot sherds, head owners. */
 		this.blockEntityData = new Map();
 		this.blockEntitySections = new Map();
-		this.campfireSections = new Map();
+		this.tickerSections = new Map();
 		this.dirty = new Set();
 		this.generation++;
 		this.pending = new Map();
@@ -152,7 +152,7 @@ export class World {
 			this.entries.push(entry);
 			this.raw[entry.id] = entry;
 			this.infos[entry.id] = describeState(entry, parseProps, blockFaceColors);
-			if (/^minecraft:(soul_)?campfire$/.test(entry.n || '')) this.campfireIds.add(entry.id);
+			if (/^minecraft:((soul_)?campfire|spawner)$/.test(entry.n || '')) this.tickerIds.add(entry.id);
 		}
 		this.broadcast({ type: 'palette', entries });
 	}
@@ -219,28 +219,28 @@ export class World {
 			blockEntities: this.sections.get(key)?.blockEntities || [],
 		});
 		this.markDirty(message.x, message.y, message.z);
-		this.findCampfires(this.sections.get(key));
+		this.findTickers(this.sections.get(key));
 	}
 
-	findCampfires(section) {
+	findTickers(section) {
 		const found = [];
-		if (this.campfireIds.size) {
+		if (this.tickerIds.size) {
 			const states = section.states;
 			for (let i = 0; i < 4096; i++) {
-				if (this.campfireIds.has(states[i])) found.push([section.x * 16 + (i & 15), section.y * 16 + (i >> 8), section.z * 16 + ((i >> 4) & 15)]);
+				if (this.tickerIds.has(states[i])) found.push([section.x * 16 + (i & 15), section.y * 16 + (i >> 8), section.z * 16 + ((i >> 4) & 15)]);
 			}
 		}
-		if (found.length) this.campfireSections.set(section.key, found);
-		else this.campfireSections.delete(section.key);
+		if (found.length) this.tickerSections.set(section.key, found);
+		else this.tickerSections.delete(section.key);
 	}
 
-	/** Campfires within a distance of a block: [x, y, z, palette entry]. */
-	*campfires(cx, cy, cz, range) {
-		for (const list of this.campfireSections.values()) {
+	/** Campfires and spawners within a distance of a block: [x, y, z, palette entry]. */
+	*tickers(cx, cy, cz, range) {
+		for (const list of this.tickerSections.values()) {
 			for (const [x, y, z] of list) {
 				if (Math.abs(x - cx) > range || Math.abs(y - cy) > range || Math.abs(z - cz) > range) continue;
 				const entry = this.entryAt(x, y, z);
-				if (entry && this.campfireIds.has(entry.id)) yield [x, y, z, entry];
+				if (entry && this.tickerIds.has(entry.id)) yield [x, y, z, entry];
 			}
 		}
 	}
@@ -252,7 +252,7 @@ export class World {
 		const index = ((y & 15) << 8) | ((z & 15) << 4) | (x & 15);
 		const old = section.states[index];
 		section.states[index] = id;
-		if (this.campfireIds.has(id) || this.campfireIds.has(old)) this.findCampfires(section);
+		if (this.tickerIds.has(id) || this.tickerIds.has(old)) this.findTickers(section);
 		// Smooth lighting, culling and fluids look at neighbours, so rebuild the touching sections too.
 		const lx = x & 15, ly = y & 15, lz = z & 15;
 		for (let dx = -1; dx <= 1; dx++) {

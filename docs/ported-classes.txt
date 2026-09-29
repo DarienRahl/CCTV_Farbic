@@ -206,3 +206,8 @@ net/minecraft/world/level/block/LeavesBlock
 net/minecraft/world/level/block/FallingParticlesLeavesBlock
 net/minecraft/world/level/material/LavaFluid
 net/minecraft/world/level/material/WaterFluid
+# block breaking and spawners (entities.js drawBreaking, drawSpawner; particles.js spawner particles)
+com/mojang/blaze3d/vertex/SheetedDecalTextureGenerator
+net/minecraft/client/renderer/blockentity/SpawnerRenderer
+net/minecraft/client/renderer/blockentity/TrialSpawnerRenderer
+net/minecraft/world/level/BaseSpawner

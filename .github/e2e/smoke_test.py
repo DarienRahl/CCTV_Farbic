@@ -228,6 +228,8 @@ def main():
     rcon.command("setblock -3 -61 11 minecraft:end_portal")
     rcon.command("setblock 1 -60 -3 minecraft:enchanting_table")
     rcon.command("setblock -2 -60 -3 minecraft:lectern[facing=north,has_book=true]")
+    # a spawner with a zombie turning inside (no player near, so it spawns nothing)
+    rcon.command('setblock -4 -60 -5 minecraft:spawner{SpawnData:{entity:{id:"minecraft:zombie"}}}')
     rcon.command("place feature minecraft:oak -6 -60 18")
     rcon.command("place feature minecraft:birch 12 -60 16")
     rcon.command("place feature minecraft:fancy_oak 14 -60 4")
@@ -373,6 +375,8 @@ def main():
     campfire = stream.block_entities.get("campfire", {})
     if not any(item and item.endswith("beef") for item in campfire.get("i", [])):
         failures.append(f"the food on the campfire was not streamed (got {campfire})")
+    if stream.block_entities.get("spawner", {}).get("e") != "minecraft:zombie":
+        failures.append(f"the spawner's zombie was not streamed (got {stream.block_entities.get('spawner')})")
     if stream.block_entities.get("head", {}).get("name") != "Notch":
         failures.append(f"the player head's owner was not streamed (got {stream.block_entities.get('head')})")
     for line in ("CCTV", "Camera ci", "Welcome", "edited"):

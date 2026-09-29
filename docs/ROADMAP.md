@@ -78,7 +78,17 @@ to the milestone it belongs to. The roadmap on the README page is drawn from thi
 - [x] Food cooking on campfires (CampfireRenderer)
 - [x] **Books on enchanting tables** (turning to the nearest player, opening and flipping pages)
       **and lecterns**
-- [ ] Conduit, the end gateway beam, spawner and trial spawner contents, brushable blocks
+- [x] **Mobs in spawners** (SpawnerRenderer: the spawner's mob small, tilted and spinning while a
+      player - the camera - is near, with its smoke and flames; trial spawners by their state)
+- [x] **Block breaking progress**: the cracks of blocks players are mining (the destroy stages drawn
+      over the block's own model like SheetedDecalTextureGenerator and the crumbling pipeline)
+- [ ] Conduit, the end gateway beam, brushable blocks
+- [ ] **Shield patterns** (the banner patterns and base colour of held shields, ShieldModel)
+- [ ] **Chests, shulker boxes, bells and pistons move** from the server's block events (ChestLidController,
+      ShulkerBoxBlockEntity progress, BellRenderer, PistonHeadRenderer)
+- [ ] **Sounds**: the sounds the server sends players (mobs, steps, blocks, doors, explosions) and the
+      ones the client makes from level events, played in 3D like the game's SoundEngine (sound files from
+      the game's asset index, downloaded and cached by the server; a button turns them on in the viewer)
 - [x] **Particles** from `particles/*.json` and their textures: torch, candle and campfire flames
       and smoke, lava pops, drips, portal, falling leaves, spore blossoms, fireflies
 - [x] **Particles from the server**: broken blocks (pieces of the block's texture), explosions and
@@ -104,8 +114,8 @@ to the milestone it belongs to. The roadmap on the README page is drawn from thi
       frames turned like the game's and invisible frames showing their item; old 64x32 skins converted like
       SkinTextureDownloader
 - [ ] Entity details: fishing lines, glowing outlines, wolf armour cracks, names of map markers
-- [ ] Terrain: the game's chunk occlusion culling (visibility graph), block breaking progress,
-      remaining fluid edge cases, the biome blend setting
+- [ ] Terrain: the game's chunk occlusion culling (visibility graph), remaining fluid edge cases, the
+      biome blend setting
 - [ ] Camera in water, lava and powder snow: the game's overlays and fog
 
 ## 1.4 — performance
@@ -125,6 +135,4 @@ to the milestone it belongs to. The roadmap on the README page is drawn from thi
 ## Later
 
 - Items in the world with their 26.x item model definitions (`items/*.json`) and properties
-- Block entity and entity animations driven by server events (chest lids, bell swings, door and
-  piston movement)
 - Optional recording and timelapse of a camera
