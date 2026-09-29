@@ -56,6 +56,7 @@ net/minecraft/client/renderer/blockentity/BannerRenderer
 net/minecraft/client/renderer/blockentity/SkullBlockRenderer
 net/minecraft/client/renderer/blockentity/DecoratedPotRenderer
 net/minecraft/client/renderer/blockentity/BeaconRenderer
+net/minecraft/client/renderer/blockentity/CampfireRenderer
 net/minecraft/client/renderer/blockentity/AbstractEndPortalRenderer
 net/minecraft/client/renderer/blockentity/TheEndPortalRenderer
 net/minecraft/client/renderer/blockentity/TheEndGatewayRenderer

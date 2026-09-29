@@ -188,7 +188,7 @@ def main():
     rcon.command("fill -9 -60 3 -9 -60 14 minecraft:oak_fence")
     rcon.command("setblock 1 -60 3 minecraft:chest[facing=north]")
     # a lit campfire: its smoke column is the viewer's surest particle (screenshot.mjs checks it)
-    rcon.command("setblock -1 -60 3 minecraft:campfire[lit=true]")
+    rcon.command('setblock -1 -60 3 minecraft:campfire[lit=true]{Items:[{Slot:0b,id:"minecraft:beef",count:1}]}')
     rcon.command("setblock 0 -60 5 minecraft:poppy")
     rcon.command("setblock 1 -60 6 minecraft:dandelion")
     rcon.command('setblock -3 -60 0 minecraft:oak_sign[rotation=8]{front_text:{messages:["CCTV","Camera ci","",""]}}')
@@ -326,6 +326,9 @@ def main():
         failures.append(f"banner patterns were not streamed (got {banner})")
     if stream.block_entities.get("pot", {}).get("front") != "minecraft:skull_pottery_pattern":
         failures.append(f"decorated pot sherds were not streamed (got {stream.block_entities.get('pot')})")
+    campfire = stream.block_entities.get("campfire", {})
+    if not any(item and item.endswith("beef") for item in campfire.get("i", [])):
+        failures.append(f"the food on the campfire was not streamed (got {campfire})")
     if stream.block_entities.get("head", {}).get("name") != "Notch":
         failures.append(f"the player head's owner was not streamed (got {stream.block_entities.get('head')})")
     for line in ("CCTV", "Camera ci", "Welcome", "edited"):

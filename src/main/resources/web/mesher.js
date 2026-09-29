@@ -10,6 +10,9 @@ import { JavaRandom, positionSeed } from './rng.js';
 import { biomeInfoNoise2d } from './noise.js';
 import { collectParts, needsRandom, DOWN, UP, NORTH, SOUTH, WEST, EAST, DIR_VECTORS, MAT_OPAQUE, MAT_CUTOUT, MAT_TRANSLUCENT, MAT_COLOR } from './models.js';
 
+/** Blocks with a model whose block entity also draws something (a beacon's beam, food on a campfire). */
+const DRAWN_OVER = new Set(['minecraft:beacon', 'minecraft:campfire', 'minecraft:soul_campfire']);
+
 export const STRIDE = 24; // f32 x3 position | u16 x2 uv (1/65536) | u8 rgb + face | u8 sky, block, material, flags
 export const PAD = 18;
 export const UNKNOWN = 0xffff;
@@ -367,7 +370,7 @@ export class Mesher {
 							this.tesselateFluid(info, p, bx, by, bz, wx, wy, wz, info.water ? translucent : opaque);
 						}
 						// Block entities drawn on top of their block model (a beacon's beam).
-						if (info.name === 'minecraft:beacon') blockEntities.push(wx, wy, wz, id);
+						if (DRAWN_OVER.has(info.name)) blockEntities.push(wx, wy, wz, id);
 						if (info.noModel) {
 							if (this.handledBlockEntities.has(info.name)) {
 								blockEntities.push(wx, wy, wz, id);

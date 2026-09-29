@@ -1362,6 +1362,10 @@ export class EntityRenderer {
 					this.drawBeacon(be, [bx, by, bz], frame, world);
 					continue;
 				}
+				if (be.info.shortName === 'campfire' || be.info.shortName === 'soul_campfire') {
+					if (Math.hypot(bx, by, bz) <= Math.min(frame.fogEnd, 64) && frame.frustum(bx + 0.5, by + 0.5, bz + 0.5, 1.5)) this.drawCampfireItems(be, [bx, by, bz], world);
+					continue;
+				}
 				if (be.info.shortName === 'end_portal' || be.info.shortName === 'end_gateway') {
 					this.addPortal(be, [bx, by, bz], frame, world);
 					continue;
@@ -1470,6 +1474,33 @@ export class EntityRenderer {
 		gl.enable(gl.CULL_FACE);
 		gl.activeTexture(gl.TEXTURE0);
 		gl.bindVertexArray(null);
+	}
+
+	/** CampfireRenderer: the food on each side, lying flat and turned to its side, cooked on the fire. */
+	drawCampfireItems(be, p, world) {
+		const data = world.blockEntityAt(be.x, be.y, be.z);
+		if (!data || data.k !== 'campfire' || !data.i) return;
+		const [sky, block] = world.lightAt(be.x, be.y, be.z);
+		const style = { color: [1, 1, 1, 1], light: [block * 16, sky * 16], overlay: [0, 0] };
+		// Direction.get2DDataValue / toYRot: south, west, north, east
+		const FACING = { south: 0, west: 1, north: 2, east: 3 };
+		const facing = FACING[be.info.props.facing] ?? 2;
+		data.i.forEach((item, slot) => {
+			if (!item) return;
+			const mesh = this.itemMesh(item);
+			if (!mesh) return;
+			const m = mat4();
+			translate(m, p[0] + 0.5, p[1] + 0.44921875, p[2] + 0.5);
+			rotate(m, 1, -((slot + facing) % 4) * 90 * DEG);
+			rotate(m, 0, 90 * DEG);
+			translate(m, -0.3125, -0.3125, 0);
+			scale(m, 0.375);
+			// the item's FIXED display transform: generated items turn round, block items are half size
+			if (mesh.kind === 'block') scale(m, 0.5);
+			else rotate(m, 1, 180 * DEG);
+			translate(m, -0.5, -0.5, -0.5);
+			this.emitItem(mesh, m, style);
+		});
 	}
 
 	/** BeaconRenderer.submitBeaconBeam */

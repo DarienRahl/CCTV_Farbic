@@ -11,8 +11,10 @@ import com.mojang.authlib.GameProfile;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
 import net.minecraft.core.component.DataComponents;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.Util;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.ItemStackTemplate;
 import net.minecraft.world.item.component.ResolvableProfile;
 import net.minecraft.world.level.block.entity.BannerBlockEntity;
@@ -20,6 +22,7 @@ import net.minecraft.world.level.block.entity.BannerPatternLayers;
 import net.minecraft.world.level.block.entity.BeaconBeamOwner;
 import net.minecraft.world.level.block.entity.BeaconBlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.entity.CampfireBlockEntity;
 import net.minecraft.world.level.block.entity.DecoratedPotBlockEntity;
 import net.minecraft.world.level.block.entity.DecoratedPotPattern;
 import net.minecraft.world.level.block.entity.PotDecorations;
@@ -56,6 +59,7 @@ final class BlockEntityEncoder {
 					case DecoratedPotBlockEntity pot -> pot(pot);
 					case SkullBlockEntity skull -> skull(skull);
 					case BeaconBlockEntity beacon -> beacon(beacon);
+					case CampfireBlockEntity campfire -> campfire(campfire);
 					default -> null;
 				};
 			} catch (RuntimeException | LinkageError e) {
@@ -86,6 +90,19 @@ final class BlockEntityEncoder {
 		Json json = begin("beacon", beacon).name("s").beginArray();
 		for (BeaconBeamOwner.Section section : beacon.getBeamSections()) {
 			json.beginArray().value(section.getColor() & 0xFFFFFF).value(section.getHeight()).endArray();
+		}
+		return json.endArray().endObject().toString();
+	}
+
+	/** Food cooking on a campfire, one item id (or null) per slot: {@code {"k":"campfire", "i": [...]}}; empty ones are left out. */
+	private static @Nullable String campfire(CampfireBlockEntity campfire) {
+		List<ItemStack> items = campfire.getItems();
+		if (items.stream().allMatch(ItemStack::isEmpty)) {
+			return null;
+		}
+		Json json = begin("campfire", campfire).name("i").beginArray();
+		for (ItemStack item : items) {
+			json.value(item.isEmpty() ? null : BuiltInRegistries.ITEM.getKey(item.getItem()).toString());
 		}
 		return json.endArray().endObject().toString();
 	}
