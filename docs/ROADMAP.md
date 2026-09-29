@@ -62,7 +62,7 @@ to the milestone it belongs to. The roadmap on the README page is drawn from thi
 - [ ] More of them: evoker fangs and spells, horse rearing and eating, fox and panda poses, the
       iron golem offering a flower
 
-## 1.3 — 1:1 picture (first part released: 1.3.0)
+## 1.3 — 1:1 picture (parts released: 1.3.0, 1.3.1)
 
 - [ ] **Reference renders in CI**: a Fabric client game test builds the CI scene in single
       player, takes a screenshot from the camera position with the game, and the viewer takes
@@ -94,14 +94,27 @@ to the milestone it belongs to. The roadmap on the README page is drawn from thi
       turns them on in the viewer)
 - [x] Sounds the client makes itself: lightning thunder and impact (LightningBolt), the crackle and bubbling
       of fire, campfires, furnaces, candles, lava, flowing water and nether portals (animateTick)
-- [ ] Rain on blocks, cave and biome ambience (AmbientSoundHandler), underwater ambience
+- [x] **Ambience**: rain on the blocks around the camera (ClientLevel.tickWeatherEffects, with its seeded
+      random), the biome's loops, additions and cave sounds in the dark (BiomeAmbientSoundsHandler, from
+      the server's environment attributes), underwater loops and additions, bubble columns, End flashes
+- [x] Client-only block and entity sounds: desert sand and dry plants, leaves, pale hanging moss,
+      eyeblossoms, creaking hearts, dried ghasts, respawn anchors, bubble columns, potent sulfur, firefly
+      bushes, vaults and trial spawners; blazes burning, phantom wing flaps, the warden's heartbeat, armour
+      stand hits, zombie villager cures, evoker fang bites
+- [ ] The rest of the client-only sounds: the warden's heartbeat speeding up with its anger, enderman
+      stares, sniffer searching and digging, guardian beams, boat paddles, dripstone and honey drips
+      landing, background music (optional)
 - [x] **Particles** from `particles/*.json` and their textures: torch, candle and campfire flames
       and smoke, lava pops, drips, portal, falling leaves, spore blossoms, fireflies
 - [x] **Particles from the server**: broken blocks (pieces of the block's texture), explosions and
       their smoke, the particles the server sends (`ClientboundLevelParticlesPacket`: crits, sweeps,
       hearts, dust...), level events (dispenser smoke, bone meal, lava fizz), death and spawn poofs,
       love hearts, villager moods and potion effect swirls
-- [ ] More particles: rain splashes, item pieces (eating, breaking tools), fireworks, bubbles
+- [x] Rain splashes (and smoke where it falls on lava, magma and campfires), bubbles, bubble columns and
+      whirlpools, reverse portal specks, white smoke
+- [x] **Fireworks**: rockets' sparks and their explosions (FireworkParticles: balls, stars, creepers,
+      bursts, trails, twinkling, fading colours, the flash) with the blast and twinkle sounds
+- [ ] More particles: item pieces (eating, breaking tools), dripstone and honey drips, sulfur bubbles
 - [x] Fire on burning entities (FlameFeatureRenderer, invisible ones too); invisible mobs show
       their equipment
 - [x] Capes (from the player's Mojang profile, swinging like ClientAvatarState's cloak), elytra

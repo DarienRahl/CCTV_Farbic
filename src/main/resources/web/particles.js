@@ -497,6 +497,180 @@ class EndRodParticle extends QuadParticle {
 	}
 }
 
+/** FireworkParticles.SparkParticle (a SimpleAnimatedParticle): a glowing spark, trailing or twinkling, fading. */
+class FireworkSpark extends QuadParticle {
+	constructor(level, x, y, z, xa, ya, za, sprites, engine) {
+		super(level, x, y, z, undefined, undefined, undefined, sprites.first());
+		this.friction = 0.91;
+		this.gravity = 0.1;
+		this.sprites = sprites;
+		this.engine = engine;
+		this.xd = xa; this.yd = ya; this.zd = za;
+		this.quadSize *= 0.75;
+		this.lifetime = 48 + nextInt(12);
+		this.alpha = 0.99;
+		this.translucent = true;
+		this.trail = false;
+		this.twinkle = false;
+		this.fade = null;
+		this.setSpriteFromAge(sprites);
+	}
+
+	/** SparkParticle.extract: twinkling sparks blink in their last two thirds. */
+	get hidden() {
+		return this.twinkle && this.age >= Math.trunc(this.lifetime / 3) && Math.trunc((this.age + this.lifetime) / 3) % 2 !== 0;
+	}
+
+	light() {
+		return [240, 240];
+	}
+
+	tick() {
+		super.tick();
+		this.setSpriteFromAge(this.sprites);
+		const half = Math.trunc(this.lifetime / 2);
+		if (this.age > half) {
+			this.alpha = 1 - (this.age - half) / this.lifetime;
+			if (this.fade) {
+				this.rCol += (this.fade[0] - this.rCol) * 0.2;
+				this.gCol += (this.fade[1] - this.gCol) * 0.2;
+				this.bCol += (this.fade[2] - this.bCol) * 0.2;
+			}
+		}
+		if (this.trail && this.age < half && (this.age + this.lifetime) % 2 === 0) {
+			const spark = new FireworkSpark(this.level, this.x, this.y, this.z, 0, 0, 0, this.sprites, this.engine);
+			spark.setColor(this.rCol, this.gCol, this.bCol);
+			spark.age = Math.trunc(spark.lifetime / 2);
+			spark.fade = this.fade;
+			spark.twinkle = this.twinkle;
+			if (this.engine.length < MAX_PARTICLES) this.engine.push(spark);
+		}
+	}
+}
+
+/** FireworkParticles.OverlayParticle (flash): the burst of light where a firework explodes. */
+class FireworkFlash extends QuadParticle {
+	constructor(level, x, y, z, sprite) {
+		super(level, x, y, z, undefined, undefined, undefined, sprite);
+		this.lifetime = 4;
+		this.translucent = true;
+	}
+
+	quadSizeAt(a) {
+		// OverlayParticle.extract sets the alpha for the frame too
+		this.alpha = 0.6 - (this.age + a - 1) * 0.25 * 0.5;
+		return 7.1 * Math.sin((this.age + a - 1) * 0.25 * Math.PI);
+	}
+}
+
+/**
+ * FireworkParticles.Starter: explodes a rocket's explosions one every two ticks (balls, stars, creepers,
+ * bursts), with the blast (and twinkle) sounds. Not drawn itself; it runs with particles off for the sounds.
+ */
+class FireworkStarter {
+	constructor(engine, level, x, y, z, xd, yd, zd, explosions, playSound) {
+		this.engine = engine;
+		this.level = level;
+		this.x = x; this.y = y; this.z = z;
+		this.xd = xd; this.yd = yd; this.zd = zd;
+		this.explosions = explosions;
+		this.playSound = playSound;
+		this.life = 0;
+		this.lifetime = explosions.length * 2 - 1;
+		this.twinkleDelay = explosions.some(e => e.twinkle);
+		if (this.twinkleDelay) this.lifetime += 15;
+		this.removed = false;
+	}
+
+	far() {
+		const c = this.engine.camera;
+		return !c || (c.x - this.x) ** 2 + (c.y - this.y) ** 2 + (c.z - this.z) ** 2 >= 256;
+	}
+
+	tick() {
+		if (this.life === 0 && this.playSound) {
+			const large = this.explosions.length >= 3 || this.explosions.some(e => e.shape === 'large_ball');
+			const sound = 'minecraft:entity.firework_rocket.' + (large ? 'large_blast' : 'blast') + (this.far() ? '_far' : '');
+			this.level.sound(sound, this.x, this.y, this.z, 'ambient', 20, 0.95 + nextFloat() * 0.1, true);
+		}
+		if (this.life % 2 === 0 && this.life / 2 < this.explosions.length) {
+			const explosion = this.explosions[this.life / 2];
+			const colors = explosion.colors.length ? explosion.colors : [0x1e1b1b]; // DyeColor.BLACK.getFireworkColor()
+			switch (explosion.shape) {
+				case 'small_ball': this.ball(0.25, 2, colors, explosion); break;
+				case 'large_ball': this.ball(0.5, 4, colors, explosion); break;
+				case 'star': this.shape(0.5, STAR_COORDS, colors, explosion, false); break;
+				case 'creeper': this.shape(0.5, CREEPER_COORDS, colors, explosion, true); break;
+				case 'burst': this.burst(colors, explosion); break;
+				default: break;
+			}
+			this.engine.addFirework('flash', this.level, this.x, this.y, this.z, colors[0]);
+		}
+		this.life++;
+		if (this.life > this.lifetime) {
+			if (this.twinkleDelay && this.playSound) {
+				const sound = 'minecraft:entity.firework_rocket.twinkle' + (this.far() ? '_far' : '');
+				this.level.sound(sound, this.x, this.y, this.z, 'ambient', 20, 0.9 + nextFloat() * 0.15, true);
+			}
+			this.removed = true;
+		}
+	}
+
+	spark(xa, ya, za, colors, explosion) {
+		const fade = explosion.fade.length ? explosion.fade[nextInt(explosion.fade.length)] : null;
+		this.engine.addFirework('spark', this.level, this.x, this.y, this.z, colors[nextInt(colors.length)], xa, ya, za,
+			explosion.trail, explosion.twinkle, fade);
+	}
+
+	ball(speed, steps, colors, explosion) {
+		for (let y = -steps; y <= steps; y++) {
+			for (let x = -steps; x <= steps; x++) {
+				for (let z = -steps; z <= steps; z++) {
+					const xa = x + (nextDouble() - nextDouble()) * 0.5;
+					const ya = y + (nextDouble() - nextDouble()) * 0.5;
+					const za = z + (nextDouble() - nextDouble()) * 0.5;
+					const len = Math.sqrt(xa * xa + ya * ya + za * za) / speed + nextGaussian() * 0.05;
+					this.spark(xa / len, ya / len, za / len, colors, explosion);
+					if (y !== -steps && y !== steps && x !== -steps && x !== steps) z += steps * 2 - 1;
+				}
+			}
+		}
+	}
+
+	shape(speed, coords, colors, explosion, flat) {
+		const [sx, sy] = coords[0];
+		this.spark(sx * speed, sy * speed, 0, colors, explosion);
+		const baseAngle = nextFloat() * Math.PI;
+		const angleMod = flat ? 0.034 : 0.34;
+		for (let step = 0; step < 3; step++) {
+			const angle = baseAngle + step * Math.PI * angleMod;
+			let ox = sx, oy = sy;
+			for (let c = 1; c < coords.length; c++) {
+				const [tx, ty] = coords[c];
+				for (let sub = 0.25; sub <= 1; sub += 0.25) {
+					let xa = lerp(sub, ox, tx) * speed;
+					const ya = lerp(sub, oy, ty) * speed;
+					const za = xa * Math.sin(angle);
+					xa *= Math.cos(angle);
+					for (let flip = -1; flip <= 1; flip += 2) this.spark(xa * flip, ya, za * flip, colors, explosion);
+				}
+				ox = tx; oy = ty;
+			}
+		}
+	}
+
+	burst(colors, explosion) {
+		const offX = nextGaussian() * 0.05, offZ = nextGaussian() * 0.05;
+		for (let i = 0; i < 70; i++) {
+			this.spark(this.xd * 0.5 + nextGaussian() * 0.15 + offX, this.yd * 0.5 + nextDouble() * 0.5,
+				this.zd * 0.5 + nextGaussian() * 0.15 + offZ, colors, explosion);
+		}
+	}
+}
+
+const CREEPER_COORDS = [[0, 0.2], [0.2, 0.2], [0.2, 0.6], [0.6, 0.6], [0.6, 0.2], [0.2, 0.2], [0.2, 0], [0.4, 0], [0.4, -0.6], [0.2, -0.6], [0.2, -0.4], [0, -0.4]];
+const STAR_COORDS = [[0, 1], [0.3455, 0.309], [0.9511, 0.309], [0.3795918367346939, -0.12653061224489795], [0.6122448979591837, -0.8040816326530612], [0, -0.35918367346938773]];
+
 /** DustParticleBase + DustParticle (redstone). */
 class DustParticle extends QuadParticle {
 	constructor(level, x, y, z, xa, ya, za, color, scale, sprites) {
@@ -1612,6 +1786,10 @@ export class Particles {
 		this.terrainSprites = new Map();
 		/** ClientLevel.rainSoundTime */
 		this.rainSoundTime = 0;
+		/** Exploding fireworks (FireworkParticles.Starter) */
+		this.starters = [];
+		/** Firework rockets' last heights, for their trail (entity id -> y) */
+		this.rockets = new Map();
 	}
 
 	/** Sprite sets from particles/*.json and one atlas of textures/particle (from the asset bundle). */
@@ -1661,6 +1839,7 @@ export class Particles {
 
 	clear() {
 		this.particles.length = 0;
+		this.starters.length = 0;
 		this.pending.length = 0;
 		this.explosions.length = 0;
 	}
@@ -1695,7 +1874,10 @@ export class Particles {
 			}
 		}
 		this.tickExplosions(level);
+		for (const starter of this.starters) starter.tick();
+		this.starters = this.starters.filter(starter => !starter.removed);
 		for (const e of entities || []) if (e.fxp && e.fxp.length) this.effectSwirls(level, e);
+		this.rocketTrails(level, entities);
 		const list = this.particles;
 		let n = 0;
 		for (let i = 0; i < list.length; i++) {
@@ -1739,6 +1921,20 @@ export class Particles {
 				for (let i = 0; i < nextInt(2) + 2; i++) campfireSmoke(level, x, y, z, p.signal_fire === 'true', false);
 			}
 		}
+	}
+
+	/** FireworkRocketEntity.tick (client): a spark falls behind a flying rocket every tick. */
+	rocketTrails(level, entities) {
+		const seen = new Set();
+		for (const e of entities || []) {
+			if (e.type !== 'minecraft:firework_rocket') continue;
+			seen.add(e.id);
+			const last = this.rockets.get(e.id);
+			this.rockets.set(e.id, e.y);
+			const yd = last === undefined ? 0 : e.y - last;
+			this.addFirework('spark', level, e.x, e.y, e.z, 0xffffff, nextGaussian() * 0.05, -yd * 0.5, nextGaussian() * 0.05);
+		}
+		for (const id of this.rockets.keys()) if (!seen.has(id)) this.rockets.delete(id);
 	}
 
 	/**
@@ -1816,8 +2012,41 @@ export class Particles {
 			case 'ex': this.explosion(level, fx); break;
 			case 'ee': this.entityEffect(level, fx[1], fx[2], fx[3], fx[4], fx[5], fx[6]); break;
 			case 'be': this.blockEvent(level, fx); break;
+			case 'fw': this.fireworks(level, fx); break;
 			default: break;
 		}
+	}
+
+	/**
+	 * ClientLevel.createFireworks (FireworkRocketEntity event 17): ["fw", x, y, z, xd, yd, zd, sound,
+	 * [[shape, colours, fade colours, trail, twinkle]...]]; a rocket without explosions just puffs.
+	 */
+	fireworks(level, [, x, y, z, xd, yd, zd, sound, explosions]) {
+		if (!explosions || !explosions.length) {
+			for (let i = 0; i < nextInt(3) + 2; i++) this.addFx(level, 'poof', x, y, z, nextGaussian() * 0.05, 0.005, nextGaussian() * 0.05);
+			return;
+		}
+		const list = explosions.map(([shape, colors, fade, trail, twinkle]) => ({ shape, colors: colors || [], fade: fade || [], trail: !!trail, twinkle: !!twinkle }));
+		this.starters.push(new FireworkStarter(this, level, x, y, z, xd, yd, zd, list, !!sound));
+	}
+
+	/** A firework spark or flash (FireworkParticles.SparkProvider / FlashProvider) with its colour. */
+	addFirework(kind, level, x, y, z, color, xa = 0, ya = 0, za = 0, trail = false, twinkle = false, fade = null) {
+		if (!this.enabled || !this.texture || this.particles.length >= MAX_PARTICLES) return;
+		const sprites = this.sets.get(kind === 'flash' ? 'minecraft:flash' : 'minecraft:firework');
+		if (!sprites) return;
+		const rgb = rgbOf(color);
+		let p;
+		if (kind === 'flash') {
+			p = new FireworkFlash(level, x, y, z, sprites.random());
+		} else {
+			p = new FireworkSpark(level, x, y, z, xa, ya, za, sprites, this.particles);
+			p.trail = trail;
+			p.twinkle = twinkle;
+			if (fade !== null) p.fade = rgbOf(fade);
+		}
+		p.setColor(rgb[0], rgb[1], rgb[2]);
+		this.particles.push(p);
 	}
 
 	/**
@@ -2207,7 +2436,7 @@ export class Particles {
 		for (const group of groups) {
 			if (!group.texture) continue;
 			for (const p of this.particles) {
-				if (!p.sprite || !group.match(p)) continue;
+				if (!p.sprite || p.hidden || !group.match(p)) continue;
 				const px = lerp(partialTick, p.xo, p.x) - camera.x;
 				const py = lerp(partialTick, p.yo, p.y) - camera.y;
 				const pz = lerp(partialTick, p.zo, p.z) - camera.z;

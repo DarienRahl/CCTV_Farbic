@@ -228,3 +228,35 @@ com/mojang/blaze3d/audio/Channel
 com/mojang/blaze3d/audio/Listener
 # client sounds of blocks and lightning (particles.js animateBlock / animateFluid, sound.js)
 net/minecraft/world/entity/LightningBolt
+# ambience (sound.js ambient, particles.js tickWeatherEffects and animateBlock)
+net/minecraft/client/resources/sounds/BiomeAmbientSoundsHandler
+net/minecraft/client/resources/sounds/UnderwaterAmbientSoundHandler
+net/minecraft/client/resources/sounds/UnderLiquidAmbientSoundInstance
+net/minecraft/client/resources/sounds/UnderLiquidSubSound
+net/minecraft/client/resources/sounds/BubbleColumnAmbientSoundHandler
+net/minecraft/client/resources/sounds/DirectionalSoundInstance
+net/minecraft/world/level/block/sounds/AmbientDesertBlockSoundsPlayer
+net/minecraft/world/level/block/sounds/AmbientLeavesBlockSoundPlayer
+net/minecraft/world/level/block/HangingMossBlock
+net/minecraft/world/level/block/EyeblossomBlock
+net/minecraft/world/level/block/CreakingHeartBlock
+net/minecraft/world/level/block/DriedGhastBlock
+net/minecraft/world/level/block/RespawnAnchorBlock
+net/minecraft/world/level/block/BubbleColumnBlock
+net/minecraft/world/level/block/PotentSulfurBlock
+net/minecraft/world/level/block/entity/vault/VaultBlockEntity
+net/minecraft/world/level/block/entity/trialspawner/TrialSpawner
+net/minecraft/world/entity/monster/Blaze
+net/minecraft/world/entity/monster/Phantom
+net/minecraft/world/entity/decoration/ArmorStand
+net/minecraft/world/entity/monster/zombie/ZombieVillager
+net/minecraft/world/entity/projectile/EvokerFangs
+net/minecraft/client/particle/ReversePortalParticle
+net/minecraft/client/particle/BubbleParticle
+net/minecraft/client/particle/BubbleColumnUpParticle
+net/minecraft/client/particle/WaterCurrentDownParticle
+net/minecraft/client/particle/WhiteSmokeParticle
+# fireworks (particles.js FireworkStarter, FireworkSpark, FireworkFlash)
+net/minecraft/client/particle/FireworkParticles
+net/minecraft/client/particle/SimpleAnimatedParticle
+net/minecraft/world/entity/projectile/FireworkRocketEntity

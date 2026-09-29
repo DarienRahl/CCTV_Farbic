@@ -124,8 +124,9 @@ class StreamReader(threading.Thread):
                                         self.equipment.add((e["type"], piece["a"], "c" in piece, (piece.get("t") or [None])[0]))
                             self.names.update(e["name"] for e in data["e"] if e.get("nameVisible"))
                             for fx in data.get("fx", []):
-                                # level events by type, entity effects by kind, explosions by particle
-                                self.effects.add(fx[0] + ":" + str(fx[6] if fx[0] == "ex" else fx[4] if fx[0] == "be" else fx[1]))
+                                # level events by type, entity effects by kind, explosions by particle, fireworks by shape
+                                key = fx[6] if fx[0] == "ex" else fx[4] if fx[0] == "be" else (fx[8] or [[None]])[0][0] if fx[0] == "fw" else fx[1]
+                                self.effects.add(fx[0] + ":" + str(key))
                         elif event == "blocks":
                             self.block_updates.extend(data["b"])
                         elif event == "palette":
@@ -273,10 +274,14 @@ def main():
     rcon.command("setblock 4 -60 -4 minecraft:stone")
     rcon.command("setblock 4 -60 -4 minecraft:air destroy")
     rcon.command("summon minecraft:tnt -20 -59 -24 {fuse:0}")
-    # a note block played by redstone: a block event (the viewer shows its note)
+    # a firework rocket that explodes in front of the camera (entity event 17 with its explosions)
+    rcon.command('summon minecraft:firework_rocket 2 -50 6 {LifeTime:5,FireworksItem:{id:"minecraft:firework_rocket",count:1,'
+                 'components:{"minecraft:fireworks":{flight_duration:1,explosions:[{shape:"large_ball",colors:[I;11743532],'
+                 'has_trail:true}]}}}}')
     # blocks whose client ambience needs block tags (desert sand, creaking heart logs)
     rcon.command("setblock 6 -60 3 minecraft:sand")
     rcon.command("setblock 7 -60 3 minecraft:pale_oak_log")
+    # a note block played by redstone: a block event (the viewer shows its note)
     rcon.command("setblock 5 -60 -5 minecraft:note_block")
     rcon.command("setblock 5 -60 -6 minecraft:redstone_block")
     rcon.command('data merge block -3 -60 0 {front_text:{messages:["CCTV","edited","",""]}}')
@@ -382,6 +387,7 @@ def main():
     print("foil:", sorted(stream.foil), "leashed:", sorted(stream.leashed), "effects:", sorted(stream.effects), flush=True)
     for effect, what in (("le:2001", "the broken block's level event"), ("ee:poof", "the killed sheep's death poof"),
                          ("ex:minecraft:explosion_emitter", "the TNT explosion"),
+                         ("fw:large_ball", "the firework rocket's explosion"),
                          ("be:minecraft:note_block", "the note block's block event"),
                          ("s:minecraft:block.note_block.harp", "the note block's sound"),
                          ("s:minecraft:block.stone.break", "the broken block's sound (level event 2001)"),

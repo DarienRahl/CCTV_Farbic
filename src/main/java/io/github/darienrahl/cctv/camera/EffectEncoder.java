@@ -1,5 +1,6 @@
 package io.github.darienrahl.cctv.camera;
 
+import java.util.List;
 import java.util.Set;
 import java.util.function.IntConsumer;
 
@@ -8,6 +9,7 @@ import org.jspecify.annotations.Nullable;
 import com.mojang.serialization.JsonOps;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.Direction.Axis;
 import net.minecraft.core.particles.BlockParticleOption;
 import net.minecraft.core.particles.ExplosionParticleInfo;
@@ -26,6 +28,9 @@ import net.minecraft.world.entity.TamableAnimal;
 import net.minecraft.world.entity.animal.Animal;
 import net.minecraft.world.entity.animal.equine.AbstractHorse;
 import net.minecraft.world.entity.npc.villager.Villager;
+import net.minecraft.world.entity.projectile.FireworkRocketEntity;
+import net.minecraft.world.item.component.FireworkExplosion;
+import net.minecraft.world.item.component.Fireworks;
 import net.minecraft.world.level.block.BonemealableBlock;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
@@ -165,7 +170,36 @@ final class EffectEncoder {
 	 * "untamed" (TamableAnimal and AbstractHorse 7 and 6), villager hearts, anger, happiness and splashes.
 	 * The entity's position and size go along since it may be gone by the next frame.
 	 */
+	/**
+	 * A rocket exploding (FireworkRocketEntity.handleEntityEvent 17, ClientLevel.createFireworks):
+	 * ["fw", x, y, z, xd, yd, zd, sound, [[shape, colours, fade colours, trail, twinkle]...]].
+	 */
+	private static String fireworks(FireworkRocketEntity rocket) {
+		Vec3 movement = rocket.getDeltaMovement();
+		Fireworks fireworks = rocket.getItem().get(DataComponents.FIREWORKS);
+		Json json = new Json(128);
+		json.beginArray().value("fw").value(rocket.getX(), 3).value(rocket.getY(), 3).value(rocket.getZ(), 3)
+				.value(movement.x, 4).value(movement.y, 4).value(movement.z, 4).value(!rocket.isSilent());
+		json.beginArray();
+		for (FireworkExplosion explosion : fireworks != null ? fireworks.explosions() : List.<FireworkExplosion>of()) {
+			json.beginArray().value(explosion.shape().getSerializedName()).beginArray();
+			for (int color : explosion.colors()) {
+				json.value(color);
+			}
+			json.endArray().beginArray();
+			for (int color : explosion.fadeColors()) {
+				json.value(color);
+			}
+			json.endArray().value(explosion.hasTrail()).value(explosion.hasTwinkle()).endArray();
+		}
+		json.endArray().endArray();
+		return json.toString();
+	}
+
 	static @Nullable String entityEvent(Entity entity, byte event) {
+		if (event == 17 && entity instanceof FireworkRocketEntity rocket) {
+			return fireworks(rocket);
+		}
 		String kind = null;
 		if (entity instanceof Villager) {
 			kind = switch (event) {

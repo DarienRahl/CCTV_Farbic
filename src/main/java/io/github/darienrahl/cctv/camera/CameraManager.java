@@ -28,6 +28,7 @@ import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.util.random.WeightedList;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.projectile.FireworkRocketEntity;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
@@ -214,7 +215,9 @@ public final class CameraManager implements CameraDirectory {
 		}
 		for (CameraSession session : sessions.values()) {
 			session.onEntityEvent(level, entity, event);
-			session.onEffect(level, entity.getX(), entity.getY(), entity.getZ(), session.entityEffectRange(),
+			// fireworks are seen and heard from as far as players track rockets (64 blocks)
+			double range = entity instanceof FireworkRocketEntity ? 64 : session.entityEffectRange();
+			session.onEffect(level, entity.getX(), entity.getY(), entity.getZ(), range,
 					states -> EffectEncoder.entityEvent(entity, event));
 		}
 	}

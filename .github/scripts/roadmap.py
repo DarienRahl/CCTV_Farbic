@@ -344,11 +344,14 @@ def parse():
         m["done"] = sum(1 for i in m["items"] if i["done"])
         m["total"] = sum(1 for i in m["items"] if i["done"] is not None)
         m["title"] = f"{m['version']} — {m['name']}" if m["version"] else m["name"]
-        released = re.search(r"released: (\S+)", m["status"] or "")
-        if released and "first part" in m["status"]:
-            m["label"], m["color"] = f"in progress - {released.group(1)} is out", "#ffff55"
+        # "released: 1.2.0", or for a milestone that comes in parts "first part released: 1.3.0" and later
+        # "parts released: 1.3.0, 1.3.1" (the newest is shown)
+        released = re.search(r"released: ([^)]+)", m["status"] or "")
+        latest = released.group(1).split(",")[-1].strip() if released else None
+        if released and ("first part" in m["status"] or "parts released" in m["status"]):
+            m["label"], m["color"] = f"in progress - {latest} is out", "#ffff55"
         elif released:
-            m["label"], m["color"] = f"released {released.group(1)}", "#55ff55"
+            m["label"], m["color"] = f"released {latest}", "#55ff55"
         elif m["total"] == 0:
             m["label"], m["color"] = "ideas for later", "#aaaaaa"
         elif m["done"]:

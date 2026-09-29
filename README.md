@@ -5,7 +5,7 @@
   <a href="https://github.com/DarienRahl/CCTV_Farbic/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/DarienRahl/CCTV_Farbic?style=for-the-badge&amp;label=release&amp;color=5d8c3e"></a>
   <img alt="Minecraft 26.3" src="https://img.shields.io/badge/minecraft-26.3-866043?style=for-the-badge">
   <img alt="Fabric, server side only" src="https://img.shields.io/badge/fabric-server%20side%20only-8b8b8b?style=for-the-badge">
-  <a href="#roadmap"><img alt="Roadmap" src="https://img.shields.io/badge/roadmap-36%2F52%20done-80ff20?style=for-the-badge"></a>
+  <a href="#roadmap"><img alt="Roadmap" src="https://img.shields.io/badge/roadmap-40%2F56%20done-80ff20?style=for-the-badge"></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-555555?style=for-the-badge"></a>
 </p>
 <!-- badges:end -->
@@ -37,8 +37,9 @@ in a web browser: players, mobs, opening doors and placed blocks show up right a
   villager moods and potion swirls. Chests and shulker boxes open, bells swing, blocks being mined
   crack and spawners spin their mobs.
 - **Sounds.** With the 🔈 button the viewer plays what a player at the camera would hear: mobs, steps,
-  doors, chests, blocks breaking, explosions, note blocks and jukeboxes, thunder, crackling fires and
-  bubbling lava, in 3D and fading with distance like the game's sound engine.
+  doors, chests, blocks breaking, explosions, note blocks and jukeboxes, thunder, rain, crackling fires
+  and bubbling lava, cave and biome ambience, the underwater hum, in 3D and fading with distance like
+  the game's sound engine.
 - **Huge view distance.** A camera also sees terrain in unloaded chunks (read from the region files
   off the main thread, much like Bobby does), up to 1024 blocks.
 - **Shaders and custom skies.** An optional "shaders" mode (sun shadows, waving plants, water with
@@ -48,7 +49,7 @@ in a web browser: players, mobs, opening doors and placed blocks show up right a
 ## Roadmap
 
 <!-- roadmap:start -->
-<p align="center"><img src="docs/images/roadmap/banner.svg" width="100%" alt="CCTV roadmap: 36 of 52 done"></p>
+<p align="center"><img src="docs/images/roadmap/banner.svg" width="100%" alt="CCTV roadmap: 40 of 56 done"></p>
 
 What is done and what comes next, milestone by milestone (the full plan with its principles is in
 [docs/ROADMAP.md](docs/ROADMAP.md)).
@@ -85,10 +86,10 @@ What is done and what comes next, milestone by milestone (the full plan with its
 
 </details>
 
-<img src="docs/images/roadmap/1-3.svg" width="100%" alt="1.3 — 1:1 picture: in progress - 1.3.0 is out, 21 of 29 done">
+<img src="docs/images/roadmap/1-3.svg" width="100%" alt="1.3 — 1:1 picture: in progress - 1.3.1 is out, 25 of 33 done">
 
 <details open>
-<summary><b>1.3 — 1:1 picture</b> · in progress - 1.3.0 is out · 21 of 29 done</summary>
+<summary><b>1.3 — 1:1 picture</b> · in progress - 1.3.1 is out · 25 of 33 done</summary>
 
 - [ ] **Reference renders in CI**: a Fabric client game test builds the CI scene in single player, takes a screenshot from the camera position with the game, and the viewer takes one from the same camera; both are published side by side with a difference score
 - [x] **Signs and hanging signs** with their text in the game font (text sent by the server; boards and beds are block models in 26.3 and were already drawn)
@@ -105,10 +106,14 @@ What is done and what comes next, milestone by milestone (the full plan with its
 - [ ] Pistons moving (PistonMovingBlockEntity, PistonHeadRenderer)
 - [x] **Sounds**: the sounds the server sends players (mobs, steps, blocks, doors, explosions, note blocks, jukeboxes) and the ones the client makes from level events, played in 3D like the game's SoundEngine (sound files from the game's asset index, downloaded and cached by the server; a button turns them on in the viewer)
 - [x] Sounds the client makes itself: lightning thunder and impact (LightningBolt), the crackle and bubbling of fire, campfires, furnaces, candles, lava, flowing water and nether portals (animateTick)
-- [ ] Rain on blocks, cave and biome ambience (AmbientSoundHandler), underwater ambience
+- [x] **Ambience**: rain on the blocks around the camera (ClientLevel.tickWeatherEffects, with its seeded random), the biome's loops, additions and cave sounds in the dark (BiomeAmbientSoundsHandler, from the server's environment attributes), underwater loops and additions, bubble columns, End flashes
+- [x] Client-only block and entity sounds: desert sand and dry plants, leaves, pale hanging moss, eyeblossoms, creaking hearts, dried ghasts, respawn anchors, bubble columns, potent sulfur, firefly bushes, vaults and trial spawners; blazes burning, phantom wing flaps, the warden's heartbeat, armour stand hits, zombie villager cures, evoker fang bites
+- [ ] The rest of the client-only sounds: the warden's heartbeat speeding up with its anger, enderman stares, sniffer searching and digging, guardian beams, boat paddles, dripstone and honey drips landing, background music (optional)
 - [x] **Particles** from `particles/*.json` and their textures: torch, candle and campfire flames and smoke, lava pops, drips, portal, falling leaves, spore blossoms, fireflies
 - [x] **Particles from the server**: broken blocks (pieces of the block's texture), explosions and their smoke, the particles the server sends (`ClientboundLevelParticlesPacket`: crits, sweeps, hearts, dust...), level events (dispenser smoke, bone meal, lava fizz), death and spawn poofs, love hearts, villager moods and potion effect swirls
-- [ ] More particles: rain splashes, item pieces (eating, breaking tools), fireworks, bubbles
+- [x] Rain splashes (and smoke where it falls on lava, magma and campfires), bubbles, bubble columns and whirlpools, reverse portal specks, white smoke
+- [x] **Fireworks**: rockets' sparks and their explosions (FireworkParticles: balls, stars, creepers, bursts, trails, twinkling, fading colours, the flash) with the blast and twinkle sounds
+- [ ] More particles: item pieces (eating, breaking tools), dripstone and honey drips, sulfur bubbles
 - [x] Fire on burning entities (FlameFeatureRenderer, invisible ones too); invisible mobs show their equipment
 - [x] Capes (from the player's Mojang profile, swinging like ClientAvatarState's cloak), elytra (ElytraAnimationState, the cape as elytra texture), the skin layers a player turned off
 - [x] **Entity shadows** like EntityRenderer.extractShadow: `shadow.png` on the tops of the blocks below, fading with depth and in the dark, only within 16 blocks of the camera
@@ -318,15 +323,16 @@ Stream events:
 - `init`: `{camera:{name,dimension,x,y,z,yaw,pitch,fov,range}, sections, biomes:{id:{t,d,w,g?,f?,m}}, entityTicks,
   dim:{id,skybox,cardinal,hasSky,ambient,endFlashes,minY,height,horizon,zoomSeed}}`; the world is sent from scratch after it;
 - `progress`: `{d, t}` loading progress;
-- `palette`: `{s:[{id, n:"minecraft:oak_stairs", s:"facing=north,…", c:mapColor, f:flags, b:[[x0,y0,z0,x1,y1,z1]…], l:light, lv:fluid level}]}`;
+- `palette`: `{s:[{id, n:"minecraft:oak_stairs", s:"facing=north,…", c:mapColor, f:flags, b:[[x0,y0,z0,x1,y1,z1]…], l:light, lv:fluid level, tg?:[block tags]}]}`;
 - `section`: `{x,y,z, p:[id…], r:RLE, sl:sky light RLE, bl:block light RLE, bp:[biomes], bi:4³ indices}`,
   where RLE is base64 of varint pairs `(length, value)` in YZX order;
 - `blocks`: `{b:[[x,y,z,id]…]}`, instant block changes;
 - `entities`: `{t:tick, e:[{id,type,x,y,z,yaw,pitch,body,head,w,h,age,walk,walkSpeed,scale?,name?,uuid?,pose?,sneak?,baby?,
   hurt?,dead?,swing?,hand?,offhand?,saddle?,bodyArmor?,armor?,item?,seed?, d:{variant?, markings?, villager?, color?, …}}]}`;
 - `env`: environment attributes at the camera: `{time, clock, gt, rain, thunder, sky, fog, sunrise, cloud, cloudHeight, sunAngle,
-  moonAngle, starAngle, stars, moonPhase, skyLight, skyFactor, ambient, blockTint, fogStart, fogEnd, skyFogEnd, …, flash?}`;
-- `weather`: rain/snow columns around the camera `{x, z, size, h:[heights], p:"rsn…"}`;
+  moonAngle, starAngle, stars, moonPhase, skyLight, skyFactor, ambient, blockTint, fogStart, fogEnd, skyFogEnd, …, flash?,
+  amb?:{loop?, mood?:[sound, tickDelay, extent, offset], add?:[[sound, chance]…]}, creaking?, fireflies?}`;
+- `weather`: rain/snow columns around the camera `{x, z, size, minY, h:[heights], p:"rsn…"}`;
 - `ready`: the whole visible area has been sent;
 - `removed`: the camera was removed.
 
@@ -351,9 +357,9 @@ Stream events:
 
 ## Limitations
 
-- The sound of rain and the cave and biome ambience are not played yet, and pistons do not move
-  smoothly. Rain splashes, item pieces (eating, breaking
-  tools), fireworks and bubbles have no particles yet.
+- Pistons do not move smoothly. Item pieces (eating, breaking tools) and dripstone drips have no
+  particles yet, and a few sounds only the game client makes (enderman stares, guardian beams,
+  boat paddles) and the background music are not played.
 - Terrain in unloaded chunks shows the state of the last world save.
 - Textures and models from `client.jar` are not part of this repository. The mod downloads them
   from Mojang's servers on a server that runs the game.
