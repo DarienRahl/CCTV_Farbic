@@ -55,6 +55,7 @@ net/minecraft/client/renderer/blockentity/BellRenderer
 net/minecraft/client/renderer/blockentity/BannerRenderer
 net/minecraft/client/renderer/blockentity/SkullBlockRenderer
 net/minecraft/client/renderer/blockentity/DecoratedPotRenderer
+net/minecraft/client/renderer/blockentity/BeaconRenderer
 
 # name tags and text (text.js, entities.js)
 net/minecraft/client/renderer/SubmitNodeCollection

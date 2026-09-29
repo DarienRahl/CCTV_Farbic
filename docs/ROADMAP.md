@@ -70,8 +70,10 @@ to the milestone it belongs to.
       beds are block models in 26.3 and were already drawn)
 - [x] **Banners with patterns** (and their sway), player heads with their owner's skin, pottery
       sherds on decorated pots
-- [ ] Conduit, lectern and enchanting table books, beacon beams, end portal and end gateway
-      effect, spawner and trial spawner contents, campfire items, brushable blocks
+- [x] **Beacon beams** (BeaconRenderer: the beam sections the beacon computed, the turning beam
+      and its glow, wider far away; re-read every 40 ticks like the beacon's own checks)
+- [ ] Conduit, lectern and enchanting table books, end portal and end gateway effect, spawner
+      and trial spawner contents, campfire items, brushable blocks
 - [x] **Particles** from `particles/*.json` and their textures: torch, candle and campfire flames
       and smoke, lava pops, drips, portal, falling leaves, spore blossoms, fireflies
 - [ ] More particles: rain splashes, entity particles (hearts, villager emotions, potion swirls),

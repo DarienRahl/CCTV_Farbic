@@ -17,6 +17,8 @@ import net.minecraft.world.item.ItemStackTemplate;
 import net.minecraft.world.item.component.ResolvableProfile;
 import net.minecraft.world.level.block.entity.BannerBlockEntity;
 import net.minecraft.world.level.block.entity.BannerPatternLayers;
+import net.minecraft.world.level.block.entity.BeaconBeamOwner;
+import net.minecraft.world.level.block.entity.BeaconBlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.DecoratedPotBlockEntity;
 import net.minecraft.world.level.block.entity.DecoratedPotPattern;
@@ -32,7 +34,7 @@ import io.github.darienrahl.cctv.web.Json;
 /**
  * Block entity details the viewer draws on top of the block models, per section. Only what cannot be
  * seen in the block state: the text of signs and hanging signs, banner patterns, pottery sherds on
- * decorated pots and the owners of player heads.
+ * decorated pots, the owners of player heads and beacon beams.
  */
 final class BlockEntityEncoder {
 	private BlockEntityEncoder() {
@@ -53,6 +55,7 @@ final class BlockEntityEncoder {
 					case BannerBlockEntity banner -> banner(banner);
 					case DecoratedPotBlockEntity pot -> pot(pot);
 					case SkullBlockEntity skull -> skull(skull);
+					case BeaconBlockEntity beacon -> beacon(beacon);
 					default -> null;
 				};
 			} catch (RuntimeException | LinkageError e) {
@@ -73,6 +76,18 @@ final class BlockEntityEncoder {
 	private static Json begin(String kind, BlockEntity blockEntity) {
 		BlockPos pos = blockEntity.getBlockPos();
 		return new Json(128).beginObject().field("k", kind).field("x", pos.getX()).field("y", pos.getY()).field("z", pos.getZ());
+	}
+
+	/**
+	 * The beam of a beacon (BeaconBeamOwner#getBeamSections, empty while the beacon is off):
+	 * {@code {"k":"beacon", "s": [[rgb, height], ...]}}. The session re-reads beacon sections now and then.
+	 */
+	private static String beacon(BeaconBlockEntity beacon) {
+		Json json = begin("beacon", beacon).name("s").beginArray();
+		for (BeaconBeamOwner.Section section : beacon.getBeamSections()) {
+			json.beginArray().value(section.getColor() & 0xFFFFFF).value(section.getHeight()).endArray();
+		}
+		return json.endArray().endObject().toString();
 	}
 
 	/** Sign text, both sides: {@code {"k":"sign", "w", "lh", "f": side, "b": side}}; blank signs are left out. */

@@ -574,6 +574,7 @@ export class EntityRenderer {
 	prepare(frame, list, world, env) {
 		this.begin();
 		this.world = world;
+		this.env = env;
 		this.bolts = [];
 		this.shadows = [];
 		const now = frame.now;
@@ -1278,6 +1279,10 @@ export class EntityRenderer {
 			for (const be of section.blockEntities) {
 				if (!be.info) continue;
 				const bx = be.x - o[0] - cam[0], by = be.y - o[1] - cam[1], bz = be.z - o[2] - cam[2];
+				if (be.info.shortName === 'beacon') {
+					this.drawBeacon(be, [bx, by, bz], frame, world);
+					continue;
+				}
 				if (Math.hypot(bx, by, bz) > Math.min(frame.fogEnd, 96)) continue;
 				if (!frame.frustum(bx + 0.5, by + 0.5, bz + 0.5, 1.5)) continue;
 				const def = blockEntityModel(be.info);
@@ -1287,6 +1292,70 @@ export class EntityRenderer {
 				this.drawBlockEntityModel(def, [bx, by, bz], style, world.blockEntityAt(be.x, be.y, be.z), be);
 			}
 		}
+	}
+
+	/**
+	 * BeaconRenderer: the beam sections the server sent (none while the beacon is off), each a rotating
+	 * solid beam and a translucent glow around it, the last one up to the build limit, seen as far as the
+	 * view reaches and wider when far away.
+	 */
+	drawBeacon(be, p, frame, world) {
+		const data = world.blockEntityAt(be.x, be.y, be.z);
+		if (!data || data.k !== 'beacon' || !data.s || data.s.length === 0) return;
+		const distance = Math.hypot(p[0] + 0.5, p[2] + 0.5);
+		if (distance > frame.fogEnd + 8) return;
+		let visible = false;
+		for (let y = 0; y < 400 && !visible; y += 16) visible = frame.frustum(p[0] + 0.5, p[1] + y + 8, p[2] + 0.5, 12);
+		if (!visible) return;
+		const texture = this.texture('beacon/beacon_beam');
+		if (!texture) return;
+		const time = this.env ? this.env.gameTime(frame.now) : frame.now / 50;
+		const animationTime = ((Math.floor(time) % 40) + 40) % 40 + (time - Math.floor(time));
+		const radiusScale = Math.max(1, distance / 96);
+		let start = 0;
+		data.s.forEach(([color, height], i) => {
+			this.beaconBeam(texture, p, animationTime, start, i === data.s.length - 1 ? 2048 : height, color, 0.2 * radiusScale, 0.25 * radiusScale);
+			start += height;
+		});
+	}
+
+	/** BeaconRenderer.submitBeaconBeam */
+	beaconBeam(texture, p, animationTime, beamStart, height, color, solidRadius, glowRadius) {
+		const beamEnd = beamStart + height;
+		const scroll = height < 0 ? animationTime : -animationTime;
+		const v = scroll * 0.2 - Math.floor(scroll * 0.1);
+		const vOffset = v - Math.floor(v);
+		const rgb = [(color >> 16 & 255) / 255, (color >> 8 & 255) / 255, (color & 255) / 255];
+		// renderPart: four sides, renderQuad: two corners from beamStart to beamEnd
+		const part = (c, u1, u2, v1, v2) => {
+			const quads = [];
+			const quad = (x1, z1, x2, z2) => quads.push(
+				x1, beamEnd, z1, u2, v1, x1, beamStart, z1, u2, v2, x2, beamStart, z2, u1, v2, x2, beamEnd, z2, u1, v1);
+			quad(c[0], c[1], c[2], c[3]);
+			quad(c[6], c[7], c[4], c[5]);
+			quad(c[2], c[3], c[6], c[7]);
+			quad(c[4], c[5], c[0], c[1]);
+			return quads;
+		};
+		const emit = (quads, m, alpha, mode) => {
+			const start = this.sink.count;
+			this.sink.ensure(quads.length / 20 * 6);
+			emitQuads(this.sink, quads, m, { color: [rgb[0], rgb[1], rgb[2], alpha], light: [240, 240], overlay: [0, 0] });
+			const out = this.sink.data;
+			for (let i = start; i < this.sink.count; i++) { out[i * FLOATS + 3] = 0; out[i * FLOATS + 4] = 1; out[i * FLOATS + 5] = 0; }
+			this.batch(texture, mode, start, false);
+		};
+		// the solid beam turns (2.25 degrees a tick)
+		const m = mat4();
+		translate(m, p[0] + 0.5, p[1], p[2] + 0.5);
+		rotate(m, 1, (animationTime * 2.25 - 45) * DEG);
+		let v2 = -1 + vOffset;
+		emit(part([0, solidRadius, solidRadius, 0, -solidRadius, 0, 0, -solidRadius], 0, 1, height * (0.5 / solidRadius) + v2, v2), m, 1, MODE_CUTOUT);
+		// the glow does not
+		const g = mat4();
+		translate(g, p[0] + 0.5, p[1], p[2] + 0.5);
+		v2 = -1 + vOffset;
+		emit(part([-glowRadius, -glowRadius, glowRadius, -glowRadius, -glowRadius, glowRadius, glowRadius, glowRadius], 0, 1, height + v2, v2), g, 32 / 255, MODE_TRANSLUCENT);
 	}
 
 	/**

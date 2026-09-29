@@ -77,6 +77,7 @@ class StreamReader(threading.Thread):
         self.names = set()
         self.sign_lines = set()
         self.block_entities = {}
+        self.beacon_beam = None
         self.animation_states = set()
         self.entity_events = set()
         self.ready = threading.Event()
@@ -115,6 +116,8 @@ class StreamReader(threading.Thread):
                             self.sections.add((data["x"], data["y"], data["z"]))
                             for block_entity in data.get("be", []):
                                 self.block_entities[block_entity.get("k")] = block_entity
+                                if block_entity.get("k") == "beacon" and block_entity.get("s"):
+                                    self.beacon_beam = block_entity
                                 for side in ("f", "b"):
                                     self.sign_lines.update(block_entity.get(side, {}).get("l", []))
                         elif event == "ready":
@@ -198,6 +201,10 @@ def main():
                  '{sherds:{back:"minecraft:brick",left:"minecraft:angler_pottery_sherd",right:"minecraft:heart_pottery_sherd",'
                  'front:"minecraft:skull_pottery_sherd"}}')
     rcon.command('setblock 3 -60 -1 minecraft:player_head[rotation=8]{profile:{name:"Notch"}}')
+    # a beacon on an iron pyramid with stained glass above: its beam turns on at the beacon's next check
+    rcon.command("fill 5 -61 10 7 -61 12 minecraft:iron_block")
+    rcon.command("setblock 6 -60 11 minecraft:beacon")
+    rcon.command("setblock 6 -57 11 minecraft:red_stained_glass")
     rcon.command("place feature minecraft:oak -6 -60 18")
     rcon.command("place feature minecraft:birch 12 -60 16")
     rcon.command("place feature minecraft:fancy_oak 14 -60 4")
@@ -302,7 +309,14 @@ def main():
         failures.append("the breeze's running idle AnimationState was not streamed")
     if ("minecraft:sheep", 3) not in stream.entity_events:
         failures.append("the killed sheep's death entity event (3) was not streamed")
-    print("block entities:", stream.block_entities, flush=True)
+    # BeaconBlockEntity checks its pyramid every 80 ticks; the session reads beacon sections every 40
+    deadline = time.time() + 20
+    while stream.beacon_beam is None and time.time() < deadline:
+        time.sleep(0.5)
+    print("block entities:", stream.block_entities, "beacon beam:", stream.beacon_beam, flush=True)
+    beam = stream.beacon_beam or {}
+    if [section[0] for section in beam.get("s", [])][:2] != [0xF9FFFE, 0xB02E26]:
+        failures.append(f"the beacon beam (white, then red above the glass) was not streamed (got {beam})")
     banner = stream.block_entities.get("banner", {})
     if [layer[0] for layer in banner.get("p", [])] != ["minecraft:stripe_bottom", "minecraft:creeper"]:
         failures.append(f"banner patterns were not streamed (got {banner})")

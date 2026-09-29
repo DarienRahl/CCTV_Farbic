@@ -44,6 +44,7 @@ import io.github.darienrahl.cctv.web.Viewer;
 final class CameraSession {
 	/** Drop cached world data after nobody watched for a minute. */
 	private static final int IDLE_DISPOSE_TICKS = 20 * 60;
+	private static final int BEACON_CHECK_TICKS = 40;
 	/** Sections pushed to one viewer per tick while it catches up. */
 	private static final int SECTIONS_PER_VIEWER_TICK = 160;
 	/**
@@ -316,6 +317,9 @@ final class CameraSession {
 		installResults();
 		scheduleCaptures(level);
 		flushBlockChanges(tick);
+		if (tick % BEACON_CHECK_TICKS == 0) {
+			watchBeacons();
+		}
 		refreshBlockEntities(level);
 		refreshLight(level, tick);
 		rescan(level);
@@ -450,6 +454,19 @@ final class CameraSession {
 		}
 		entry.data.set(index, id);
 		blockChanges.add(new int[]{x, y, z, id, entry.order});
+	}
+
+	/**
+	 * A beacon's beam changes without a block change next to it (a pyramid finished, glass placed far
+	 * above): sections with beacons are read again now and then, like the beacon checks itself.
+	 */
+	private void watchBeacons() {
+		for (SectionEntry entry : order) {
+			SectionCapture data = entry.data;
+			if (data != null && data.blockEntities != null && data.blockEntities.contains("\"k\":\"beacon\"")) {
+				blockEntityRefresh.add(entry);
+			}
+		}
 	}
 
 	/** Re-reads sections whose block entities changed (the result is compared and sent when different). */

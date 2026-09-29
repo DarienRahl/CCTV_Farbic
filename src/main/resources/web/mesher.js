@@ -366,6 +366,8 @@ export class Mesher {
 						if (info.water || info.lava) {
 							this.tesselateFluid(info, p, bx, by, bz, wx, wy, wz, info.water ? translucent : opaque);
 						}
+						// Block entities drawn on top of their block model (a beacon's beam).
+						if (info.name === 'minecraft:beacon') blockEntities.push(wx, wy, wz, id);
 						if (info.noModel) {
 							if (this.handledBlockEntities.has(info.name)) {
 								blockEntities.push(wx, wy, wz, id);
