@@ -192,7 +192,8 @@ def main():
     rcon.command('setblock -5 -60 1 minecraft:white_banner[rotation=8]'
                  '{patterns:[{pattern:"minecraft:stripe_bottom",color:"blue"},{pattern:"minecraft:creeper",color:"black"}]}')
     rcon.command('setblock 2 -60 1 minecraft:decorated_pot[facing=north]'
-                 '{sherds:["minecraft:brick","minecraft:angler_pottery_sherd","minecraft:heart_pottery_sherd","minecraft:skull_pottery_sherd"]}')
+                 '{sherds:[{id:"minecraft:brick"},{id:"minecraft:angler_pottery_sherd"},{id:"minecraft:heart_pottery_sherd"},'
+                 '{id:"minecraft:skull_pottery_sherd"}]}')
     rcon.command('setblock 3 -60 -1 minecraft:player_head[rotation=8]{profile:{name:"Notch"}}')
     rcon.command("place feature minecraft:oak -6 -60 18")
     rcon.command("place feature minecraft:birch 12 -60 16")

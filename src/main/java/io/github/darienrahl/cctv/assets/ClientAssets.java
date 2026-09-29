@@ -425,8 +425,9 @@ public final class ClientAssets implements AutoCloseable {
 
 	/**
 	 * {"version", "blockstates": {id: json}, "models": {id: json}, "textures": {id: base64 png},
-	 * "animations": {id: mcmeta}, "colormaps": {name: base64 png}, "environment": {path: base64 png}}
-	 * (sun, moon, clouds). Later sources override earlier ones.
+	 * "animations": {id: mcmeta}, "colormaps": {name: base64 png}, "environment": {path: base64 png}
+	 * (sun, moon, clouds), "particles": {id: particle definition}, "particleTextures": {id: base64 png}}.
+	 * Later sources override earlier ones.
 	 */
 	private byte[] buildBundle() throws IOException {
 		Map<String, JsonElement> blockstates = new LinkedHashMap<>();
@@ -435,6 +436,8 @@ public final class ClientAssets implements AutoCloseable {
 		Map<String, JsonElement> animations = new LinkedHashMap<>();
 		Map<String, String> colormaps = new LinkedHashMap<>();
 		Map<String, String> environment = new LinkedHashMap<>();
+		Map<String, JsonElement> particles = new LinkedHashMap<>();
+		Map<String, String> particleTextures = new LinkedHashMap<>();
 		TreeSet<String> entityTextures = new TreeSet<>();
 
 		List<ZipFile> zips;
@@ -471,6 +474,10 @@ public final class ClientAssets implements AutoCloseable {
 						colormaps.put(strip(rest, "textures/colormap/", ".png"), base64(zip, entry));
 					} else if (namespace.equals("minecraft") && rest.startsWith("textures/environment/") && rest.endsWith(".png")) {
 						environment.put(strip(rest, "textures/environment/", ".png"), base64(zip, entry));
+					} else if (rest.startsWith("particles/") && rest.endsWith(".json")) {
+						particles.put(namespace + ":" + strip(rest, "particles/", ".json"), parse(zip, entry));
+					} else if (rest.startsWith("textures/particle/") && rest.endsWith(".png")) {
+						particleTextures.put(namespace + ":" + strip(rest, "textures/particle/", ".png"), base64(zip, entry));
 					} else if (namespace.equals("minecraft") && rest.startsWith("textures/entity/") && rest.endsWith(".png")) {
 						entityTextures.add(strip(rest, "textures/entity/", ".png"));
 					}
@@ -525,6 +532,10 @@ public final class ClientAssets implements AutoCloseable {
 		JsonObject environmentObject = new JsonObject();
 		environment.forEach(environmentObject::addProperty);
 		root.add("environment", environmentObject);
+		root.add("particles", toObject(particles));
+		JsonObject particleTextureObject = new JsonObject();
+		particleTextures.forEach(particleTextureObject::addProperty);
+		root.add("particleTextures", particleTextureObject);
 
 		JsonArray list = new JsonArray();
 		entityTextures.forEach(list::add);

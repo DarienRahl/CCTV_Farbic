@@ -47,13 +47,16 @@ to the milestone it belongs to.
       the inspect workflow decompiles them for two versions and prints the diff
 - [x] **Soft failures**: every feature that touches the game API catches `LinkageError`, logs once
       and switches itself off, so a newer game version degrades instead of crashing
+- [x] **Keyframe animations from the game**: every `AnimationDefinition` in `client.jar` is read
+      at run time and played by a port of `KeyframeAnimation`; the server reports running
+      `AnimationState`s and entity events. Warden, sniffer, frog, camel, armadillo, bat, breeze,
+      creaking, rabbit, copper golem, nautilus and baby axolotl move like in the game
+- [x] Entity names from the game's language file, in any game language (`language` setting)
 - [ ] **Automatic entity mapping**: read `EntityRenderers` from `client.jar` (bytecode) to map each
       entity type to its model layers and textures; the hand-written table only overrides. New
       mobs appear with their real model without code changes
-- [ ] **Keyframe animations from the game** (`AnimationDefinition` → JSON): sniffer, warden, frog,
-      camel, armadillo, breeze, bat, creaking… played exactly as in the game, automatically for
-      new mobs that use them
-- [ ] Entity names from the game's language file (mob labels, item names)
+- [ ] More client-side animations from entity events (iron golem and ravager attacks, sheep
+      eating grass, wolf shaking, evoker fangs…); the events already reach the viewer
 
 ## 1.3 — 1:1 picture
 
@@ -62,9 +65,10 @@ to the milestone it belongs to.
       one from the same camera; both are published side by side with a difference score
 - [x] **Signs and hanging signs** with their text in the game font (text sent by the server; boards and
       beds are block models in 26.3 and were already drawn)
-- [ ] **Banners with patterns**, player heads with skins, conduit, lectern and
-      enchanting table books, beacon beams, end portal and end gateway effect, spawner and
-      trial spawner contents, campfire items, brushable blocks, decorated pot patterns
+- [x] **Banners with patterns** (and their sway), player heads with their owner's skin, pottery
+      sherds on decorated pots
+- [ ] Conduit, lectern and enchanting table books, beacon beams, end portal and end gateway
+      effect, spawner and trial spawner contents, campfire items, brushable blocks
 - [ ] **Particles** from `particles/*.json` and their textures: torch, candle and campfire flames
       and smoke, lava pops, drips, portal, falling leaves, spore blossoms, rain splashes
 - [ ] Entity details: fire on burning entities, the game's shadow texture projected on blocks,
@@ -76,16 +80,16 @@ to the milestone it belongs to.
 
 ## 1.4 — performance
 
-- [ ] **Binary section format** (palette + packed indices, run-length light) instead of JSON and
-      base64: several times smaller and faster to decode (in the worker)
+- [ ] Binary section messages instead of JSON with base64 (sections are already palette +
+      run-length encoded and gzipped, so this saves roughly a quarter; lower priority)
 - [ ] **Section cache in the browser** (IndexedDB) keyed by camera and section version: reopening
       a camera shows the world immediately
 - [ ] Server memory: far sections kept only in encoded form, re-read when their chunk changes
 - [ ] Occlusion culling (see 1.3) and per-section culling inside merged regions
 - [ ] Entities: skinning on the GPU (bone matrices in a texture) instead of rebuilding vertices on
       the CPU every frame
-- [ ] Video wall: frame rate cap and lower resolution for small tiles, no rendering for tiles that
-      are off screen or in a hidden tab
+- [x] Video wall: frame rate cap (lower for small tiles), one pixel per CSS pixel, no rendering
+      for tiles that are off screen or in a hidden tab
 - [ ] Budgets in CI: server milliseconds per camera tick, bytes per section, browser frame time
 
 ## Later
