@@ -4,6 +4,9 @@
 // sounds.json with the packet's seed (WeighedSoundEvents.getSound), and SoundEngine.play sets the channel up like
 // OpenAL: volume clamped to 0..1, pitch clamped to 0.5..2, linear attenuation to max(volume, 1) times the sound's
 // attenuation distance (Channel.linearAttenuation), heard from the camera's position and direction.
+// The ambience the client plays on its own is ported too (ambient() once per tick): the biome's loop, additions
+// and cave "mood" (BiomeAmbientSoundsHandler), the underwater loop and its additions (LocalPlayer,
+// UnderwaterAmbientSoundHandler) and bubble columns (BubbleColumnAmbientSoundHandler).
 import { JavaRandom } from './rng.js';
 
 /** Sounds playing at once (the game has 247 static channels; a camera rarely needs more than a few). */
@@ -12,6 +15,11 @@ const MAX_PLAYING = 48;
 const MAX_BUFFERS = 400;
 /** Effects older than this (in ticks) when their turn comes are dropped, like particles. */
 const MAX_LATE = 40;
+
+/** Ticks a looping ambient sound takes to fade in or out (BiomeAmbientSoundsHandler.LOOP_SOUND_CROSS_FADE_TIME). */
+const FADE_TICKS = 40;
+
+const unseeded = () => randomFor(Math.floor(Math.random() * 2 ** 31));
 
 /** RandomSource.create(seed) from the seed the server sent (a decimal long). */
 function randomFor(seed) {
@@ -51,6 +59,25 @@ export class Sounds {
 		this.entities = new Map();
 		/** Lightning bolts already heard. */
 		this.bolts = new Set();
+		this.resetAmbience();
+	}
+
+	/** State of the client's AmbientSoundHandlers (a new level or camera starts them again). */
+	resetAmbience() {
+		for (const loop of this.loops ? this.loops.values() : []) this.stop(loop.sound);
+		if (this.underwater) this.stop(this.underwater.sound);
+		/** BiomeAmbientSoundsHandler.loopSounds: sound event -> {sound, fade, direction} */
+		this.loops = new Map();
+		this.previousLoop = null;
+		this.moodiness = 0;
+		/** UnderLiquidAmbientSoundInstance: {sound, fade} while it plays */
+		this.underwater = null;
+		this.wasUnderwater = null;
+		this.underwaterDelay = 0;
+		this.subSounds = new Set();
+		this.wasInBubbleColumn = false;
+		this.firstBubbleTick = true;
+		this.flashOn = false;
 	}
 
 	/** Starts audio (must follow a click: browsers only allow sound after the user asks for it). */
@@ -85,6 +112,7 @@ export class Sounds {
 		}
 		this.playing.clear();
 		this.jukeboxes.clear();
+		this.resetAmbience();
 		this.pending.length = 0;
 		if (this.ctx) this.ctx.suspend();
 	}
@@ -149,6 +177,174 @@ export class Sounds {
 			const e = this.entities.get(sound.entity);
 			if (e) this.place(sound.panner, e.x, e.y, e.z);
 		}
+	}
+
+	/**
+	 * Once per game tick: the client's ambient sound handlers for a player at the camera. at: {world, camera,
+	 * ambience (the "amb" environment attribute), inWater (eyes in water), block (world.entryAt the camera),
+	 * flash (the End flash: {intensity, xAngle, yAngle})}.
+	 */
+	ambient(at) {
+		if (!this.enabled || !this.events || !this.ctx || !at.camera) return;
+		this.biomeAmbience(at);
+		this.underwaterAmbience(at);
+		this.bubbleColumn(at);
+		this.endFlash(at);
+	}
+
+	/**
+	 * ClientLevel.tick: when an End flash starts, its sound comes 30 ticks later from 10 blocks away in the flash's
+	 * direction (DirectionalSoundInstance, no attenuation).
+	 */
+	endFlash({ camera, flash }) {
+		const on = !!(flash && flash.intensity > 0);
+		if (on && !this.flashOn) {
+			const x = -flash.yAngle * Math.PI / 180 - Math.PI, pitch = -flash.xAngle * Math.PI / 180;
+			const h = -Math.cos(pitch);
+			const dx = Math.sin(x) * h, dy = Math.sin(pitch), dz = Math.cos(x) * h;
+			this.play('minecraft:weather.end_flash', 'weather', 1, 1, unseeded(),
+				{ x: camera.x + dx * 10, y: camera.y + dy * 10, z: camera.z + dz * 10, flat: true }, 1.5);
+		}
+		this.flashOn = on;
+	}
+
+	/** BiomeAmbientSoundsHandler.tick */
+	biomeAmbience({ world, camera, ambience }) {
+		const amb = ambience || {};
+		for (const [id, loop] of this.loops) {
+			// LoopSoundInstance.tick
+			if (loop.fade < 0) {
+				this.stop(loop.sound);
+				this.loops.delete(id);
+				continue;
+			}
+			loop.fade += loop.direction;
+			this.setVolume(loop.sound, Math.min(1, Math.max(0, loop.fade / FADE_TICKS)));
+		}
+		const current = amb.loop || null;
+		if (current !== this.previousLoop) {
+			this.previousLoop = current;
+			for (const loop of this.loops.values()) {
+				loop.fade = Math.min(loop.fade, FADE_TICKS);
+				loop.direction = -1;
+			}
+			if (current) {
+				let loop = this.loops.get(current);
+				if (!loop) {
+					loop = { sound: this.loop(current, 0), fade: 0, direction: 0 };
+					this.loops.set(current, loop);
+				}
+				loop.fade = Math.max(0, loop.fade);
+				loop.direction = 1;
+			}
+		}
+		for (const [id, chance] of amb.add || []) {
+			if (Math.random() < chance) this.play(id, 'ambient', 1, 1, unseeded(), null);
+		}
+		const mood = amb.mood;
+		if (!mood || !world) return;
+		const [id, tickDelay, extent, offset] = mood;
+		const span = extent * 2 + 1;
+		const r = () => Math.floor(Math.random() * span);
+		const bx = Math.floor(camera.x + r() - extent), by = Math.floor(camera.y + r() - extent), bz = Math.floor(camera.z + r() - extent);
+		const [sky, block] = world.lightAt(bx, by, bz);
+		if (sky > 0) this.moodiness -= sky / 15 * 0.001;
+		else this.moodiness -= (block - 1) / tickDelay;
+		if (this.moodiness >= 1) {
+			const dx = bx + 0.5 - camera.x, dy = by + 0.5 - camera.y, dz = bz + 0.5 - camera.z;
+			const distance = Math.hypot(dx, dy, dz) || 1;
+			const d = distance + offset;
+			this.play(id, 'ambient', 1, 1, unseeded(),
+				{ x: camera.x + dx / distance * d, y: camera.y + dy / distance * d, z: camera.z + dz / distance * d });
+			this.moodiness = 0;
+		} else {
+			this.moodiness = Math.max(this.moodiness, 0);
+		}
+	}
+
+	/**
+	 * LocalPlayer.updateIsUnderwater (enter and exit sounds, the underwater loop: UnderLiquidAmbientSoundInstance)
+	 * and UnderwaterAmbientSoundHandler (its additions, which stop when the camera leaves the water).
+	 */
+	underwaterAmbience({ camera, inWater }) {
+		if (this.wasUnderwater !== null && inWater !== this.wasUnderwater) {
+			this.local(inWater ? 'minecraft:ambient.underwater.enter' : 'minecraft:ambient.underwater.exit',
+				camera.x, camera.y, camera.z, 'ambient', 1, 1);
+			if (inWater && !this.underwater) this.underwater = { sound: this.loop('minecraft:ambient.underwater.loop', 0), fade: 0 };
+		}
+		this.wasUnderwater = inWater;
+		const loop = this.underwater;
+		if (loop) {
+			if (loop.fade < 0) {
+				this.stop(loop.sound);
+				this.underwater = null;
+			} else {
+				loop.fade = Math.min(inWater ? loop.fade + 1 : loop.fade - 2, FADE_TICKS);
+				this.setVolume(loop.sound, Math.max(0, Math.min(1, loop.fade / FADE_TICKS)));
+			}
+		}
+		if (!inWater) {
+			for (const sound of this.subSounds) this.stop(sound);
+			this.subSounds.clear();
+		}
+		this.underwaterDelay--;
+		if (this.underwaterDelay <= 0 && inWater) {
+			const rand = Math.random();
+			const id = rand < 1e-4 ? 'minecraft:ambient.underwater.loop.additions.ultra_rare'
+				: rand < 0.001 ? 'minecraft:ambient.underwater.loop.additions.rare'
+					: rand < 0.01 ? 'minecraft:ambient.underwater.loop.additions' : null;
+			if (id) {
+				this.underwaterDelay = 0;
+				this.play(id, 'ambient', 1, 1, unseeded(), null, 0, sound => {
+					this.subSounds.add(sound);
+					sound.source.addEventListener('ended', () => this.subSounds.delete(sound));
+				});
+			}
+		}
+	}
+
+	/** BubbleColumnAmbientSoundHandler: a whoosh when the camera enters a bubble column. */
+	bubbleColumn({ camera, block }) {
+		const name = block && block.n;
+		const inColumn = name === 'minecraft:bubble_column';
+		if (inColumn && !this.wasInBubbleColumn && !this.firstBubbleTick) {
+			const down = /(^|,)drag=true/.test(block.s || '');
+			this.local(down ? 'minecraft:block.bubble_column.whirlpool_inside' : 'minecraft:block.bubble_column.upwards_inside',
+				camera.x, camera.y, camera.z, 'ambient', 1, 1);
+		}
+		this.wasInBubbleColumn = inColumn;
+		this.firstBubbleTick = false;
+	}
+
+	/** A looping sound at the listener (relative, like the game's ambient loops); its volume is set every tick. */
+	loop(id, volume) {
+		const handle = { volume, source: null, node: null, stopped: false };
+		const sound = this.pick(this.events[id], unseeded());
+		if (!sound || !sound.name) return handle;
+		handle.scale = sample(sound.volume ?? 1, unseeded());
+		const pitch = sample(sound.pitch ?? 1, unseeded());
+		const [ns, path] = sound.name.includes(':') ? sound.name.split(':') : ['minecraft', sound.name];
+		this.buffer(ns + '/' + path).then(buffer => {
+			if (!buffer || !this.enabled || handle.stopped) return;
+			const ctx = this.ctx;
+			const node = ctx.createBufferSource();
+			node.buffer = buffer;
+			node.loop = true;
+			node.playbackRate.value = Math.min(2, Math.max(0.5, pitch));
+			const gain = ctx.createGain();
+			gain.gain.value = Math.min(1, handle.volume * handle.scale);
+			node.connect(gain).connect(this.master);
+			handle.source = node;
+			handle.node = gain;
+			node.start();
+		});
+		return handle;
+	}
+
+	setVolume(handle, volume) {
+		if (!handle) return;
+		handle.volume = volume;
+		if (handle.node) handle.node.gain.setTargetAtTime(Math.min(1, volume * handle.scale), this.ctx.currentTime, 0.02);
 	}
 
 	effect(fx) {
@@ -227,7 +423,7 @@ export class Sounds {
 		return (event.sounds || []).reduce((sum, s) => sum + (typeof s === 'string' ? 1 : s.type === 'event' ? this.weightOf(this.events[s.name], depth + 1) : s.weight ?? 1), 0);
 	}
 
-	/** SoundEngine.play for a SimpleSoundInstance at a position. */
+	/** SoundEngine.play for a SimpleSoundInstance at a position (at: null for a sound at the listener). */
 	play(id, source, volume, pitch, random, at, wait = 0, started = null) {
 		const sound = this.pick(this.events[id], random);
 		if (!sound || !sound.name) return;
@@ -236,8 +432,7 @@ export class Sounds {
 		const gain = Math.min(1, Math.max(0, instanceVolume));
 		if (gain <= 0) return;
 		const attenuation = Math.max(instanceVolume, 1) * (sound.attenuation_distance ?? 16);
-		const d = Math.hypot(at.x - this.listener.x, at.y - this.listener.y, at.z - this.listener.z);
-		if (d > attenuation && at.entity === undefined) return;
+		if (at && at.entity === undefined && !at.flat && Math.hypot(at.x - this.listener.x, at.y - this.listener.y, at.z - this.listener.z) > attenuation) return;
 		const [ns, path] = sound.name.includes(':') ? sound.name.split(':') : ['minecraft', sound.name];
 		this.buffer(ns + '/' + path).then(buffer => {
 			if (!buffer || !this.enabled) return;
@@ -251,15 +446,22 @@ export class Sounds {
 			node.playbackRate.value = Math.min(2, Math.max(0.5, instancePitch));
 			const volumeNode = ctx.createGain();
 			volumeNode.gain.value = gain;
-			const panner = ctx.createPanner();
-			panner.panningModel = 'equalpower';
-			panner.distanceModel = 'linear';
-			panner.refDistance = 0;
-			panner.maxDistance = attenuation;
-			panner.rolloffFactor = 1;
-			this.place(panner, at.x, at.y, at.z);
-			node.connect(volumeNode).connect(panner).connect(this.master);
-			const playing = { source: node, panner, entity: at.entity };
+			let panner = null;
+			if (at) {
+				panner = ctx.createPanner();
+				panner.panningModel = 'equalpower';
+				panner.distanceModel = 'linear';
+				panner.refDistance = 0;
+				panner.maxDistance = attenuation;
+				// Attenuation.NONE: heard from its direction at full volume
+				panner.rolloffFactor = at.flat ? 0 : 1;
+				this.place(panner, at.x, at.y, at.z);
+				node.connect(volumeNode).connect(panner).connect(this.master);
+			} else {
+				// relative sounds at the listener (Attenuation.NONE): the same volume everywhere
+				node.connect(volumeNode).connect(this.master);
+			}
+			const playing = { source: node, panner, entity: at ? at.entity : undefined };
 			this.playing.add(playing);
 			node.onended = () => this.playing.delete(playing);
 			node.start(ctx.currentTime + wait);
@@ -280,8 +482,9 @@ export class Sounds {
 
 	stop(sound) {
 		if (!sound) return;
+		sound.stopped = true;
 		try {
-			sound.source.stop();
+			if (sound.source) sound.source.stop();
 		} catch (error) {
 			// not started or already stopped
 		}

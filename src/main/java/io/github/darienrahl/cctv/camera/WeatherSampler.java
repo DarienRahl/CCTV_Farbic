@@ -38,7 +38,8 @@ final class WeatherSampler {
 		BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
 
 		Json json = new Json(size * size * 6 + 64);
-		json.beginObject().field("x", cx - RADIUS).field("z", cz - RADIUS).field("size", size).name("h").beginArray();
+		json.beginObject().field("x", cx - RADIUS).field("z", cz - RADIUS).field("size", size).field("minY", level.getMinY())
+				.name("h").beginArray();
 		StringBuilder types = new StringBuilder(size * size);
 		for (int z = cz - RADIUS; z <= cz + RADIUS; z++) {
 			for (int x = cx - RADIUS; x <= cx + RADIUS; x++) {

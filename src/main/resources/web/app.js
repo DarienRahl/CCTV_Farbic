@@ -241,6 +241,7 @@ function connect() {
 		renderer.setCamera([c.x - origin[0], c.y - origin[1], c.z - origin[2]]);
 		entities.reset();
 		weather.setColumns(null);
+		sounds.resetAmbience();
 		loadAssets();
 		state.received = 0;
 		state.total = data.sections || 0;
@@ -529,8 +530,13 @@ function frame(now) {
 		deltaTicks = Math.min(20, tick - state.gameTick);
 		for (let i = 0; i < Math.min(deltaTicks, 4); i++) environment.tick();
 		if (state.camera) {
-			for (let i = 0; i < Math.min(deltaTicks, 4); i++) {
-				particles.tick(world, state.camera, environment.current.rain || 0, entities.tick, state.entityList);
+			const c0 = state.camera;
+			const gameTime = Math.floor(environment.gameTime(now));
+			const eye = world.entryAt(Math.floor(c0.x), Math.floor(c0.y), Math.floor(c0.z));
+			const eyeInfo = world.infoAt(Math.floor(c0.x), Math.floor(c0.y), Math.floor(c0.z));
+			for (let i = Math.min(deltaTicks, 4) - 1; i >= 0; i--) {
+				particles.tick(world, c0, environment.current.rain || 0, entities.tick, state.entityList, weather.columns, gameTime - i);
+				sounds.ambient({ world, camera: c0, ambience: environment.current.amb, inWater: !!(eyeInfo && eyeInfo.water), block: eye, flash: environment.flash });
 			}
 		}
 		state.gameTick = tick;

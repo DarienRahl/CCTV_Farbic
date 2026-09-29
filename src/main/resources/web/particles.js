@@ -5,6 +5,7 @@
 // (both from the client jar, resource packs apply), drawn as camera-facing quads, lit by the lightmap.
 
 import { program, FOG_GLSL, setFog } from './gl.js';
+import { JavaRandom } from './rng.js';
 import { tintSourceOf, TINT_GRASS, TINT_DOUBLE_GRASS, TINT_FOLIAGE, TINT_DRY_FOLIAGE, TINT_CONSTANT } from './mesher.js';
 
 const MAX_PARTICLES = 16384; // ParticleEngine.MAX_PARTICLES_PER_LAYER
@@ -915,6 +916,7 @@ const PROVIDERS = {
 	portal: (l, x, y, z, xa, ya, za, s) => new PortalParticle(l, x, y, z, xa, ya, za, s.random()),
 	end_rod: (l, x, y, z, xa, ya, za, s) => new EndRodParticle(l, x, y, z, xa, ya, za, s),
 	dust: (l, x, y, z, xa, ya, za, s, options) => new DustParticle(l, x, y, z, xa, ya, za, (options && options.color) || REDSTONE, (options && options.scale) || 1, s),
+	rain: (l, x, y, z, xa, ya, za, s) => new WaterDropParticle(l, x, y, z, s.random()),
 	splash: (l, x, y, z, xa, ya, za, s) => {
 		const p = new WaterDropParticle(l, x, y, z, s.random());
 		p.gravity = 0.04;
@@ -1047,6 +1049,19 @@ const props = info => {
 	return info.props;
 };
 const blockName = info => (info && info.n ? info.n.replace(/^minecraft:/, '') : '');
+
+/** The game's default weather radius and ClientLevel.RAIN_PARTICLES_PER_BLOCK. */
+const WEATHER_RADIUS = 10;
+const RAIN_PARTICLES_PER_BLOCK = 0.225;
+
+/** The weather column at a block: {height (motion blocking height map), type ('r' rain, 's' snow, 'n')} or null. */
+function weatherColumn(columns, x, z) {
+	if (!columns) return null;
+	const cx = x - columns.x, cz = z - columns.z;
+	if (cx < 0 || cz < 0 || cx >= columns.size || cz >= columns.size) return null;
+	const k = cz * columns.size + cx;
+	return { height: columns.h[k], type: columns.p[k] };
+}
 /** Block.isFaceSturdy for the face towards a direction, approximated by a full collision box. */
 const sturdy = info => !!(info && info.f & FLAG_FULL_COLLISION);
 const isAir = info => !info || !!(info.f & FLAG_AIR);
@@ -1359,6 +1374,8 @@ export class Particles {
 		this.camera = null;
 		this.blockAssets = null;
 		this.terrainSprites = new Map();
+		/** ClientLevel.rainSoundTime */
+		this.rainSoundTime = 0;
 	}
 
 	/** Sprite sets from particles/*.json and one atlas of textures/particle (from the asset bundle). */
@@ -1423,12 +1440,13 @@ export class Particles {
 	 * One game tick: the effects that are due, the explosions' block particles, moving the particles, then
 	 * ClientLevel.animateTick, the campfires and the entities' effect swirls. renderTick: the entity tick on screen.
 	 */
-	tick(world, camera, weather, renderTick, entities) {
+	tick(world, camera, weather, renderTick, entities, columns = null, gameTime = 0) {
 		// with particles off, blocks still tick for the sounds they make (when sounds are on)
 		const particlesOn = this.enabled && !!this.texture;
 		if (!particlesOn && !this.onSound) return;
-		const level = this.levelFor(world, weather);
+		const level = this.levelFor(world, weather, columns);
 		this.camera = camera;
+		this.tickWeatherEffects(level, camera, weather, columns, gameTime);
 		while (this.pending.length && (renderTick === undefined || this.pending[0].t <= renderTick)) {
 			const { t, fx } = this.pending.shift();
 			if (renderTick !== undefined && renderTick - t > 40) continue;
@@ -1471,6 +1489,54 @@ export class Particles {
 			if (p.lit !== 'true') continue;
 			if (nextFloat() < 0.11) {
 				for (let i = 0; i < nextInt(2) + 2; i++) campfireSmoke(level, x, y, z, p.signal_fire === 'true', false);
+			}
+		}
+	}
+
+	/**
+	 * ClientLevel.tickWeatherEffects: splashes where the rain lands around the camera (smoke on lava, magma blocks
+	 * and lit campfires) and the rain's sound, from the same seeded random as the game. columns: the "weather"
+	 * message (motion blocking heights and rain or snow within the weather radius).
+	 */
+	tickWeatherEffects(level, camera, rainLevel, columns, gameTime) {
+		if (!(rainLevel > 0) || !columns) return;
+		const seed = BigInt.asIntN(64, BigInt(Math.floor(gameTime)) * 312987231n);
+		const random = this.weatherRandom || (this.weatherRandom = new JavaRandom());
+		random.setSeed(Number(BigInt.asIntN(32, seed >> 32n)), Number(BigInt.asUintN(32, seed)));
+		const cx = Math.floor(camera.x), cy = Math.floor(camera.y), cz = Math.floor(camera.z);
+		const radius = WEATHER_RADIUS, diameter = radius * 2 + 1;
+		const count = Math.trunc(RAIN_PARTICLES_PER_BLOCK * diameter * diameter * rainLevel * rainLevel);
+		let rainAt = null;
+		for (let i = 0; i < count; i++) {
+			const x = cx + random.nextInt(diameter) - radius;
+			const z = cz + random.nextInt(diameter) - radius;
+			const column = weatherColumn(columns, x, z);
+			if (!column || column.height <= (columns.minY ?? -Infinity) || column.height > cy + 10 || column.height < cy - 10 || column.type !== 'r') continue;
+			const y = column.height - 1;
+			rainAt = [x, y, z];
+			const blockX = random.nextDouble(), blockZ = random.nextDouble();
+			const at = level.info(x, y, z);
+			let top = 0;
+			if (at) {
+				let blockTop = -Infinity;
+				if (!(at.f & FLAG_NO_COLLISION)) {
+					for (const b of at.b || []) if (blockX >= b[0] && blockX <= b[3] && blockZ >= b[2] && blockZ <= b[5]) blockTop = Math.max(blockTop, b[4]);
+				}
+				const fluidTop = at.f & (FLAG_WATER | FLAG_LAVA) ? (at.lv >= 8 || !at.lv ? 8 / 9 : at.lv / 9) : 0;
+				top = Math.max(blockTop, fluidTop);
+			}
+			const name = blockName(at);
+			const smoke = (at && at.f & FLAG_LAVA) || name === 'magma_block' || (name.endsWith('campfire') && props(at).lit === 'true');
+			level.add(smoke ? 'smoke' : 'rain', x + blockX, y + top, z + blockZ, 0, 0, 0);
+		}
+		if (rainAt && random.nextInt(3) < this.rainSoundTime++) {
+			this.rainSoundTime = 0;
+			const here = weatherColumn(columns, cx, cz);
+			const [x, y, z] = rainAt;
+			if (y > cy + 1 && here && here.height > cy) {
+				level.sound('minecraft:weather.rain.above', x + 0.5, y + 0.5, z + 0.5, 'weather', 0.1, 0.5);
+			} else {
+				level.sound('minecraft:weather.rain', x + 0.5, y + 0.5, z + 0.5, 'weather', 0.2, 1);
 			}
 		}
 	}
@@ -1741,15 +1807,16 @@ export class Particles {
 	}
 
 	/** The part of ClientLevel the particles use. */
-	levelFor(world, weather) {
+	levelFor(world, weather, columns = null) {
 		if (this.level && this.level.world === world) {
 			this.level.weather = weather;
+			this.level.columns = columns;
 			return this.level;
 		}
 		const engine = this;
 		const info = (x, y, z) => world.entryAt(x, y, z);
 		this.level = {
-			world, weather,
+			world, weather, columns,
 			info,
 			add(type, x, y, z, xa, ya, za, options) {
 				engine.add(this, type, x, y, z, xa, ya, za, options);
@@ -1789,8 +1856,12 @@ export class Particles {
 				return top > 0 && y < by + top;
 			},
 			rainingAt(x, y, z) {
-				// Level.isRainingAt: raining, open sky above (sky light 15 is the closest the viewer knows).
-				return this.weather > 0.2 && world.lightAt(x, y, z)[0] >= 15;
+				// Level.isRainingAt: raining, nothing that blocks motion above and rain (not snow) there; outside the
+				// weather radius open sky (sky light 15) is the closest the viewer knows.
+				if (!(this.weather > 0.2)) return false;
+				const column = weatherColumn(this.columns, x, z);
+				if (column) return column.height <= y && column.type === 'r';
+				return world.lightAt(x, y, z)[0] >= 15;
 			},
 			foliage(x, y, z) {
 				return engine.foliage(world, x, y, z);

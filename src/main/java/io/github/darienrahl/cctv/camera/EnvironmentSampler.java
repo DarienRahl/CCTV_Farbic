@@ -9,6 +9,8 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.Mth;
 import net.minecraft.util.RandomSource;
+import net.minecraft.world.attribute.AmbientAdditionsSettings;
+import net.minecraft.world.attribute.AmbientSounds;
 import net.minecraft.world.attribute.EnvironmentAttributeReader;
 import net.minecraft.world.attribute.EnvironmentAttributes;
 import net.minecraft.world.level.biome.BiomeManager;
@@ -89,6 +91,8 @@ final class EnvironmentSampler {
 		json.field("waterFogStart", attributes.getValue(EnvironmentAttributes.WATER_FOG_START_DISTANCE, pos), 2)
 				.field("waterFogEnd", attributes.getValue(EnvironmentAttributes.WATER_FOG_END_DISTANCE, pos), 2);
 
+		writeAmbientSounds(json, attributes.getValue(EnvironmentAttributes.AMBIENT_SOUNDS, pos));
+
 		BlockPos blockPos = BlockPos.containing(pos);
 		if (level.getChunkSource().getChunkNow(blockPos.getX() >> 4, blockPos.getZ() >> 4) != null) {
 			json.field("precipitation", level.getBiome(blockPos).value().hasPrecipitation());
@@ -102,6 +106,32 @@ final class EnvironmentSampler {
 			json.endArray();
 		}
 		return json.endObject().toString();
+	}
+
+	/**
+	 * The biome's ambient sounds at the camera (BiomeAmbientSoundsHandler plays them): the loop, the mood (cave
+	 * sounds in the dark: [sound, tick delay, block search extent, offset]) and the random additions ([sound, chance]).
+	 */
+	private static void writeAmbientSounds(Json json, AmbientSounds sounds) {
+		if (sounds.loop().isEmpty() && sounds.mood().isEmpty() && sounds.additions().isEmpty()) {
+			return;
+		}
+		json.name("amb").beginObject();
+		sounds.loop().ifPresent(loop -> json.field("loop", loop.value().location().toString()));
+		sounds.mood().ifPresent(mood -> json.name("mood").beginArray()
+				.value(mood.soundEvent().value().location().toString())
+				.value(mood.tickDelay())
+				.value(mood.blockSearchExtent())
+				.value(mood.soundPositionOffset(), 3)
+				.endArray());
+		if (!sounds.additions().isEmpty()) {
+			json.name("add").beginArray();
+			for (AmbientAdditionsSettings addition : sounds.additions()) {
+				json.beginArray().value(addition.soundEvent().value().location().toString()).value(addition.tickChance(), 6).endArray();
+			}
+			json.endArray();
+		}
+		json.endObject();
 	}
 
 	/** The client's EndFlashState for one 600 tick period: [period, offset, duration, xAngle, yAngle]. */
