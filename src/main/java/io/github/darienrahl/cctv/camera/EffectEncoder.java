@@ -100,6 +100,14 @@ final class EffectEncoder {
 		return json.toString();
 	}
 
+	/**
+	 * A block event the server ran and sends to players (ClientboundBlockEventPacket): chests, ender chests and
+	 * shulker boxes opening and closing (1, open count), bells ringing (1, direction), note blocks playing.
+	 */
+	static String blockEvent(BlockPos pos, Block block, int a, int b) {
+		return "[\"be\"," + pos.getX() + "," + pos.getY() + "," + pos.getZ() + ",\"" + BuiltInRegistries.BLOCK.getKey(block) + "\"," + a + "," + b + "]";
+	}
+
 	/** ServerLevel#sendParticles: what the ClientboundLevelParticlesPacket carries. */
 	static String particles(ServerLevel level, ParticleOptions particle, boolean overrideLimiter, double x, double y, double z, int count,
 			double xDist, double yDist, double zDist, double xSpeed, double ySpeed, double zSpeed, RandomizationType randomization,

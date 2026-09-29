@@ -213,3 +213,11 @@ net/minecraft/client/renderer/blockentity/TrialSpawnerRenderer
 net/minecraft/world/level/BaseSpawner
 net/minecraft/client/renderer/special/ShieldSpecialRenderer
 net/minecraft/client/renderer/block/model/ItemTransform
+# block events (entities.js blockEvent, blockAnim; particles.js blockEvent)
+net/minecraft/world/level/block/entity/ChestLidController
+net/minecraft/client/renderer/blockentity/ChestRenderer
+net/minecraft/world/level/block/entity/ShulkerBoxBlockEntity
+net/minecraft/client/renderer/blockentity/ShulkerBoxRenderer
+net/minecraft/world/level/block/entity/BellBlockEntity
+net/minecraft/client/renderer/blockentity/BellRenderer
+net/minecraft/world/level/block/NoteBlock

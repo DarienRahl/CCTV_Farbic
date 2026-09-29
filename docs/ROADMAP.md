@@ -85,8 +85,9 @@ to the milestone it belongs to. The roadmap on the README page is drawn from thi
 - [ ] Conduit, the end gateway beam, brushable blocks
 - [x] **Shields with their patterns** (ShieldSpecialRenderer: the base colour and banner patterns, held,
       dropped and in item frames; items in the left hand mirrored like ItemTransform)
-- [ ] **Chests, shulker boxes, bells and pistons move** from the server's block events (ChestLidController,
-      ShulkerBoxBlockEntity progress, BellRenderer, PistonHeadRenderer)
+- [x] **Chests, ender chests and shulker boxes open, bells swing, note blocks show their notes** from the
+      server's block events (ChestLidController, ShulkerBoxBlockEntity, BellBlockEntity, NoteBlock)
+- [ ] Pistons moving (PistonMovingBlockEntity, PistonHeadRenderer)
 - [ ] **Sounds**: the sounds the server sends players (mobs, steps, blocks, doors, explosions) and the
       ones the client makes from level events, played in 3D like the game's SoundEngine (sound files from
       the game's asset index, downloaded and cached by the server; a button turns them on in the viewer)

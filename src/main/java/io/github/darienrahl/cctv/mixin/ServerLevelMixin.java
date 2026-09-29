@@ -20,6 +20,7 @@ import net.minecraft.sounds.SoundEvent;
 import net.minecraft.util.random.WeightedList;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.level.BlockEventData;
 import net.minecraft.world.level.ExplosionDamageCalculator;
 import net.minecraft.world.level.Level.ExplosionInteraction;
 import net.minecraft.world.level.ServerExplosion;
@@ -69,6 +70,23 @@ public abstract class ServerLevelMixin {
 				manager.onLevelEvent((ServerLevel) (Object) this, type, pos, data);
 			} catch (RuntimeException | LinkageError e) {
 				Problems.report(null, "level event tracking", e);
+			}
+		}
+	}
+
+	/** Block events the server ran (and sends to players): chests opening, bells ringing, note blocks. */
+	@Inject(
+			method = "doBlockEvent(Lnet/minecraft/world/level/BlockEventData;)Z",
+			at = @At("RETURN"),
+			require = 0
+	)
+	private void cctv$onBlockEvent(BlockEventData event, CallbackInfoReturnable<Boolean> cir) {
+		CameraManager manager = CctvMod.manager();
+		if (manager != null && Boolean.TRUE.equals(cir.getReturnValue())) {
+			try {
+				manager.onBlockEvent((ServerLevel) (Object) this, event.pos(), event.block(), event.paramA(), event.paramB());
+			} catch (RuntimeException | LinkageError e) {
+				Problems.report(null, "block event tracking", e);
 			}
 		}
 	}

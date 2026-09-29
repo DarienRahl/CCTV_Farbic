@@ -460,6 +460,8 @@ export class EntityRenderer {
 		this.capes = new Map();
 		this.maps = new Map();
 		this.spawners = new Map();
+		/** Lid, shake and similar animation state of block entities by "x,y,z", from block events. */
+		this.blockAnims = new Map();
 		this.breaking = [];
 		this.states = new Map();
 		this.events = new Map();
@@ -745,6 +747,7 @@ export class EntityRenderer {
 		this.animateMotion(frame.t, map);
 		// blocks being broken: [x, y, z, progress]
 		this.breaking = frame.bp || [];
+		for (const fx of frame.fx || []) if (fx[0] === 'be') this.blockEvent(fx);
 		this.frames.push({ t: frame.t, map });
 		while (this.frames.length > 40) this.frames.shift();
 		this.delayTicks = Math.max(2, entityTicks * 2);
@@ -1952,6 +1955,85 @@ export class EntityRenderer {
 		return null;
 	}
 
+	/**
+	 * A block event from the server (ClientboundBlockEventPacket), as the block entity's triggerEvent takes it:
+	 * chests and ender chests (1, open count: ChestLidController.shouldBeOpen), shulker boxes (1, open count:
+	 * opening or closing), bells (1, the side that was hit: shaking for 50 ticks).
+	 */
+	blockEvent([, x, y, z, block, a, b]) {
+		const name = strip(block);
+		const key = x + ',' + y + ',' + z;
+		const tick = Math.floor(performance.now() / 50);
+		if (a !== 1) return;
+		if (/(^|_)chest$/.test(name)) {
+			const anim = this.blockAnim(key) || { kind: 'chest', openness: 0, oOpenness: 0, tick };
+			anim.open = b > 0;
+			this.blockAnims.set(key, anim);
+		} else if (/shulker_box$/.test(name)) {
+			const anim = this.blockAnim(key) || { kind: 'shulker', status: 'closed', progress: 0, progressOld: 0, tick };
+			if (b === 0) anim.status = 'closing';
+			if (b === 1) anim.status = 'opening';
+			this.blockAnims.set(key, anim);
+		} else if (name === 'bell') {
+			this.blockAnims.set(key, { kind: 'bell', shaking: true, ticks: 0, direction: b, tick });
+		}
+	}
+
+	/** The block entity's animation state, ticked up to now (ChestLidController.tickLid, ShulkerBoxBlockEntity.updateAnimation, BellBlockEntity.tick). */
+	blockAnim(key) {
+		const anim = this.blockAnims.get(key);
+		if (!anim) return null;
+		const now = Math.floor(performance.now() / 50);
+		for (let steps = 0; anim.tick < now && steps < 60; steps++, anim.tick++) {
+			if (anim.kind === 'chest') {
+				anim.oOpenness = anim.openness;
+				if (!anim.open && anim.openness > 0) anim.openness = Math.max(anim.openness - 0.1, 0);
+				else if (anim.open && anim.openness < 1) anim.openness = Math.min(anim.openness + 0.1, 1);
+			} else if (anim.kind === 'shulker') {
+				anim.progressOld = anim.progress;
+				if (anim.status === 'closed') anim.progress = 0;
+				else if (anim.status === 'opening') {
+					anim.progress += 0.1;
+					if (anim.progress >= 1) { anim.status = 'opened'; anim.progress = 1; }
+				} else if (anim.status === 'opened') anim.progress = 1;
+				else if (anim.status === 'closing') {
+					anim.progress -= 0.1;
+					if (anim.progress <= 0) { anim.status = 'closed'; anim.progress = 0; }
+				}
+			} else if (anim.kind === 'bell' && anim.shaking) {
+				anim.ticks++;
+				if (anim.ticks >= 50) { anim.shaking = false; anim.ticks = 0; }
+			}
+		}
+		anim.tick = now;
+		// nothing left to show: forget it
+		if ((anim.kind === 'chest' && !anim.open && anim.openness === 0 && anim.oOpenness === 0)
+			|| (anim.kind === 'shulker' && anim.status === 'closed' && anim.progressOld === 0)
+			|| (anim.kind === 'bell' && !anim.shaking)) {
+			this.blockAnims.delete(key);
+		}
+		return anim;
+	}
+
+	/** ChestRenderer: the openness of a chest (the larger of both halves of a double chest), eased like the game. */
+	chestOpenness(pos, props) {
+		if (!pos) return 0;
+		const partial = (performance.now() / 50) % 1;
+		const at = (x, z) => {
+			const anim = this.blockAnims.size ? this.blockAnim(x + ',' + pos.y + ',' + z) : null;
+			return anim && anim.kind === 'chest' ? anim.oOpenness + (anim.openness - anim.oOpenness) * partial : 0;
+		};
+		let open = at(pos.x, pos.z);
+		if (props && (props.type === 'left' || props.type === 'right')) {
+			// ChestBlock.getConnectedDirection: the left half's partner is clockwise of its facing
+			const cw = { north: [1, 0], east: [0, 1], south: [-1, 0], west: [0, -1] }[props.facing || 'north'] || [1, 0];
+			const d = props.type === 'left' ? cw : [-cw[0], -cw[1]];
+			open = Math.max(open, at(pos.x + d[0], pos.z + d[1]));
+		}
+		open = 1 - open;
+		return 1 - open * open * open;
+	}
+
 	prepareBlockEntities(frame, world, list) {
 		const o = frame.origin, cam = frame.camPos;
 		this.drawBreaking(frame, world);
@@ -2239,7 +2321,12 @@ export class EntityRenderer {
 				translate(m, 0.5, 0.5, 0.5);
 				rotate(m, 1, -def.yRot * DEG);
 				translate(m, -0.5, -0.5, -0.5);
-				emit(def.layer, def.texture, m);
+				// ChestModel.setupAnim: the lid and the lock turn up with the openness
+				const open = this.chestOpenness(pos, def.props);
+				emit(def.layer, def.texture, m, null, MODE_CUTOUT, parts => {
+					if (parts.lid) parts.lid.xRot = -(open * Math.PI / 2);
+					if (parts.lock) parts.lock.xRot = -(open * Math.PI / 2);
+				});
 				break;
 			}
 			case 'shulker_box': {
@@ -2249,7 +2336,14 @@ export class EntityRenderer {
 				if (f) rotate(m, f[0], f[1] * DEG);
 				scale(m, 1, -1, -1);
 				translate(m, 0, -1, 0);
-				emit(def.layer, def.texture, m);
+				// ShulkerBoxModel.setupAnim: the lid rises half a block and turns 270 degrees as it opens
+				const anim = pos && this.blockAnims.size ? this.blockAnim(pos.x + ',' + pos.y + ',' + pos.z) : null;
+				const progress = anim && anim.kind === 'shulker' ? anim.progressOld + (anim.progress - anim.progressOld) * ((performance.now() / 50) % 1) : 0;
+				emit(def.layer, def.texture, m, null, MODE_CUTOUT, parts => {
+					if (!parts.lid || !progress) return;
+					parts.lid.y = 24 - progress * 0.5 * 16;
+					parts.lid.yRot = 270 * progress * DEG;
+				});
 				break;
 			}
 			case 'head': {
@@ -2297,9 +2391,21 @@ export class EntityRenderer {
 				}
 				break;
 			}
-			case 'bell':
-				emit(def.layer, def.texture, m);
+			case 'bell': {
+				// BellModel.setupAnim: the bell swings away from the side that was hit, dying down over 50 ticks
+				const anim = pos && this.blockAnims.size ? this.blockAnim(pos.x + ',' + pos.y + ',' + pos.z) : null;
+				emit(def.layer, def.texture, m, null, MODE_CUTOUT, parts => {
+					const body = parts.bell_body;
+					if (!body || !anim || anim.kind !== 'bell' || !anim.shaking) return;
+					const ticks = anim.ticks + (performance.now() / 50) % 1;
+					const sin = Math.sin(ticks / Math.PI) / (4 + ticks / 3);
+					if (anim.direction === 2) body.xRot = -sin;
+					else if (anim.direction === 3) body.xRot = sin;
+					else if (anim.direction === 5) body.zRot = -sin;
+					else if (anim.direction === 4) body.zRot = sin;
+				});
 				break;
+			}
 			case 'pot': {
 				// DecoratedPotRenderer.createModelTransformation: rotated around the block centre.
 				const yRot = { south: 0, west: 90, north: 180, east: 270 }[def.facing] ?? 0;

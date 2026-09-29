@@ -1472,8 +1472,22 @@ export class Particles {
 			case 'p': this.particlePacket(level, fx); break;
 			case 'ex': this.explosion(level, fx); break;
 			case 'ee': this.entityEffect(level, fx[1], fx[2], fx[3], fx[4], fx[5], fx[6]); break;
+			case 'be': this.blockEvent(level, fx); break;
 			default: break;
 		}
+	}
+
+	/**
+	 * Block events that make particles: NoteBlock.triggerEvent puts a note over a tuned note block (the mob
+	 * head instruments are not tuned), coloured by its note.
+	 */
+	blockEvent(level, [, x, y, z, block]) {
+		if (block !== 'minecraft:note_block') return;
+		const info = level.info(x, y, z);
+		const p = info ? props(info) : {};
+		if (/^(zombie|skeleton|creeper|dragon|wither_skeleton|piglin|custom_head)$/.test(p.instrument || 'harp')) return;
+		const note = Number(p.note) || 0;
+		this.addFx(level, 'note', x + 0.5, y + 1.2, z + 0.5, note / 24, 0, 0);
 	}
 
 	/** LevelEventHandler.levelEvent: the events that make particles. */

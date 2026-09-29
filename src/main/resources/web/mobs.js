@@ -1459,7 +1459,7 @@ export function blockEntityModel(info) {
 		const kind = name === 'ender_chest' ? 'single' : (props.type || 'single');
 		return {
 			kind: 'chest', layer: kind === 'single' ? 'minecraft:chest#main' : 'minecraft:double_chest_' + kind + '#main',
-			texture: CHESTS[name] + (kind === 'single' ? '' : '_' + kind), yRot: FACING_ROT[props.facing || 'north'] ?? 180,
+			texture: CHESTS[name] + (kind === 'single' ? '' : '_' + kind), yRot: FACING_ROT[props.facing || 'north'] ?? 180, props,
 		};
 	}
 	if (name === 'shulker_box' || name.endsWith('_shulker_box')) {

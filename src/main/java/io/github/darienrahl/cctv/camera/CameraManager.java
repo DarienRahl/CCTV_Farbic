@@ -25,6 +25,7 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.random.WeightedList;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
 
@@ -219,6 +220,16 @@ public final class CameraManager implements CameraDirectory {
 	public void onBlockProgress(ServerLevel level, int breaker, BlockPos pos, int progress) {
 		for (CameraSession session : sessions.values()) {
 			session.onBlockProgress(level, breaker, pos, progress);
+		}
+	}
+
+	/** Called (server thread) for every block event sent to players (ServerLevel#doBlockEvent, 64 blocks). */
+	public void onBlockEvent(ServerLevel level, BlockPos pos, Block block, int a, int b) {
+		if (sessions.isEmpty()) {
+			return;
+		}
+		for (CameraSession session : sessions.values()) {
+			session.onEffect(level, pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5, 64, states -> EffectEncoder.blockEvent(pos, block, a, b));
 		}
 	}
 
