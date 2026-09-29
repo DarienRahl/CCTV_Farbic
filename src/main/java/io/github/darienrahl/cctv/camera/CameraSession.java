@@ -14,6 +14,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.Executor;
+import java.util.function.IntConsumer;
 
 import org.jspecify.annotations.Nullable;
 
@@ -1015,6 +1016,36 @@ final class CameraSession {
 	/** Block states shown by entities in the current frame (falling blocks, carried blocks). */
 	private final Set<Integer> entityBlockStates = new HashSet<>();
 
+	/** Particle effects since the last entity frame (server thread), sent with it as "fx" (see EffectEncoder). */
+	private final List<String> effects = new ArrayList<>();
+	/** Block states the effects show (broken blocks), for the viewers' palettes. */
+	private final Set<Integer> effectBlockStates = new HashSet<>();
+	private static final int MAX_EFFECTS = 256;
+
+	/**
+	 * Server thread: an effect at (x, y, z) goes into the next entity frame when it would reach a player standing
+	 * at the camera (range: how far the game sends it). The encoder gets a sink for the block states it shows.
+	 */
+	void onEffect(ServerLevel level, double x, double y, double z, double range, java.util.function.Function<IntConsumer, String> encoder) {
+		if (level != this.level || viewers.isEmpty() || effects.size() >= MAX_EFFECTS) {
+			return;
+		}
+		Camera c = camera;
+		double dx = x - c.x(), dy = y - c.y(), dz = z - c.z();
+		if (dx * dx + dy * dy + dz * dz > range * range) {
+			return;
+		}
+		String fx = encoder.apply(effectBlockStates::add);
+		if (fx != null) {
+			effects.add(fx);
+		}
+	}
+
+	/** Server thread: the entity event range of the camera (the entities it streams). */
+	double entityEffectRange() {
+		return Math.min(camera.range(), config.entityRange);
+	}
+
 	/** Entity events since the last entity frame, by entity id (server thread). */
 	private final Map<Integer, List<Integer>> entityEvents = new HashMap<>();
 
@@ -1056,7 +1087,18 @@ final class CameraSession {
 			}
 		}
 		entityEvents.clear();
-		json.endArray().endObject();
+		json.endArray();
+		if (!effects.isEmpty()) {
+			json.name("fx").beginArray();
+			for (String fx : effects) {
+				json.raw(fx);
+			}
+			json.endArray();
+			effects.clear();
+			entityBlockStates.addAll(effectBlockStates);
+			effectBlockStates.clear();
+		}
+		json.endObject();
 		return json.toString();
 	}
 

@@ -156,6 +156,22 @@ net/minecraft/client/particle/DustParticleBase
 net/minecraft/client/particle/WaterDropParticle
 net/minecraft/client/particle/SplashParticle
 net/minecraft/client/particle/FireflyParticle
+net/minecraft/client/particle/TerrainParticle
+net/minecraft/client/particle/ExplodeParticle
+net/minecraft/client/particle/HugeExplosionParticle
+net/minecraft/client/particle/HugeExplosionSeedParticle
+net/minecraft/client/particle/HeartParticle
+net/minecraft/client/particle/SuspendedTownParticle
+net/minecraft/client/particle/CritParticle
+net/minecraft/client/particle/SpellParticle
+net/minecraft/client/particle/NoteParticle
+net/minecraft/client/particle/PlayerCloudParticle
+net/minecraft/client/particle/AttackSweepParticle
+net/minecraft/client/particle/ParticleResources
+# what the client makes particles from (particles.js effect handlers, EffectEncoder.java)
+net/minecraft/client/renderer/LevelEventHandler
+net/minecraft/client/multiplayer/ClientExplosionTracker
+net/minecraft/world/item/BoneMealItem
 net/minecraft/client/renderer/feature/QuadParticleFeatureRenderer
 # the blocks' and fluids' animateTick (particles.js animateBlock, animateFluid)
 net/minecraft/util/ParticleUtils

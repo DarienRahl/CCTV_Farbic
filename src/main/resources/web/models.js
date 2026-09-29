@@ -215,6 +215,33 @@ export class BlockModels {
 		return null;
 	}
 
+	/** BlockStateModelSet.getParticleMaterial: the particle texture of the first model the state uses. */
+	particleTexture(name, props) {
+		const def = this.blockstates[name];
+		if (!def) return null;
+		let variant = null;
+		if (def.variants) {
+			for (const [key, value] of Object.entries(def.variants)) {
+				if (key === '' || key === 'normal' || key.split(',').every(pair => {
+					const eq = pair.indexOf('=');
+					return props[pair.slice(0, eq)] === pair.slice(eq + 1);
+				})) {
+					variant = value;
+					break;
+				}
+			}
+			if (!variant) variant = Object.values(def.variants)[0];
+		} else if (def.multipart) {
+			const part = def.multipart.find(p => !p.when || this.matches(p.when, props));
+			variant = part ? part.apply : null;
+		}
+		if (Array.isArray(variant)) variant = variant[0];
+		if (!variant || !variant.model) return null;
+		const model = this.resolveModel(variant.model);
+		const texture = model ? this.resolveTexture(model.textures, '#particle') : null;
+		return texture ? texture.id : null;
+	}
+
 	variantList(value) {
 		const list = Array.isArray(value) ? value : [value];
 		const entries = [];

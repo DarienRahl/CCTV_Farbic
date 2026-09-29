@@ -81,8 +81,11 @@ to the milestone it belongs to. The roadmap on the README page is drawn from thi
 - [ ] Conduit, the end gateway beam, spawner and trial spawner contents, brushable blocks
 - [x] **Particles** from `particles/*.json` and their textures: torch, candle and campfire flames
       and smoke, lava pops, drips, portal, falling leaves, spore blossoms, fireflies
-- [ ] More particles: rain splashes, entity particles (hearts, villager emotions, potion swirls),
-      block breaking, explosions and the particles the server sends (`ClientboundLevelParticlesPacket`)
+- [x] **Particles from the server**: broken blocks (pieces of the block's texture), explosions and
+      their smoke, the particles the server sends (`ClientboundLevelParticlesPacket`: crits, sweeps,
+      hearts, dust...), level events (dispenser smoke, bone meal, lava fizz), death and spawn poofs,
+      love hearts, villager moods and potion effect swirls
+- [ ] More particles: rain splashes, item pieces (eating, breaking tools), fireworks, bubbles
 - [x] Fire on burning entities (FlameFeatureRenderer, invisible ones too); invisible mobs show
       their equipment
 - [x] Capes (from the player's Mojang profile, swinging like ClientAvatarState's cloak), elytra

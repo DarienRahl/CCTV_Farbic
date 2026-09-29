@@ -5,6 +5,7 @@
 // (both from the client jar, resource packs apply), drawn as camera-facing quads, lit by the lightmap.
 
 import { program, FOG_GLSL, setFog } from './gl.js';
+import { tintSourceOf, TINT_GRASS, TINT_DOUBLE_GRASS, TINT_FOLIAGE, TINT_DRY_FOLIAGE, TINT_CONSTANT } from './mesher.js';
 
 const MAX_PARTICLES = 16384; // ParticleEngine.MAX_PARTICLES_PER_LAYER
 const FLOATS = 11; // position 3, uv 2, colour 4, light 2
@@ -594,6 +595,288 @@ const WATER_DRIP = [0.2, 0.3, 1];
 const LAVA_DRIP = [1, 0.2857143, 0.083333336];
 const TEAR = [0.51171875, 0.03125, 0.890625];
 
+/** ExplodeParticle (poof): a puff that rises and slows down, its sprite following its age. */
+class ExplodeParticle extends QuadParticle {
+	constructor(level, x, y, z, xa, ya, za, sprites) {
+		super(level, x, y, z, undefined, undefined, undefined, sprites.first());
+		this.gravity = -0.1;
+		this.friction = 0.9;
+		this.sprites = sprites;
+		this.xd = xa + (nextFloat() * 2 - 1) * 0.05;
+		this.yd = ya + (nextFloat() * 2 - 1) * 0.05;
+		this.zd = za + (nextFloat() * 2 - 1) * 0.05;
+		const col = nextFloat() * 0.3 + 0.7;
+		this.rCol = this.gCol = this.bCol = col;
+		this.quadSize = 0.1 * (nextFloat() * nextFloat() * 6 + 1);
+		this.lifetime = Math.trunc(16 / (nextFloat() * 0.8 + 0.2)) + 2;
+		this.setSpriteFromAge(sprites);
+	}
+
+	tick() {
+		super.tick();
+		this.setSpriteFromAge(this.sprites);
+	}
+}
+
+/** HugeExplosionParticle (explosion): a big flash that does not move, full bright. */
+class HugeExplosionParticle extends QuadParticle {
+	constructor(level, x, y, z, size, sprites) {
+		super(level, x, y, z, 0, 0, 0, sprites.first());
+		this.lifetime = 6 + nextInt(4);
+		const col = nextFloat() * 0.6 + 0.4;
+		this.rCol = this.gCol = this.bCol = col;
+		this.quadSize = 2 * (1 - size * 0.5);
+		this.sprites = sprites;
+		this.setSpriteFromAge(sprites);
+	}
+
+	light() {
+		return [240, 240];
+	}
+
+	tick() {
+		this.xo = this.x; this.yo = this.y; this.zo = this.z;
+		if (this.age++ >= this.lifetime) this.remove();
+		else this.setSpriteFromAge(this.sprites);
+	}
+}
+
+/** HugeExplosionSeedParticle (explosion_emitter): invisible, adds six explosions around it each tick for 8 ticks. */
+class HugeExplosionSeedParticle extends Particle {
+	constructor(level, x, y, z) {
+		super(level, x, y, z, 0, 0, 0);
+		this.lifetime = 8;
+	}
+
+	tick() {
+		for (let i = 0; i < 6; i++) {
+			const xx = this.x + (nextDouble() - nextDouble()) * 4;
+			const yy = this.y + (nextDouble() - nextDouble()) * 4;
+			const zz = this.z + (nextDouble() - nextDouble()) * 4;
+			this.level.add('minecraft:explosion', xx, yy, zz, this.age / this.lifetime, 0, 0);
+		}
+		this.age++;
+		if (this.age === this.lifetime) this.remove();
+	}
+}
+
+/** HeartParticle (heart, angry_villager): pops up, grows in, floats without physics. */
+class HeartParticle extends QuadParticle {
+	constructor(level, x, y, z, sprite) {
+		super(level, x, y, z, 0, 0, 0, sprite);
+		this.speedUpWhenYMotionIsBlocked = true;
+		this.friction = 0.86;
+		this.xd *= 0.01; this.yd *= 0.01; this.zd *= 0.01;
+		this.yd += 0.1;
+		this.quadSize *= 1.5;
+		this.lifetime = 16;
+		this.hasPhysics = false;
+	}
+
+	quadSizeAt(a) {
+		return this.quadSize * clamp((this.age + a) / this.lifetime * 32, 0, 1);
+	}
+}
+
+/** SuspendedTownParticle (happy_villager, composter, mycelium, egg_crack, dolphin): a slow drifting speck. */
+class SuspendedTownParticle extends QuadParticle {
+	constructor(level, x, y, z, xa, ya, za, sprite) {
+		super(level, x, y, z, xa, ya, za, sprite);
+		const br = nextFloat() * 0.1 + 0.2;
+		this.rCol = this.gCol = this.bCol = br;
+		this.setSize(0.02, 0.02);
+		this.quadSize *= nextFloat() * 0.6 + 0.5;
+		this.xd *= 0.02; this.yd *= 0.02; this.zd *= 0.02;
+		this.lifetime = Math.trunc(20 / (nextFloat() * 0.8 + 0.2));
+	}
+
+	move(xa, ya, za) {
+		this.moveFree(xa, ya, za);
+	}
+
+	tick() {
+		this.xo = this.x; this.yo = this.y; this.zo = this.z;
+		if (this.lifetime-- <= 0) {
+			this.remove();
+			return;
+		}
+		this.move(this.xd, this.yd, this.zd);
+		this.xd *= 0.99; this.yd *= 0.99; this.zd *= 0.99;
+	}
+}
+
+/** CritParticle (crit, enchanted_hit, damage_indicator): sparks that fall and turn red. */
+class CritParticle extends QuadParticle {
+	constructor(level, x, y, z, xa, ya, za, sprite) {
+		super(level, x, y, z, 0, 0, 0, sprite);
+		this.friction = 0.7;
+		this.gravity = 0.5;
+		this.xd *= 0.1; this.yd *= 0.1; this.zd *= 0.1;
+		this.xd += xa * 0.4; this.yd += ya * 0.4; this.zd += za * 0.4;
+		const col = nextFloat() * 0.3 + 0.6;
+		this.rCol = this.gCol = this.bCol = col;
+		this.quadSize *= 0.75;
+		this.lifetime = Math.max(Math.trunc(6 / (nextFloat() * 0.8 + 0.6)), 1);
+		this.hasPhysics = false;
+		this.tick();
+	}
+
+	quadSizeAt(a) {
+		return this.quadSize * clamp((this.age + a) / this.lifetime * 32, 0, 1);
+	}
+
+	tick() {
+		super.tick();
+		this.gCol *= 0.96;
+		this.bCol *= 0.9;
+	}
+}
+
+/** SpellParticle (effect, instant_effect, entity_effect, witch, infested, omens): translucent swirls rising. */
+class SpellParticle extends QuadParticle {
+	constructor(level, x, y, z, xa, ya, za, sprites) {
+		super(level, x, y, z, 0.5 - nextDouble(), ya, 0.5 - nextDouble(), sprites.first());
+		this.friction = 0.96;
+		this.gravity = -0.1;
+		this.speedUpWhenYMotionIsBlocked = true;
+		this.sprites = sprites;
+		this.yd *= 0.2;
+		if (xa === 0 && za === 0) {
+			this.xd *= 0.1;
+			this.zd *= 0.1;
+		}
+		this.quadSize *= 0.75;
+		this.lifetime = Math.trunc(8 / (nextFloat() * 0.8 + 0.2));
+		this.hasPhysics = false;
+		this.translucent = true;
+		this.originalAlpha = 1;
+		this.setSpriteFromAge(sprites);
+	}
+
+	setAlpha(alpha) {
+		this.alpha = alpha;
+		this.originalAlpha = alpha;
+	}
+
+	/** SingleQuadParticle.setPower */
+	setPower(power) {
+		this.xd *= power;
+		this.yd = (this.yd - 0.1) * power + 0.1;
+		this.zd *= power;
+	}
+
+	tick() {
+		super.tick();
+		this.setSpriteFromAge(this.sprites);
+		this.alpha = lerp(0.05, this.alpha, this.originalAlpha);
+	}
+}
+
+/** NoteParticle: a note in the colour of its pitch. */
+class NoteParticle extends QuadParticle {
+	constructor(level, x, y, z, color, sprite) {
+		super(level, x, y, z, 0, 0, 0, sprite);
+		this.friction = 0.66;
+		this.speedUpWhenYMotionIsBlocked = true;
+		this.xd *= 0.01; this.yd *= 0.01; this.zd *= 0.01;
+		this.yd += 0.2;
+		const tau = Math.PI * 2;
+		this.rCol = Math.max(0, Math.sin((color + 0) * tau) * 0.65 + 0.35);
+		this.gCol = Math.max(0, Math.sin((color + 1 / 3) * tau) * 0.65 + 0.35);
+		this.bCol = Math.max(0, Math.sin((color + 2 / 3) * tau) * 0.65 + 0.35);
+		this.quadSize *= 1.5;
+		this.lifetime = 6;
+	}
+
+	quadSizeAt(a) {
+		return this.quadSize * clamp((this.age + a) / this.lifetime * 32, 0, 1);
+	}
+}
+
+/** PlayerCloudParticle (cloud, sneeze): a translucent puff. */
+class PlayerCloudParticle extends QuadParticle {
+	constructor(level, x, y, z, xa, ya, za, sprites) {
+		super(level, x, y, z, 0, 0, 0, sprites.first());
+		this.friction = 0.96;
+		this.sprites = sprites;
+		this.xd = this.xd * 0.1 + xa;
+		this.yd = this.yd * 0.1 + ya;
+		this.zd = this.zd * 0.1 + za;
+		const col = 1 - nextFloat() * 0.3;
+		this.rCol = this.gCol = this.bCol = col;
+		this.quadSize *= 1.875;
+		const baseLifetime = Math.trunc(8 / (nextFloat() * 0.8 + 0.3));
+		this.lifetime = Math.trunc(Math.max(baseLifetime * 2.5, 1));
+		this.hasPhysics = false;
+		this.translucent = true;
+		this.setSpriteFromAge(sprites);
+	}
+
+	quadSizeAt(a) {
+		return this.quadSize * clamp((this.age + a) / this.lifetime * 32, 0, 1);
+	}
+
+	tick() {
+		super.tick();
+		if (!this.removed) this.setSpriteFromAge(this.sprites);
+	}
+}
+
+/** AttackSweepParticle (sweep_attack): the sword swing arc, full bright. */
+class AttackSweepParticle extends QuadParticle {
+	constructor(level, x, y, z, size, sprites) {
+		super(level, x, y, z, 0, 0, 0, sprites.first());
+		this.sprites = sprites;
+		this.lifetime = 4;
+		const col = nextFloat() * 0.6 + 0.4;
+		this.rCol = this.gCol = this.bCol = col;
+		this.quadSize = 1 - size * 0.5;
+		this.setSpriteFromAge(sprites);
+	}
+
+	light() {
+		return [240, 240];
+	}
+
+	tick() {
+		this.xo = this.x; this.yo = this.y; this.zo = this.z;
+		if (this.age++ >= this.lifetime) this.remove();
+		else this.setSpriteFromAge(this.sprites);
+	}
+}
+
+/**
+ * TerrainParticle (block, block_crumble, dust_pillar and broken blocks): a quarter of the block's particle
+ * texture from the block atlas, falling with gravity, shaded and tinted like the block.
+ */
+class TerrainParticle extends QuadParticle {
+	constructor(level, x, y, z, xa, ya, za, block) {
+		super(level, x, y, z, xa, ya, za, null);
+		this.gravity = 1;
+		this.rCol = this.gCol = this.bCol = 0.6;
+		if (block.tint) {
+			this.rCol *= block.tint[0];
+			this.gCol *= block.tint[1];
+			this.bCol *= block.tint[2];
+		}
+		this.quadSize /= 2;
+		const uo = nextFloat() * 3, vo = nextFloat() * 3;
+		const [u0, v0, u1, v1] = block.sprite;
+		const u = f => u0 + (u1 - u0) * f, v = f => v0 + (v1 - v0) * f;
+		// getU0 / getU1 swapped like the game: the piece is mirrored horizontally
+		this.sprite = [u((uo + 1) / 4), v(vo / 4), u(uo / 4), v((vo + 1) / 4)];
+		this.atlas = 'block';
+	}
+}
+
+/** Particles drawn with the block atlas or not at all, which have no sprite set of their own. */
+const NO_SPRITES = new Set(['block', 'block_crumble', 'dust_pillar', 'explosion_emitter']);
+/** ParticleType.getOverrideLimiter: drawn however far from the camera. */
+const OVERRIDE_LIMITER = new Set(['explosion', 'explosion_emitter', 'elder_guardian', 'sonic_boom', 'gust', 'gust_emitter_large', 'gust_emitter_small']);
+/** BlockBehaviour.Properties.noTerrainParticles and the moving piston: no pieces when broken. */
+const NO_TERRAIN_PARTICLES = new Set(['minecraft:air', 'minecraft:cave_air', 'minecraft:void_air', 'minecraft:barrier', 'minecraft:light',
+	'minecraft:structure_void', 'minecraft:moving_piston']);
+
 const PROVIDERS = {
 	flame: (l, x, y, z, xa, ya, za, s) => new FlameParticle(l, x, y, z, xa, ya, za, s.random()),
 	soul_fire_flame: (l, x, y, z, xa, ya, za, s) => new FlameParticle(l, x, y, z, xa, ya, za, s.random()),
@@ -650,12 +933,91 @@ const PROVIDERS = {
 	red_poplar_leaves: (l, x, y, z, xa, ya, za, s) => new FallingLeafParticle(l, x, y, z, s.random(), 0.07, 10, true, false, 2, 0.021),
 	orange_poplar_leaves: (l, x, y, z, xa, ya, za, s) => new FallingLeafParticle(l, x, y, z, s.random(), 0.07, 10, true, false, 2, 0.021),
 	yellow_poplar_leaves: (l, x, y, z, xa, ya, za, s) => new FallingLeafParticle(l, x, y, z, s.random(), 0.07, 10, true, false, 2, 0.021),
+	// the particles the server sends and the client makes from events (ParticleResources)
+	poof: (l, x, y, z, xa, ya, za, s) => new ExplodeParticle(l, x, y, z, xa, ya, za, s),
+	explosion: (l, x, y, z, xa, ya, za, s) => new HugeExplosionParticle(l, x, y, z, xa, s),
+	explosion_emitter: (l, x, y, z) => new HugeExplosionSeedParticle(l, x, y, z),
+	heart: (l, x, y, z, xa, ya, za, s) => new HeartParticle(l, x, y, z, s.random()),
+	angry_villager: (l, x, y, z, xa, ya, za, s) => tint(new HeartParticle(l, x, y + 0.5, z, s.random()), [1, 1, 1]),
+	happy_villager: (l, x, y, z, xa, ya, za, s) => tint(new SuspendedTownParticle(l, x, y, z, xa, ya, za, s.random()), [1, 1, 1]),
+	egg_crack: (l, x, y, z, xa, ya, za, s) => tint(new SuspendedTownParticle(l, x, y, z, xa, ya, za, s.random()), [1, 1, 1]),
+	mycelium: (l, x, y, z, xa, ya, za, s) => new SuspendedTownParticle(l, x, y, z, xa, ya, za, s.random()),
+	composter: (l, x, y, z, xa, ya, za, s) => {
+		const p = tint(new SuspendedTownParticle(l, x, y, z, xa, ya, za, s.random()), [1, 1, 1]);
+		p.lifetime = 3 + nextInt(5);
+		return p;
+	},
+	dolphin: (l, x, y, z, xa, ya, za, s) => {
+		const p = tint(new SuspendedTownParticle(l, x, y, z, xa, ya, za, s.random()), [0.3, 0.5, 1]);
+		p.alpha = 1 - nextFloat() * 0.7;
+		p.lifetime = Math.trunc(p.lifetime / 2);
+		return p;
+	},
+	crit: (l, x, y, z, xa, ya, za, s) => new CritParticle(l, x, y, z, xa, ya, za, s.random()),
+	enchanted_hit: (l, x, y, z, xa, ya, za, s) => {
+		const p = new CritParticle(l, x, y, z, xa, ya, za, s.random());
+		p.rCol *= 0.3;
+		p.gCol *= 0.8;
+		return p;
+	},
+	damage_indicator: (l, x, y, z, xa, ya, za, s) => Object.assign(new CritParticle(l, x, y, z, xa, ya + 1, za, s.random()), { lifetime: 20 }),
+	effect: (l, x, y, z, xa, ya, za, s, o) => spell(new SpellParticle(l, x, y, z, xa, ya, za, s), o, true),
+	instant_effect: (l, x, y, z, xa, ya, za, s, o) => spell(new SpellParticle(l, x, y, z, xa, ya, za, s), o, true),
+	entity_effect: (l, x, y, z, xa, ya, za, s, o) => spell(new SpellParticle(l, x, y, z, xa, ya, za, s), o, false),
+	witch: (l, x, y, z, xa, ya, za, s) => {
+		const b = nextFloat() * 0.5 + 0.35;
+		return tint(new SpellParticle(l, x, y, z, xa, ya, za, s), [b, 0, b]);
+	},
+	infested: (l, x, y, z, xa, ya, za, s) => new SpellParticle(l, x, y, z, xa, ya, za, s),
+	raid_omen: (l, x, y, z, xa, ya, za, s) => new SpellParticle(l, x, y, z, xa, ya, za, s),
+	trial_omen: (l, x, y, z, xa, ya, za, s) => new SpellParticle(l, x, y, z, xa, ya, za, s),
+	note: (l, x, y, z, xa, ya, za, s) => new NoteParticle(l, x, y, z, xa, s.random()),
+	cloud: (l, x, y, z, xa, ya, za, s) => new PlayerCloudParticle(l, x, y, z, xa, ya, za, s),
+	sweep_attack: (l, x, y, z, xa, ya, za, s) => new AttackSweepParticle(l, x, y, z, xa, s),
+	block: (l, x, y, z, xa, ya, za, s, o) => terrain(l, x, y, z, xa, ya, za, o),
+	block_crumble: (l, x, y, z, xa, ya, za, s, o) => {
+		const p = terrain(l, x, y, z, xa, ya, za, o);
+		if (p) {
+			p.xd = p.yd = p.zd = 0;
+			p.lifetime = nextInt(10) + 1;
+		}
+		return p;
+	},
+	dust_pillar: (l, x, y, z, xa, ya, za, s, o) => {
+		const p = terrain(l, x, y, z, xa, ya, za, o);
+		if (p) {
+			p.xd = nextGaussian() / 30;
+			p.yd = ya + nextGaussian() / 2;
+			p.zd = nextGaussian() / 30;
+			p.lifetime = nextInt(20) + 20;
+		}
+		return p;
+	},
 	tinted_leaves: (l, x, y, z, xa, ya, za, s, options) => {
 		const p = new FallingLeafParticle(l, x, y, z, s.random(), 0.07, 10, true, false, 2, 0.021);
 		if (options && options.color) p.setColor(...options.color);
 		return p;
 	},
 };
+
+/** The providers of coloured spells: SpellParticle.InstantProvider (colour and power) and MobEffectProvider (colour and alpha). */
+function spell(p, options, instant) {
+	if (options && options.rgb) {
+		p.setColor(options.rgb[0], options.rgb[1], options.rgb[2]);
+		if (instant) {
+			if (options.power !== undefined) p.setPower(options.power);
+		} else if (options.alpha !== undefined) {
+			p.setAlpha(options.alpha);
+		}
+	}
+	return p;
+}
+
+/** TerrainParticle.createTerrainParticle: nothing for air and blocks without terrain particles. */
+function terrain(level, x, y, z, xa, ya, za, options) {
+	const block = options && options.b !== undefined ? level.terrainBlock(options.b, x, y, z) : null;
+	return block ? new TerrainParticle(level, x, y, z, xa, ya, za, block) : null;
+}
 
 function tint(p, color) {
 	p.setColor(color[0], color[1], color[2]);
@@ -805,6 +1167,26 @@ function animateBlock(level, name, info, x, y, z) {
 
 const rgbOf = c => [(c >> 16 & 255) / 255, (c >> 8 & 255) / 255, (c & 255) / 255];
 
+/**
+ * The options the server sends with a particle ({b: block state id} or the game's own serialisation of the
+ * options, see EffectEncoder.java) as the providers use them: rgb and alpha of colour options (dust, effects).
+ */
+function particleOptions(raw) {
+	if (!raw || typeof raw !== 'object') return null;
+	const options = { ...raw };
+	const color = raw.color;
+	if (typeof color === 'number') {
+		options.rgb = rgbOf(color);
+		const alpha = (color >>> 24) & 255;
+		if (raw.argb || alpha) options.alpha = alpha / 255;
+		options.color = options.rgb;
+	} else if (Array.isArray(color)) {
+		options.rgb = color.slice(0, 3);
+		options.color = options.rgb;
+	}
+	return options;
+}
+
 /** AbstractCandleBlock.addParticlesAndSound */
 function candleFlame(level, x, y, z) {
 	if (nextFloat() < 0.3) level.add('minecraft:smoke', x, y, z, 0, 0, 0);
@@ -943,10 +1325,19 @@ export class Particles {
 		gl.bindVertexArray(null);
 		this.enabled = true;
 		this.level = null;
+		// effects the server sent with entity frames, played when the entities get to their tick
+		this.pending = [];
+		// ClientExplosionTracker: explosions whose block particles come with the next tick
+		this.explosions = [];
+		this.camera = null;
+		this.blockAssets = null;
+		this.terrainSprites = new Map();
 	}
 
 	/** Sprite sets from particles/*.json and one atlas of textures/particle (from the asset bundle). */
-	async setAssets(bundle, colormaps) {
+	async setAssets(bundle, colormaps, blockAssets) {
+		this.blockAssets = blockAssets || null;
+		this.terrainSprites.clear();
 		const textures = bundle.particleTextures || {};
 		const images = new Map();
 		for (const [id, b64] of Object.entries(textures)) {
@@ -990,12 +1381,38 @@ export class Particles {
 
 	clear() {
 		this.particles.length = 0;
+		this.pending.length = 0;
+		this.explosions.length = 0;
 	}
 
-	/** One game tick: move the particles, then ClientLevel.animateTick and the campfires. */
-	tick(world, camera, weather) {
+	/** The "fx" of an entity frame (see EffectEncoder.java), played when the entities are drawn at its tick. */
+	queueEffects(t, fx) {
+		if (!this.enabled || !Array.isArray(fx)) return;
+		this.pending.push({ t, fx });
+		if (this.pending.length > 200) this.pending.splice(0, this.pending.length - 200);
+	}
+
+	/**
+	 * One game tick: the effects that are due, the explosions' block particles, moving the particles, then
+	 * ClientLevel.animateTick, the campfires and the entities' effect swirls. renderTick: the entity tick on screen.
+	 */
+	tick(world, camera, weather, renderTick, entities) {
 		if (!this.enabled || !this.texture) return;
 		const level = this.levelFor(world, weather);
+		this.camera = camera;
+		while (this.pending.length && (renderTick === undefined || this.pending[0].t <= renderTick)) {
+			const { t, fx } = this.pending.shift();
+			if (renderTick !== undefined && renderTick - t > 40) continue;
+			for (const effect of fx) {
+				try {
+					this.effect(level, effect);
+				} catch (error) {
+					console.warn('CCTV: could not play effect', effect, error);
+				}
+			}
+		}
+		this.tickExplosions(level);
+		for (const e of entities || []) if (e.fxp && e.fxp.length) this.effectSwirls(level, e);
 		const list = this.particles;
 		let n = 0;
 		for (let i = 0; i < list.length; i++) {
@@ -1026,6 +1443,249 @@ export class Particles {
 		if (!info || info.f & FLAG_AIR) return;
 		animateBlock(level, blockName(info), info, x, y, z);
 		if (info.f & (FLAG_WATER | FLAG_LAVA)) animateFluid(level, info, x, y, z);
+	}
+
+	/** ClientLevel.doAddParticle: nothing further than 32 blocks from the camera unless the type overrides the limit. */
+	addFx(level, type, x, y, z, xa, ya, za, options, override) {
+		const name = type.replace(/^minecraft:/, '');
+		const c = this.camera;
+		if (!override && !OVERRIDE_LIMITER.has(name) && c) {
+			const dx = x - c.x, dy = y - c.y, dz = z - c.z;
+			if (dx * dx + dy * dy + dz * dz > 1024) return;
+		}
+		this.add(level, type, x, y, z, xa, ya, za, options);
+	}
+
+	effect(level, fx) {
+		switch (fx[0]) {
+			case 'le': this.levelEvent(level, fx[1], fx[2], fx[3], fx[4], fx[5]); break;
+			case 'ps': this.spawnParticles(level, fx[1], fx[2], fx[3], fx[4], fx[5], fx[6], fx[7], !!fx[8]); break;
+			case 'p': this.particlePacket(level, fx); break;
+			case 'ex': this.explosion(level, fx); break;
+			case 'ee': this.entityEffect(level, fx[1], fx[2], fx[3], fx[4], fx[5], fx[6]); break;
+			default: break;
+		}
+	}
+
+	/** LevelEventHandler.levelEvent: the events that make particles. */
+	levelEvent(level, type, x, y, z, data) {
+		switch (type) {
+			case 1501:
+				for (let i = 0; i < 8; i++) this.addFx(level, 'minecraft:large_smoke', x + nextDouble(), y + 1.2, z + nextDouble(), 0, 0, 0);
+				break;
+			case 1502:
+				for (let i = 0; i < 5; i++) {
+					this.addFx(level, 'minecraft:smoke', x + nextDouble() * 0.6 + 0.2, y + nextDouble() * 0.6 + 0.2, z + nextDouble() * 0.6 + 0.2, 0, 0, 0);
+				}
+				break;
+			case 1503:
+				for (let i = 0; i < 16; i++) {
+					this.addFx(level, 'minecraft:smoke', x + (5 + nextDouble() * 6) / 16, y + 0.8125, z + (5 + nextDouble() * 6) / 16, 0, 0, 0);
+				}
+				break;
+			case 2000:
+				this.shootParticles(level, data, x, y, z, 'minecraft:smoke');
+				break;
+			case 2010:
+				this.shootParticles(level, data, x, y, z, 'minecraft:white_smoke');
+				break;
+			case 2001:
+			case 2014:
+				this.destroyBlock(level, x, y, z, data);
+				break;
+			case 2004:
+				for (let i = 0; i < 20; i++) {
+					const px = x + 0.5 + (nextDouble() - 0.5) * 2, py = y + 0.5 + (nextDouble() - 0.5) * 2, pz = z + 0.5 + (nextDouble() - 0.5) * 2;
+					this.addFx(level, 'minecraft:smoke', px, py, pz, 0, 0, 0);
+					this.addFx(level, 'minecraft:flame', px, py, pz, 0, 0, 0);
+				}
+				break;
+			case 2008:
+				this.addFx(level, 'minecraft:explosion', x + 0.5, y + 0.5, z + 0.5, 0, 0, 0);
+				break;
+			case 2009:
+				for (let i = 0; i < 8; i++) this.addFx(level, 'minecraft:cloud', x + nextDouble(), y + 1.2, z + nextDouble(), 0, 0, 0);
+				break;
+			case 3000:
+				this.addFx(level, 'minecraft:explosion_emitter', x + 0.5, y + 0.5, z + 0.5, 0, 0, 0, null, true);
+				break;
+			default:
+				break;
+		}
+	}
+
+	/** LevelEventHandler.shootParticles: out of the face of a dispenser (data: Direction.from3DDataValue). */
+	shootParticles(level, data, x, y, z, particle) {
+		const [nx, ny, nz] = [[0, -1, 0], [0, 1, 0], [0, 0, -1], [0, 0, 1], [-1, 0, 0], [1, 0, 0]][data] || [0, 1, 0];
+		for (let i = 0; i < 10; i++) {
+			const pow = nextDouble() * 0.2 + 0.01;
+			const px = x + nx * 0.6 + 0.5 + nx * 0.01 + (nextDouble() - 0.5) * nz * 0.5;
+			const py = y + ny * 0.6 + 0.5 + ny * 0.01 + (nextDouble() - 0.5) * ny * 0.5;
+			const pz = z + nz * 0.6 + 0.5 + nz * 0.01 + (nextDouble() - 0.5) * nx * 0.5;
+			this.addFx(level, particle, px, py, pz, nx * pow + nextGaussian() * 0.01, ny * pow + nextGaussian() * 0.01, nz * pow + nextGaussian() * 0.01);
+		}
+	}
+
+	/** ClientLevel.addDestroyBlockEffect: pieces on a grid through the block's shape, flying outwards. */
+	destroyBlock(level, bx, by, bz, stateId) {
+		const block = level.terrainBlock(stateId, bx + 0.5, by + 0.5, bz + 0.5);
+		const entry = level.world.raw && level.world.raw[stateId];
+		if (!block || !entry) return;
+		for (const [x1, y1, z1, x2, y2, z2] of entry.b || []) {
+			const wx = Math.min(1, x2 - x1), wy = Math.min(1, y2 - y1), wz = Math.min(1, z2 - z1);
+			const cx = Math.max(2, Math.ceil(wx / 0.25)), cy = Math.max(2, Math.ceil(wy / 0.25)), cz = Math.max(2, Math.ceil(wz / 0.25));
+			for (let xx = 0; xx < cx; xx++) {
+				for (let yy = 0; yy < cy; yy++) {
+					for (let zz = 0; zz < cz; zz++) {
+						const rx = (xx + 0.5) / cx, ry = (yy + 0.5) / cy, rz = (zz + 0.5) / cz;
+						const x = bx + rx * wx + x1, y = by + ry * wy + y1, z = bz + rz * wz + z1;
+						if (this.particles.length >= MAX_PARTICLES) return;
+						this.particles.push(new TerrainParticle(level, x, y, z, rx - 0.5, ry - 0.5, rz - 0.5, block));
+					}
+				}
+			}
+		}
+	}
+
+	/** ParticleUtils.spawnParticles (bone meal, crops growing): specks spread over a block. */
+	spawnParticles(level, particle, x, y, z, count, width, height, floating) {
+		for (let i = 0; i < count; i++) {
+			const xa = nextGaussian() * 0.02, ya = nextGaussian() * 0.02, za = nextGaussian() * 0.02;
+			const start = 0.5 - width;
+			const px = x + start + nextDouble() * width * 2, py = y + nextDouble() * height, pz = z + start + nextDouble() * width * 2;
+			if (floating || !level.isAir(px, py - 1, pz)) this.addFx(level, particle, px, py, pz, xa, ya, za);
+		}
+	}
+
+	/** ClientPacketListener.handleParticleEvent */
+	particlePacket(level, [, type, x, y, z, count, xDist, yDist, zDist, xSpeed, ySpeed, zSpeed, randomization, override, raw]) {
+		const options = particleOptions(raw);
+		const add = (px, py, pz, xa, ya, za) => this.addFx(level, type, px, py, pz, xa, ya, za, options, !!override);
+		if (count === 0) {
+			add(x, y, z, xSpeed * xDist, ySpeed * yDist, zSpeed * zDist);
+			return;
+		}
+		for (let i = 0; i < Math.min(count, 4096); i++) {
+			if (randomization) {
+				let xa = xSpeed, ya = ySpeed, za = zSpeed;
+				const px = x + nextDouble() * xDist, py = y + nextDouble() * yDist, pz = z + nextDouble() * zDist;
+				if (randomization === 2) {
+					xa *= nextDouble();
+					ya *= nextDouble();
+					za *= nextDouble();
+				}
+				add(px, py, pz, xa, ya, za);
+			} else {
+				add(x + nextGaussian() * xDist, y + nextGaussian() * yDist, z + nextGaussian() * zDist,
+					nextGaussian() * xSpeed, nextGaussian() * ySpeed, nextGaussian() * zSpeed);
+			}
+		}
+	}
+
+	/** ClientPacketListener.handleExplosion: the explosion particle, then ClientExplosionTracker.track. */
+	explosion(level, [, x, y, z, radius, blockCount, particle, blockParticles]) {
+		this.addFx(level, particle, x, y, z, 1, 0, 0);
+		if (blockParticles && blockParticles.length) this.explosions.push({ x, y, z, radius, blockCount, blockParticles });
+	}
+
+	/** ClientExplosionTracker.tick: up to 512 particles a tick over the explosions, by their destroyed blocks. */
+	tickExplosions(level) {
+		const list = this.explosions;
+		if (!list.length) return;
+		const total = list.reduce((sum, e) => sum + e.blockCount, 0);
+		const count = Math.min(total, 512);
+		for (let i = 0; i < count; i++) {
+			let pick = nextInt(total);
+			const e = list.find(ex => (pick -= ex.blockCount) < 0);
+			if (e) this.explosionParticle(level, e);
+		}
+		list.length = 0;
+	}
+
+	/** ClientExplosionTracker.addParticle */
+	explosionParticle(level, e) {
+		let dx = nextFloat() * 2 - 1, dy = nextFloat() * 2 - 1, dz = nextFloat() * 2 - 1;
+		const len = Math.hypot(dx, dy, dz);
+		if (len < 1e-4) return;
+		dx /= len; dy /= len; dz /= len;
+		const radius = Math.cbrt(nextFloat()) * e.radius;
+		const lx = dx * radius, ly = dy * radius, lz = dz * radius;
+		if (!level.isAir(e.x + lx, e.y + ly, e.z + lz)) return;
+		const speed = 0.5 / (radius / e.radius + 0.1) * nextFloat() * nextFloat() + 0.3;
+		const weights = e.blockParticles.reduce((sum, b) => sum + b[1], 0);
+		let pick = nextInt(Math.max(1, weights));
+		const [particle, , scaling, speedFactor] = e.blockParticles.find(b => (pick -= b[1]) < 0) || e.blockParticles[0];
+		this.addFx(level, particle, e.x + lx * scaling, e.y + ly * scaling, e.z + lz * scaling,
+			dx * speed * speedFactor, dy * speed * speedFactor, dz * speed * speedFactor);
+	}
+
+	/**
+	 * The particles of handleEntityEvent: LivingEntity.makePoofParticles (death, Mob spawning), Animal love hearts,
+	 * taming hearts or smoke (TamableAnimal, AbstractHorse), Villager hearts, anger, happiness and splashes.
+	 */
+	entityEffect(level, kind, x, y, z, w, h) {
+		const randomX = scale => x + w * (2 * nextDouble() - 1) * scale;
+		const randomY = () => y + h * nextDouble();
+		const randomZ = scale => z + w * (2 * nextDouble() - 1) * scale;
+		const gauss = () => nextGaussian() * 0.02;
+		const around = (particle, count, lift) => {
+			for (let i = 0; i < count; i++) {
+				const xa = gauss(), ya = gauss(), za = gauss();
+				this.addFx(level, particle, randomX(1), randomY() + lift, randomZ(1), xa, ya, za);
+			}
+		};
+		switch (kind) {
+			case 'poof':
+				for (let i = 0; i < 20; i++) {
+					const xa = gauss(), ya = gauss(), za = gauss();
+					this.addFx(level, 'minecraft:poof', randomX(1) - xa * 10, randomY() - ya * 10, randomZ(1) - za * 10, xa, ya, za);
+				}
+				break;
+			case 'love': case 'tamed': around('minecraft:heart', 7, 0.5); break;
+			case 'untamed': around('minecraft:smoke', 7, 0.5); break;
+			case 'villager_heart': around('minecraft:heart', 5, 1); break;
+			case 'angry': around('minecraft:angry_villager', 5, 1); break;
+			case 'happy': around('minecraft:happy_villager', 5, 1); break;
+			case 'splash': around('minecraft:splash', 5, 1); break;
+			default: break;
+		}
+	}
+
+	/** LivingEntity.tickEffects on the client: now and then a swirl of one of the visible effects. */
+	effectSwirls(level, e) {
+		const bound = e.invisible ? 15 : 4, ambient = e.amb ? 5 : 1;
+		if (nextInt(bound * ambient) !== 0) return;
+		const [type, argb] = e.fxp[nextInt(e.fxp.length)];
+		const options = argb !== undefined ? particleOptions({ color: argb, argb: true }) : null;
+		const w = e.w || 0.6, h = e.h || 1.8;
+		this.addFx(level, type, e.x + w * (2 * nextDouble() - 1) * 0.5, e.y + h * nextDouble(), e.z + w * (2 * nextDouble() - 1) * 0.5, 1, 1, 1, options);
+	}
+
+	/** A block's particle sprite (BlockStateModelSet.getParticleMaterial) and its tint for terrain particles. */
+	terrainBlock(world, stateId, x, y, z) {
+		const info = world.infos && world.infos[stateId];
+		if (!info || NO_TERRAIN_PARTICLES.has(info.name) || !this.blockAssets || !this.blockAssets.models) return null;
+		let sprite = this.terrainSprites.get(stateId);
+		if (sprite === undefined) {
+			const texture = this.blockAssets.models.particleTexture(info.name, info.props);
+			const s = texture ? this.blockAssets.sprite(texture) : null;
+			sprite = s ? [s.u0, s.v0, s.u1, s.v1] : null;
+			this.terrainSprites.set(stateId, sprite);
+		}
+		if (!sprite) return null;
+		// BlockTintSource.colorAsTerrainParticle for tint index 0 (the grass block's pieces are plain dirt)
+		const source = info.name === 'minecraft:grass_block' ? null : tintSourceOf(info.name);
+		let tintColor = null;
+		if (source) {
+			const bx = Math.floor(x), by = Math.floor(y), bz = Math.floor(z);
+			switch (source[0]) {
+				case TINT_GRASS: case TINT_DOUBLE_GRASS: tintColor = this.grass(world, bx, by, bz); break;
+				case TINT_FOLIAGE: case TINT_DRY_FOLIAGE: tintColor = this.foliage(world, bx, by, bz); break;
+				case TINT_CONSTANT: tintColor = rgbOf(source[1]); break;
+				default: break;
+			}
+		}
+		return { sprite, tint: tintColor };
 	}
 
 	/** The part of ClientLevel the particles use. */
@@ -1082,6 +1742,9 @@ export class Particles {
 			collide(bb, xa, ya, za) {
 				return collide(info, bb, xa, ya, za);
 			},
+			terrainBlock(stateId, x, y, z) {
+				return engine.terrainBlock(world, stateId, x, y, z);
+			},
 		};
 		return this.level;
 	}
@@ -1092,9 +1755,27 @@ export class Particles {
 		const name = type.replace(/^minecraft:/, '');
 		const provider = PROVIDERS[name];
 		const sprites = this.sets.get(type.includes(':') ? type : 'minecraft:' + type);
-		if (!provider || !sprites) return;
+		if (!provider || (!sprites && !NO_SPRITES.has(name))) return;
 		const particle = provider(level, x, y, z, xa, ya, za, sprites, options);
 		if (particle) this.particles.push(particle);
+	}
+
+	/** BiomeColors.getAverageGrassColor at the block (grass pieces), approximated by the biome's own colour. */
+	grass(world, x, y, z) {
+		const biome = world.biomeInfoAt ? world.biomeInfoAt(x, y, z) : null;
+		let color = 0x91bd59;
+		if (biome) {
+			if (biome.g !== undefined) color = biome.g;
+			else {
+				const map = this.colormaps.grass;
+				if (map) {
+					const t = clamp(biome.t, 0, 1), d = clamp(biome.d, 0, 1) * t;
+					const i = (Math.trunc((1 - d) * 255) << 8 | Math.trunc((1 - t) * 255)) * 4;
+					if (i + 2 < map.data.length) color = map.data[i] << 16 | map.data[i + 1] << 8 | map.data[i + 2];
+				}
+			}
+		}
+		return rgbOf(color);
 	}
 
 	/** BiomeColors.getAverageFoliageColor at the block (tinted leaves). */
@@ -1126,10 +1807,17 @@ export class Particles {
 		const rx = v[0], ry = v[4], rz = v[8]; // camera right
 		const ux = v[1], uy = v[5], uz = v[9]; // camera up
 		let o = 0;
-		const counts = [0, 0];
-		for (const pass of [false, true]) {
+		// QuadParticleGroup layers: opaque, terrain (block atlas), translucent
+		const blockAtlas = this.blockAssets && this.blockAssets.texture;
+		const groups = [
+			{ match: p => !p.translucent && !p.atlas, texture: this.texture, blend: false, count: 0 },
+			{ match: p => p.atlas === 'block', texture: blockAtlas, blend: false, count: 0 },
+			{ match: p => p.translucent && !p.atlas, texture: this.texture, blend: true, count: 0 },
+		];
+		for (const group of groups) {
+			if (!group.texture) continue;
 			for (const p of this.particles) {
-				if (p.translucent !== pass || !p.sprite) continue;
+				if (!p.sprite || !group.match(p)) continue;
 				const px = lerp(partialTick, p.xo, p.x) - camera.x;
 				const py = lerp(partialTick, p.yo, p.y) - camera.y;
 				const pz = lerp(partialTick, p.zo, p.z) - camera.z;
@@ -1147,15 +1835,13 @@ export class Particles {
 				};
 				corner(1, -1, u1, v1); corner(1, 1, u1, v0); corner(-1, 1, u0, v0);
 				corner(1, -1, u1, v1); corner(-1, 1, u0, v0); corner(-1, -1, u0, v1);
-				counts[pass ? 1 : 0] += 6;
+				group.count += 6;
 			}
 		}
 		const p = this.program;
 		gl.useProgram(p.program);
 		gl.uniformMatrix4fv(p.u.uViewProj, false, frame.viewProj);
 		setFog(gl, p.u, frame.fog);
-		gl.activeTexture(gl.TEXTURE0);
-		gl.bindTexture(gl.TEXTURE_2D, this.texture);
 		gl.uniform1i(p.u.uTexture, 0);
 		gl.activeTexture(gl.TEXTURE1);
 		gl.bindTexture(gl.TEXTURE_2D, lightmap);
@@ -1166,17 +1852,23 @@ export class Particles {
 		gl.bufferData(gl.ARRAY_BUFFER, d.subarray(0, o), gl.STREAM_DRAW);
 		gl.disable(gl.CULL_FACE);
 		gl.enable(gl.DEPTH_TEST);
-		gl.disable(gl.BLEND);
-		gl.depthMask(true);
-		if (counts[0]) gl.drawArrays(gl.TRIANGLES, 0, counts[0]);
-		if (counts[1]) {
-			gl.enable(gl.BLEND);
-			gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
-			gl.depthMask(false);
-			gl.drawArrays(gl.TRIANGLES, counts[0], counts[1]);
-			gl.depthMask(true);
-			gl.disable(gl.BLEND);
+		let first = 0;
+		for (const group of groups) {
+			if (!group.count) continue;
+			gl.bindTexture(gl.TEXTURE_2D, group.texture);
+			if (group.blend) {
+				gl.enable(gl.BLEND);
+				gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+				gl.depthMask(false);
+			} else {
+				gl.disable(gl.BLEND);
+				gl.depthMask(true);
+			}
+			gl.drawArrays(gl.TRIANGLES, first, group.count);
+			first += group.count;
 		}
+		gl.depthMask(true);
+		gl.disable(gl.BLEND);
 		gl.enable(gl.CULL_FACE);
 		gl.bindVertexArray(null);
 	}

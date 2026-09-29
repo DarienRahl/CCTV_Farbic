@@ -266,7 +266,11 @@ function connect() {
 		state.ready = true;
 		updateLoading();
 	});
-	on('entities', data => entities.push(data, state.init ? state.init.entityTicks : 1));
+	on('entities', data => {
+		entities.push(data, state.init ? state.init.entityTicks : 1);
+		// particles from level events, particle packets, explosions and entity events, due at the frame's tick
+		if (data.fx) particles.queueEffects(data.t, data.fx);
+	});
 	on('env', data => environment.push(data, performance.now()));
 	on('weather', data => weather.setColumns(data));
 	on('removed', () => {
@@ -287,7 +291,7 @@ function loadAssets() {
 			renderer.atlas = assets.texture;
 			world.setAssets(assets);
 			entities.setAssets(assets);
-			particles.setAssets(assets.bundle, assets.colormaps).catch(err => console.warn('CCTV: particles unavailable', err));
+			particles.setAssets(assets.bundle, assets.colormaps, assets).catch(err => console.warn('CCTV: particles unavailable', err));
 			clouds.setTexture(assets.environment.clouds);
 			state.assets = assets;
 		})
@@ -482,7 +486,11 @@ function frame(now) {
 	if (tick !== state.gameTick) {
 		deltaTicks = Math.min(20, tick - state.gameTick);
 		for (let i = 0; i < Math.min(deltaTicks, 4); i++) environment.tick();
-		if (state.camera) for (let i = 0; i < Math.min(deltaTicks, 4); i++) particles.tick(world, state.camera, environment.current.rain || 0);
+		if (state.camera) {
+			for (let i = 0; i < Math.min(deltaTicks, 4); i++) {
+				particles.tick(world, state.camera, environment.current.rain || 0, entities.tick, state.entityList);
+			}
+		}
 		state.gameTick = tick;
 		if (state.assets) state.assets.tick(tick);
 	}
@@ -523,6 +531,7 @@ function frame(now) {
 	world.update(eye);
 
 	const list = entities.sample(now);
+	state.entityList = list;
 	if (deltaTicks > 0 && list.some(e => e.type === 'minecraft:lightning_bolt')) environment.lightning();
 
 	const daylight = environment.daylight();

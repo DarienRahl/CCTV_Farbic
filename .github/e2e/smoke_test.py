@@ -74,6 +74,7 @@ class StreamReader(threading.Thread):
         self.entity_types = set()
         self.foil = set()
         self.leashed = set()
+        self.effects = set()
         self.block_updates = []
         self.sections = set()
         self.names = set()
@@ -116,6 +117,9 @@ class StreamReader(threading.Thread):
                                 if e.get("leash"):
                                     self.leashed.add(e["type"])
                             self.names.update(e["name"] for e in data["e"] if e.get("nameVisible"))
+                            for fx in data.get("fx", []):
+                                # level events by type, entity effects by kind, explosions by particle
+                                self.effects.add(fx[0] + ":" + str(fx[6] if fx[0] == "ex" else fx[1]))
                         elif event == "blocks":
                             self.block_updates.extend(data["b"])
                         elif event == "section":
@@ -247,6 +251,11 @@ def main():
     assert stream.ready.wait(60), f"no 'ready' event (events so far: {stream.events}, error: {stream.error})"
 
     rcon.command("setblock 0 -60 0 minecraft:gold_block")
+    # effects the client turns into particles: a broken block (level event 2001) and an explosion behind
+    # the camera (the killed sheep below makes the death poof)
+    rcon.command("setblock 4 -60 -4 minecraft:stone")
+    rcon.command("setblock 4 -60 -4 minecraft:air destroy")
+    rcon.command("summon minecraft:tnt -20 -59 -24 {fuse:0}")
     rcon.command('data merge block -3 -60 0 {front_text:{messages:["CCTV","edited","",""]}}')
     rcon.command("kill @e[type=minecraft:sheep]")
     time.sleep(4)
@@ -323,7 +332,11 @@ def main():
     print("animation states:", sorted(stream.animation_states), "entity events:", sorted(stream.entity_events), flush=True)
     if ("minecraft:breeze", "idle") not in stream.animation_states:
         failures.append("the breeze's running idle AnimationState was not streamed")
-    print("foil:", sorted(stream.foil), "leashed:", sorted(stream.leashed), flush=True)
+    print("foil:", sorted(stream.foil), "leashed:", sorted(stream.leashed), "effects:", sorted(stream.effects), flush=True)
+    for effect, what in (("le:2001", "the broken block's level event"), ("ee:poof", "the killed sheep's death poof"),
+                         ("ex:minecraft:explosion_emitter", "the TNT explosion")):
+        if effect not in stream.effects:
+            failures.append(f"{what} ({effect}) was not streamed as an effect")
     if "minecraft:pig" not in stream.leashed:
         failures.append("the pig on a lead was not streamed with its leash")
     if not any(t == "minecraft:armor_stand" and f & 4 for t, f in stream.foil):

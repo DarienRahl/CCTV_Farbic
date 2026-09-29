@@ -5,7 +5,7 @@
   <a href="https://github.com/DarienRahl/CCTV_Farbic/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/DarienRahl/CCTV_Farbic?style=for-the-badge&amp;label=release&amp;color=5d8c3e"></a>
   <img alt="Minecraft 26.3" src="https://img.shields.io/badge/minecraft-26.3-866043?style=for-the-badge">
   <img alt="Fabric, server side only" src="https://img.shields.io/badge/fabric-server%20side%20only-8b8b8b?style=for-the-badge">
-  <a href="#roadmap"><img alt="Roadmap" src="https://img.shields.io/badge/roadmap-27%2F41%20done-80ff20?style=for-the-badge"></a>
+  <a href="#roadmap"><img alt="Roadmap" src="https://img.shields.io/badge/roadmap-28%2F42%20done-80ff20?style=for-the-badge"></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-555555?style=for-the-badge"></a>
 </p>
 <!-- badges:end -->
@@ -31,8 +31,9 @@ in a web browser: players, mobs, opening doors and placed blocks show up right a
   sheep eating grass, wolves shaking off water); burning entities are wrapped in flames.
 - **Blocks come alive.** Signs with their text, banners with patterns, decorated pots, player
   heads with skins, beacon beams, end portals with the game's own shader, food on campfires, the
-  enchanting table's book turning to players, and the particles blocks make on their own: torch
-  and campfire flames and smoke, lava pops, drips, falling leaves.
+  enchanting table's book turning to players, and the game's particles: torch and campfire flames
+  and smoke, lava pops, drips, falling leaves, pieces of broken blocks, explosions, crits, hearts,
+  villager moods and potion swirls.
 - **Huge view distance.** A camera also sees terrain in unloaded chunks (read from the region files
   off the main thread, much like Bobby does), up to 1024 blocks.
 - **Shaders and custom skies.** An optional "shaders" mode (sun shadows, waving plants, water with
@@ -42,7 +43,7 @@ in a web browser: players, mobs, opening doors and placed blocks show up right a
 ## Roadmap
 
 <!-- roadmap:start -->
-<p align="center"><img src="docs/images/roadmap/banner.svg" width="100%" alt="CCTV roadmap: 27 of 41 done"></p>
+<p align="center"><img src="docs/images/roadmap/banner.svg" width="100%" alt="CCTV roadmap: 28 of 42 done"></p>
 
 What is done and what comes next, milestone by milestone (the full plan with its principles is in
 [docs/ROADMAP.md](docs/ROADMAP.md)).
@@ -79,10 +80,10 @@ What is done and what comes next, milestone by milestone (the full plan with its
 
 </details>
 
-<img src="docs/images/roadmap/1-3.svg" width="100%" alt="1.3 — 1:1 picture: in progress - 1.3.0 is out, 12 of 18 done">
+<img src="docs/images/roadmap/1-3.svg" width="100%" alt="1.3 — 1:1 picture: in progress - 1.3.0 is out, 13 of 19 done">
 
 <details open>
-<summary><b>1.3 — 1:1 picture</b> · in progress - 1.3.0 is out · 12 of 18 done</summary>
+<summary><b>1.3 — 1:1 picture</b> · in progress - 1.3.0 is out · 13 of 19 done</summary>
 
 - [ ] **Reference renders in CI**: a Fabric client game test builds the CI scene in single player, takes a screenshot from the camera position with the game, and the viewer takes one from the same camera; both are published side by side with a difference score
 - [x] **Signs and hanging signs** with their text in the game font (text sent by the server; boards and beds are block models in 26.3 and were already drawn)
@@ -93,7 +94,8 @@ What is done and what comes next, milestone by milestone (the full plan with its
 - [x] **Books on enchanting tables** (turning to the nearest player, opening and flipping pages) **and lecterns**
 - [ ] Conduit, the end gateway beam, spawner and trial spawner contents, brushable blocks
 - [x] **Particles** from `particles/*.json` and their textures: torch, candle and campfire flames and smoke, lava pops, drips, portal, falling leaves, spore blossoms, fireflies
-- [ ] More particles: rain splashes, entity particles (hearts, villager emotions, potion swirls), block breaking, explosions and the particles the server sends (`ClientboundLevelParticlesPacket`)
+- [x] **Particles from the server**: broken blocks (pieces of the block's texture), explosions and their smoke, the particles the server sends (`ClientboundLevelParticlesPacket`: crits, sweeps, hearts, dust...), level events (dispenser smoke, bone meal, lava fizz), death and spawn poofs, love hearts, villager moods and potion effect swirls
+- [ ] More particles: rain splashes, item pieces (eating, breaking tools), fireworks, bubbles
 - [x] Fire on burning entities (FlameFeatureRenderer, invisible ones too); invisible mobs show their equipment
 - [x] Capes (from the player's Mojang profile, swinging like ClientAvatarState's cloak), elytra (ElytraAnimationState, the cape as elytra texture), the skin layers a player turned off
 - [x] **Entity shadows** like EntityRenderer.extractShadow: `shadow.png` on the tops of the blocks below, fading with depth and in the dark, only within 16 blocks of the camera
@@ -333,9 +335,8 @@ Stream events:
 ## Limitations
 
 - Shield patterns are not drawn (only the base colour).
-- Sounds and chest opening animations are not played. Particles are the ones blocks and fluids
-  make on their own (torches, campfires, leaves, lava, drips...); particles the server sends
-  (explosions, block breaking, potion effects) are not drawn yet.
+- Sounds and chest opening animations are not played. Rain splashes, item pieces (eating, breaking
+  tools), fireworks and bubbles have no particles yet.
 - Terrain in unloaded chunks shows the state of the last world save.
 - Textures and models from `client.jar` are not part of this repository. The mod downloads them
   from Mojang's servers on a server that runs the game.

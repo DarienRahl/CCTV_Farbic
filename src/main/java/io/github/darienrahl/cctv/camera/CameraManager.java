@@ -18,10 +18,15 @@ import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.particles.ExplosionParticleInfo;
+import net.minecraft.core.particles.ParticleOptions;
+import net.minecraft.network.protocol.game.ClientboundLevelParticlesPacket.RandomizationType;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.util.random.WeightedList;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.Vec3;
 
 import io.github.darienrahl.cctv.CctvConfig;
 import io.github.darienrahl.cctv.assets.ClientAssets;
@@ -205,6 +210,44 @@ public final class CameraManager implements CameraDirectory {
 		}
 		for (CameraSession session : sessions.values()) {
 			session.onEntityEvent(level, entity, event);
+			session.onEffect(level, entity.getX(), entity.getY(), entity.getZ(), session.entityEffectRange(),
+					states -> EffectEncoder.entityEvent(entity, event));
+		}
+	}
+
+	/** Called (server thread) for every level event sent to players (ServerLevel#levelEvent, 64 blocks). */
+	public void onLevelEvent(ServerLevel level, int type, BlockPos pos, int data) {
+		if (sessions.isEmpty()) {
+			return;
+		}
+		for (CameraSession session : sessions.values()) {
+			session.onEffect(level, pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5, 64,
+					states -> EffectEncoder.levelEvent(level, type, pos, data, states));
+		}
+	}
+
+	/** Called (server thread) for every particle packet sent to the players nearby (ServerLevel#sendParticles). */
+	public void onParticles(ServerLevel level, ParticleOptions particle, boolean overrideLimiter, double x, double y, double z, int count,
+			double xDist, double yDist, double zDist, double xSpeed, double ySpeed, double zSpeed, RandomizationType randomization) {
+		if (sessions.isEmpty()) {
+			return;
+		}
+		for (CameraSession session : sessions.values()) {
+			// ServerLevel#sendParticles(ServerPlayer, ...): 32 blocks, 512 for particles that ignore the limit
+			session.onEffect(level, x, y, z, overrideLimiter ? 512 : 32, states -> EffectEncoder.particles(level, particle, overrideLimiter,
+					x, y, z, count, xDist, yDist, zDist, xSpeed, ySpeed, zSpeed, randomization, states));
+		}
+	}
+
+	/** Called (server thread) for every explosion (ServerLevel#explode sends it to players within 64 blocks). */
+	public void onExplosion(ServerLevel level, Vec3 center, float radius, int blockCount, ParticleOptions particle,
+			WeightedList<ExplosionParticleInfo> blockParticles) {
+		if (sessions.isEmpty()) {
+			return;
+		}
+		for (CameraSession session : sessions.values()) {
+			session.onEffect(level, center.x(), center.y(), center.z(), 64,
+					states -> EffectEncoder.explosion(center, radius, blockCount, particle, blockParticles));
 		}
 	}
 

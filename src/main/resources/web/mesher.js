@@ -108,7 +108,7 @@ const REMAP = [[0, 1, 2, 3], [2, 3, 0, 1], [3, 0, 1, 2], [0, 1, 2, 3], [3, 0, 1,
 
 // --- block tints (BlockColors / BlockTintSources) ---------------------------------------------------------
 
-const TINT_GRASS = 1, TINT_FOLIAGE = 2, TINT_DRY_FOLIAGE = 3, TINT_WATER = 4, TINT_CONSTANT = 5, TINT_REDSTONE = 6,
+export const TINT_GRASS = 1, TINT_FOLIAGE = 2, TINT_DRY_FOLIAGE = 3, TINT_WATER = 4, TINT_CONSTANT = 5, TINT_REDSTONE = 6,
 	TINT_STEM = 7, TINT_DOUBLE_GRASS = 8, TINT_NONE = 9;
 const TINTS = new Map();
 function tints(sources, ...blocks) {
@@ -126,6 +126,12 @@ tints([[TINT_REDSTONE]], 'redstone_wire');
 tints([[TINT_CONSTANT, 0xe0c71c]], 'attached_melon_stem', 'attached_pumpkin_stem');
 tints([[TINT_STEM]], 'melon_stem', 'pumpkin_stem');
 tints([[TINT_CONSTANT, 0x208030]], 'lily_pad');
+
+/** The tint source of a block's tint index 0 ([kind, value?]), or null (terrain particles take this colour). */
+export function tintSourceOf(name) {
+	const sources = TINTS.get(name);
+	return sources && sources[0] && sources[0][0] !== TINT_NONE ? sources[0] : null;
+}
 
 /** RedstoneWireBlock.getColorForPower */
 function redstoneColor(power) {

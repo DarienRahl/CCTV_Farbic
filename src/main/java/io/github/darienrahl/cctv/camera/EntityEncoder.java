@@ -3,6 +3,7 @@ package io.github.darienrahl.cctv.camera;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.util.Collection;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -17,9 +18,12 @@ import org.jspecify.annotations.Nullable;
 import net.minecraft.core.Holder;
 import net.minecraft.core.component.DataComponentType;
 import net.minecraft.core.component.DataComponents;
+import net.minecraft.core.particles.ColorParticleOption;
+import net.minecraft.core.particles.ParticleOptions;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.util.StringRepresentable;
 import net.minecraft.world.entity.AnimationState;
+import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.Leashable;
@@ -214,6 +218,7 @@ final class EntityEncoder {
 			writeItem(json, "saddle", living.getItemBySlot(EquipmentSlot.SADDLE));
 			writeItem(json, "bodyArmor", living.getItemBySlot(EquipmentSlot.BODY));
 			writeArmor(json, living);
+			writeEffectParticles(json, living);
 			foil = foil(living.getMainHandItem(), FOIL_HAND) | foil(living.getOffhandItem(), FOIL_OFFHAND)
 					| foil(living.getItemBySlot(EquipmentSlot.BODY), FOIL_BODY);
 			for (int i = 0; i < ARMOR.length; i++) {
@@ -377,6 +382,41 @@ final class EntityEncoder {
 
 	private static void vec(Json json, Vec3 v) {
 		json.beginArray().value(v.x, 3).value(v.y, 3).value(v.z, 3).endArray();
+	}
+
+	/**
+	 * LivingEntity's DATA_EFFECT_PARTICLES and DATA_EFFECT_AMBIENCE_ID (updateSynchronizedMobEffectParticles): the
+	 * particles of the visible effects, [type] or [type, ARGB colour] for coloured ones, which the client puffs
+	 * around the entity (tickEffects); "amb" when all effects are ambient (beacons), which makes it rarer.
+	 */
+	private static void writeEffectParticles(Json json, LivingEntity living) {
+		Collection<MobEffectInstance> effects = living.getActiveEffects();
+		if (effects.isEmpty()) {
+			return;
+		}
+		boolean any = false;
+		for (MobEffectInstance effect : effects) {
+			if (!effect.isVisible()) {
+				continue;
+			}
+			if (!any) {
+				json.name("fxp").beginArray();
+				any = true;
+			}
+			ParticleOptions particle = effect.getParticleOptions();
+			json.beginArray().value(BuiltInRegistries.PARTICLE_TYPE.getKey(particle.getType()).toString());
+			if (particle instanceof ColorParticleOption color) {
+				json.value((long) (Math.round(color.getAlpha() * 255) << 24 | Math.round(color.getRed() * 255) << 16
+						| Math.round(color.getGreen() * 255) << 8 | Math.round(color.getBlue() * 255)) & 0xFFFFFFFFL);
+			}
+			json.endArray();
+		}
+		if (any) {
+			json.endArray();
+			if (LivingEntity.areAllEffectsAmbient(effects)) {
+				json.field("amb", true);
+			}
+		}
 	}
 
 	private static int foil(ItemStack stack, int bit) {
