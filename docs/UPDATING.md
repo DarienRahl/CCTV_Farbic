@@ -53,7 +53,9 @@ of game APIs on the server and a set of client classes the viewer ports to JavaS
 | `EntityRenderer`, `LivingEntityRenderer`, `AvatarRenderer`, mob renderers | `entities.js`, `mobs.js` |
 | `HumanoidModel` and the other `setupAnim` models, `WalkAnimationState`, `RemotePlayer` | `mobs.js`, `entities.js` |
 | `SubmitNodeCollection#submitNameTag`, `TextFeatureRenderer`, `AbstractSignRenderer`, `StandingSignRenderer`, `HangingSignRenderer`, `BitmapProvider`, `BakedSheetGlyph` | `text.js`, `entities.js` |
-| `BlockEntityRenderer`s (chest, shulker box, bell, banner, skull, decorated pot) | `entities.js`, `mobs.js` |
+| `BlockEntityRenderer`s (chest, shulker box, bell, banner, skull, decorated pot, beacon, campfire, end portal and gateway) | `entities.js`, `mobs.js` |
+| `rendertype_end_portal.vsh/.fsh` (copied verbatim into `PORTAL_VS`/`PORTAL_FS`; compare the shader files of the new jar) | `entities.js` |
+| `FlameFeatureRenderer`, `CapeLayer`/`PlayerCapeModel`/`ClientAvatarState`, `WingsLayer`/`ElytraModel`/`ElytraAnimationState` | `entities.js`, `mobs.js` |
 | `KeyframeAnimation`, `AnimationChannel`, `AnimationState` | `keyframes.js` |
 | `setupAnim` of the keyframe animated models (warden, sniffer, frog, camel...) and the entities' client-side `setupAnimationStates` / `handleEntityEvent` | `mobs.js` (`KEYFRAME_ANIMS`, `CLIENT`) |
 | `ClientLevel#animateTick`, the particles (`FlameParticle`, `CampfireSmokeParticle`, `DripParticle`...) and the blocks' `animateTick` (torches, campfires, leaves, lava...) | `particles.js` (`PROVIDERS`, `animateBlock`, `animateFluid`) |
