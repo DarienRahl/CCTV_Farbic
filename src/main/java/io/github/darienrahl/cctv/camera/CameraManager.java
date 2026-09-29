@@ -18,11 +18,14 @@ import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Holder;
 import net.minecraft.core.particles.ExplosionParticleInfo;
 import net.minecraft.core.particles.ParticleOptions;
 import net.minecraft.network.protocol.game.ClientboundLevelParticlesPacket.RandomizationType;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.sounds.SoundEvent;
+import net.minecraft.sounds.SoundSource;
 import net.minecraft.util.random.WeightedList;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.block.Block;
@@ -223,6 +226,43 @@ public final class CameraManager implements CameraDirectory {
 		}
 	}
 
+	/**
+	 * Called (server thread) for every sound sent to players at a position (ServerLevel#playSeededSound): those
+	 * within the sound's range of the camera hear it.
+	 */
+	public void onSound(ServerLevel level, double x, double y, double z, Holder<SoundEvent> sound, SoundSource source, float volume, float pitch,
+			long seed) {
+		if (sessions.isEmpty()) {
+			return;
+		}
+		float range = sound.value().getRange(volume);
+		for (CameraSession session : sessions.values()) {
+			session.onEffect(level, x, y, z, range, states -> SoundEncoder.sound(sound.value(), source, x, y, z, volume, pitch, seed, false));
+		}
+	}
+
+	/** Called (server thread) for every sound following an entity (ServerLevel#playSeededSound with an entity). */
+	public void onEntitySound(ServerLevel level, Entity entity, Holder<SoundEvent> sound, SoundSource source, float volume, float pitch, long seed) {
+		if (sessions.isEmpty()) {
+			return;
+		}
+		float range = sound.value().getRange(volume);
+		for (CameraSession session : sessions.values()) {
+			session.onEffect(level, entity.getX(), entity.getY(), entity.getZ(), range,
+					states -> SoundEncoder.entitySound(sound.value(), source, entity, volume, pitch, seed));
+		}
+	}
+
+	/** Called (server thread) for level events every player gets (ServerLevel#globalLevelEvent). */
+	public void onGlobalLevelEvent(ServerLevel level, int type, BlockPos pos) {
+		if (sessions.isEmpty()) {
+			return;
+		}
+		for (CameraSession session : sessions.values()) {
+			session.onEffect(level, pos.getX(), pos.getY(), pos.getZ(), Double.MAX_VALUE / 4, states -> SoundEncoder.globalLevelEvent(type, pos));
+		}
+	}
+
 	/** Called (server thread) for every block event sent to players (ServerLevel#doBlockEvent, 64 blocks). */
 	public void onBlockEvent(ServerLevel level, BlockPos pos, Block block, int a, int b) {
 		if (sessions.isEmpty()) {
@@ -239,8 +279,11 @@ public final class CameraManager implements CameraDirectory {
 			return;
 		}
 		for (CameraSession session : sessions.values()) {
-			session.onEffect(level, pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5, 64,
-					states -> EffectEncoder.levelEvent(level, type, pos, data, states));
+			session.onEffect(level, pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5, 64, states -> {
+				String particles = EffectEncoder.levelEvent(level, type, pos, data, states);
+				String sound = SoundEncoder.levelEvent(level, type, pos, data);
+				return particles == null ? sound : sound == null ? particles : particles + "," + sound;
+			});
 		}
 	}
 
@@ -259,13 +302,19 @@ public final class CameraManager implements CameraDirectory {
 
 	/** Called (server thread) for every explosion (ServerLevel#explode sends it to players within 64 blocks). */
 	public void onExplosion(ServerLevel level, Vec3 center, float radius, int blockCount, ParticleOptions particle,
-			WeightedList<ExplosionParticleInfo> blockParticles) {
+			WeightedList<ExplosionParticleInfo> blockParticles, @Nullable Holder<SoundEvent> sound) {
 		if (sessions.isEmpty()) {
 			return;
 		}
+		// ClientPacketListener.handleExplosion plays the packet's sound: blocks, volume 4, a lowered pitch
+		float pitch = (1.0F + (level.getRandom().nextFloat() - level.getRandom().nextFloat()) * 0.2F) * 0.7F;
+		long seed = level.getRandom().nextLong();
 		for (CameraSession session : sessions.values()) {
-			session.onEffect(level, center.x(), center.y(), center.z(), 64,
-					states -> EffectEncoder.explosion(center, radius, blockCount, particle, blockParticles));
+			session.onEffect(level, center.x(), center.y(), center.z(), 64, states -> {
+				String effect = EffectEncoder.explosion(center, radius, blockCount, particle, blockParticles);
+				return sound == null ? effect
+						: effect + "," + SoundEncoder.sound(sound.value(), SoundSource.BLOCKS, center.x(), center.y(), center.z(), 4.0F, pitch, seed, false);
+			});
 		}
 	}
 

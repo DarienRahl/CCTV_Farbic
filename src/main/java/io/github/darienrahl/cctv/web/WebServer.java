@@ -27,6 +27,7 @@ import org.slf4j.Logger;
 
 import io.github.darienrahl.cctv.CctvConfig;
 import io.github.darienrahl.cctv.assets.ClientAssets;
+import io.github.darienrahl.cctv.assets.GameSounds;
 
 /**
  * Small HTTP server built on the JDK's {@code com.sun.net.httpserver}.
@@ -48,6 +49,8 @@ import io.github.darienrahl.cctv.assets.ClientAssets;
  * GET /assets/entity/{path}.png  one entity texture
  * GET /assets/misc/{path}.png    one texture of textures/misc (entity shadow, enchantment glint)
  * GET /assets/font/{path}         the game's font (definitions .json, glyph sheets .png)
+ * GET /assets/sounds.json         the game's sound events (sounds.json merged with resource packs)
+ * GET /assets/sound/{ns}/{path}.ogg one sound file (resource packs, else the game's asset, cached)
  * GET /assets/{trims|palettes|map}/{path}.png[.mcmeta] armour trim patterns, trim palettes, map decorations
  * GET /api/status                 state of the live camera sessions (troubleshooting)
  * GET /map/{id}                   the picture of a map in an item frame a camera sees (128 x 128 RGBA)
@@ -65,6 +68,7 @@ public final class WebServer {
 	private final ClientAssets assets;
 	private final Logger logger;
 	private final SkinProxy skins;
+	private final GameSounds sounds;
 	private final Map<String, byte[]> resourceCache = new ConcurrentHashMap<>();
 	/** Optional directory to serve the web files from instead of the jar (for developing the viewer). */
 	private final Path devWebDir;
@@ -78,6 +82,7 @@ public final class WebServer {
 		this.assets = assets;
 		this.logger = logger;
 		this.skins = new SkinProxy(logger);
+		this.sounds = new GameSounds(assets, logger);
 		String dev = System.getProperty("cctv.webDir");
 		this.devWebDir = dev == null || dev.isBlank() ? null : Path.of(dev);
 	}
@@ -321,6 +326,39 @@ public final class WebServer {
 				return;
 			}
 			sendGzipped(exchange, "application/json", models);
+		} else if (path.equals("sounds.json") || path.startsWith("sound/")) {
+			if (!config.sounds) {
+				sendText(exchange, 404, "text/plain", "Sounds disabled");
+				return;
+			}
+			if (path.equals("sounds.json")) {
+				byte[] json = sounds.soundsJson();
+				if (json == null) {
+					headers.add("Cache-Control", "no-store");
+					sendText(exchange, assets.state() == ClientAssets.State.LOADING ? 503 : 404, "application/json", "{}");
+					return;
+				}
+				headers.add("ETag", sounds.etag());
+				headers.add("Cache-Control", "no-cache");
+				if (sounds.etag().equals(exchange.getRequestHeaders().getFirst("If-None-Match"))) {
+					exchange.sendResponseHeaders(304, -1);
+					return;
+				}
+				sendGzipped(exchange, "application/json", json);
+				return;
+			}
+			if (!path.endsWith(".ogg")) {
+				sendText(exchange, 404, "text/plain", "Not found");
+				return;
+			}
+			byte[] ogg = sounds.sound(path.substring("sound/".length(), path.length() - ".ogg".length()));
+			if (ogg == null) {
+				headers.add("Cache-Control", "max-age=300");
+				sendText(exchange, 404, "text/plain", "Not found");
+				return;
+			}
+			headers.add("Cache-Control", "max-age=604800");
+			sendBytes(exchange, 200, "audio/ogg", ogg);
 		} else if (path.equals("names.json")) {
 			headers.add("Cache-Control", "no-cache");
 			sendText(exchange, 200, "application/json", assets.namesJson());

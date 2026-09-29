@@ -221,3 +221,12 @@ net/minecraft/client/renderer/blockentity/ShulkerBoxRenderer
 net/minecraft/world/level/block/entity/BellBlockEntity
 net/minecraft/client/renderer/blockentity/BellRenderer
 net/minecraft/world/level/block/NoteBlock
+# sounds (sound.js; SoundEncoder.java for LevelEventHandler's sounds)
+net/minecraft/client/sounds/SoundEngine
+net/minecraft/client/sounds/WeighedSoundEvents
+net/minecraft/client/resources/sounds/Sound
+net/minecraft/client/resources/sounds/AbstractSoundInstance
+net/minecraft/client/resources/sounds/SimpleSoundInstance
+net/minecraft/client/resources/sounds/EntityBoundSoundInstance
+com/mojang/blaze3d/audio/Channel
+com/mojang/blaze3d/audio/Listener

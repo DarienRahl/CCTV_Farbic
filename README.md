@@ -5,7 +5,7 @@
   <a href="https://github.com/DarienRahl/CCTV_Farbic/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/DarienRahl/CCTV_Farbic?style=for-the-badge&amp;label=release&amp;color=5d8c3e"></a>
   <img alt="Minecraft 26.3" src="https://img.shields.io/badge/minecraft-26.3-866043?style=for-the-badge">
   <img alt="Fabric, server side only" src="https://img.shields.io/badge/fabric-server%20side%20only-8b8b8b?style=for-the-badge">
-  <a href="#roadmap"><img alt="Roadmap" src="https://img.shields.io/badge/roadmap-34%2F50%20done-80ff20?style=for-the-badge"></a>
+  <a href="#roadmap"><img alt="Roadmap" src="https://img.shields.io/badge/roadmap-35%2F51%20done-80ff20?style=for-the-badge"></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-555555?style=for-the-badge"></a>
 </p>
 <!-- badges:end -->
@@ -34,7 +34,11 @@ in a web browser: players, mobs, opening doors and placed blocks show up right a
   heads with skins, beacon beams, end portals with the game's own shader, food on campfires, the
   enchanting table's book turning to players, and the game's particles: torch and campfire flames
   and smoke, lava pops, drips, falling leaves, pieces of broken blocks, explosions, crits, hearts,
-  villager moods and potion swirls.
+  villager moods and potion swirls. Chests and shulker boxes open, bells swing, blocks being mined
+  crack and spawners spin their mobs.
+- **Sounds.** With the 🔈 button the viewer plays what a player at the camera would hear: mobs, steps,
+  doors, chests, blocks breaking, explosions, note blocks and jukeboxes, in 3D and fading with distance
+  like the game's sound engine.
 - **Huge view distance.** A camera also sees terrain in unloaded chunks (read from the region files
   off the main thread, much like Bobby does), up to 1024 blocks.
 - **Shaders and custom skies.** An optional "shaders" mode (sun shadows, waving plants, water with
@@ -44,7 +48,7 @@ in a web browser: players, mobs, opening doors and placed blocks show up right a
 ## Roadmap
 
 <!-- roadmap:start -->
-<p align="center"><img src="docs/images/roadmap/banner.svg" width="100%" alt="CCTV roadmap: 34 of 50 done"></p>
+<p align="center"><img src="docs/images/roadmap/banner.svg" width="100%" alt="CCTV roadmap: 35 of 51 done"></p>
 
 What is done and what comes next, milestone by milestone (the full plan with its principles is in
 [docs/ROADMAP.md](docs/ROADMAP.md)).
@@ -81,10 +85,10 @@ What is done and what comes next, milestone by milestone (the full plan with its
 
 </details>
 
-<img src="docs/images/roadmap/1-3.svg" width="100%" alt="1.3 — 1:1 picture: in progress - 1.3.0 is out, 19 of 27 done">
+<img src="docs/images/roadmap/1-3.svg" width="100%" alt="1.3 — 1:1 picture: in progress - 1.3.0 is out, 20 of 28 done">
 
 <details open>
-<summary><b>1.3 — 1:1 picture</b> · in progress - 1.3.0 is out · 19 of 27 done</summary>
+<summary><b>1.3 — 1:1 picture</b> · in progress - 1.3.0 is out · 20 of 28 done</summary>
 
 - [ ] **Reference renders in CI**: a Fabric client game test builds the CI scene in single player, takes a screenshot from the camera position with the game, and the viewer takes one from the same camera; both are published side by side with a difference score
 - [x] **Signs and hanging signs** with their text in the game font (text sent by the server; boards and beds are block models in 26.3 and were already drawn)
@@ -99,7 +103,8 @@ What is done and what comes next, milestone by milestone (the full plan with its
 - [x] **Shields with their patterns** (ShieldSpecialRenderer: the base colour and banner patterns, held, dropped and in item frames; items in the left hand mirrored like ItemTransform)
 - [x] **Chests, ender chests and shulker boxes open, bells swing, note blocks show their notes** from the server's block events (ChestLidController, ShulkerBoxBlockEntity, BellBlockEntity, NoteBlock)
 - [ ] Pistons moving (PistonMovingBlockEntity, PistonHeadRenderer)
-- [ ] **Sounds**: the sounds the server sends players (mobs, steps, blocks, doors, explosions) and the ones the client makes from level events, played in 3D like the game's SoundEngine (sound files from the game's asset index, downloaded and cached by the server; a button turns them on in the viewer)
+- [x] **Sounds**: the sounds the server sends players (mobs, steps, blocks, doors, explosions, note blocks, jukeboxes) and the ones the client makes from level events, played in 3D like the game's SoundEngine (sound files from the game's asset index, downloaded and cached by the server; a button turns them on in the viewer)
+- [ ] Client-side sounds: rain and thunder, lightning, cave and biome ambience, the crackle of lava, fire, campfires and furnaces (animateTick)
 - [x] **Particles** from `particles/*.json` and their textures: torch, candle and campfire flames and smoke, lava pops, drips, portal, falling leaves, spore blossoms, fireflies
 - [x] **Particles from the server**: broken blocks (pieces of the block's texture), explosions and their smoke, the particles the server sends (`ClientboundLevelParticlesPacket`: crits, sweeps, hearts, dust...), level events (dispenser smoke, bone meal, lava fizz), death and spawn poofs, love hearts, villager moods and potion effect swirls
 - [ ] More particles: rain splashes, item pieces (eating, breaking tools), fireworks, bubbles
@@ -166,7 +171,9 @@ map renderers such as BlueMap do. Only textures, block models and mob model geom
 it for the browser (the geometry is cached in `entity-models-<version>.json.gz`, so it is not read
 on every start). **Nothing is sent to players.** If the server has no internet access, put
 `client.jar` into `config/cctv/assets/` yourself. You can also turn the download off
-(`downloadClientAssets: false`); the viewer then uses plain colours.
+(`downloadClientAssets: false`); the viewer then uses plain colours. Sounds are game assets outside
+`client.jar`: the server downloads each one from Mojang the first time a viewer plays it and keeps it in
+`config/cctv/assets/objects/` (like the launcher); `sounds: false` turns this off.
 
 ## Commands
 
@@ -249,6 +256,7 @@ can really see. "Mob labels" adds tags for every other mob (its custom name or i
 | `language` | `en_us` | Language of mob names in the viewer (`pl_pl`, `de_de`…; downloaded from Mojang once) |
 | `gzip` | `true` | Compress the stream |
 | `skins` | `true` | Player skins (the server fetches them from the Mojang API and caches them) |
+| `sounds` | `true` | The game's sounds in the viewer (files downloaded from Mojang when first played, cached) |
 | `markers` | `true` | Camera marker block in the world |
 | `maxViewersPerCamera` | `16` | Viewer limit per camera |
 | `viewer` | | Viewer defaults: `graphics` (`vanilla`/`shaders`), `shaderQuality` (`low`…`ultra`), `postShader`, `skyboxes` (dimension → name), `clouds` (`fancy`/`fast`/`off`), `labels`, `mobLabels`, `particles`, `mode` (`color`/`mono`/`night`), `cctvEffect`, `lockSettings` |
@@ -342,7 +350,8 @@ Stream events:
 
 ## Limitations
 
-- Sounds are not played yet and pistons do not move smoothly. Rain splashes, item pieces (eating, breaking
+- Sounds the client makes on its own (rain, thunder, cave ambience, lava and fire crackle) are not played
+  yet, and pistons do not move smoothly. Rain splashes, item pieces (eating, breaking
   tools), fireworks and bubbles have no particles yet.
 - Terrain in unloaded chunks shows the state of the last world save.
 - Textures and models from `client.jar` are not part of this repository. The mod downloads them

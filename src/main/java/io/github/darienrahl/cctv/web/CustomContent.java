@@ -51,7 +51,8 @@ final class CustomContent {
 			json.field(entry.getKey(), entry.getValue());
 		}
 		json.endObject().endObject()
-				.field("locked", viewer.lockSettings);
+				.field("locked", viewer.lockSettings)
+				.field("sounds", config.sounds);
 
 		json.name("skyboxes").beginObject();
 		for (Map.Entry<String, String> skybox : skyboxes(dataDir.resolve("skyboxes")).entrySet()) {

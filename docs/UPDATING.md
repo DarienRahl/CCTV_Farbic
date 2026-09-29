@@ -30,7 +30,7 @@ of game APIs on the server and a set of client classes the viewer ports to JavaS
 
 | File | Game APIs used | Purpose |
 |---|---|---|
-| `mixin/ServerLevelMixin.java` | `ServerLevel#sendBlockUpdated`, `#broadcastEntityEvent`, `#levelEvent`, `#sendParticles`, `#destroyBlockProgress`, `#doBlockEvent` (inject), `#explode` (wraps `ServerExplosion#explode`) | instant block updates, entity events for animations, the effects that make particles |
+| `mixin/ServerLevelMixin.java` | `ServerLevel#sendBlockUpdated`, `#broadcastEntityEvent`, `#levelEvent`, `#sendParticles`, `#destroyBlockProgress`, `#doBlockEvent`, `#playSeededSound` (both), `#globalLevelEvent` (inject), `#explode` (wraps `ServerExplosion#explode`) | instant block updates, entity events for animations, the effects that make particles |
 | `mixin/ChunkMapAccessor.java` | `ChunkMap#readChunk` (invoker) | saved chunks for far terrain |
 | `camera/SectionCapture.java` | `LevelChunkSection`, `PalettedContainer`, `DataLayer`, light listeners | copying sections |
 | `camera/SavedChunks.java` | `SerializableChunkData`, `ChunkStatus`, heightmaps | parsing saved chunks |
@@ -38,6 +38,8 @@ of game APIs on the server and a set of client classes the viewer ports to JavaS
 | `camera/EntityEncoder.java` | entity getters, data components, equipment (`Equippable`, `DyedItemColor`, `ArmorTrim`), `AnimationState` fields, `ItemFrame#getFramedMapId` | entity frames |
 | `camera/MapPictures.java` | `MapItemSavedData#colors`, `MapColor#getColorFromPackedId` | pictures of maps in item frames (`GET /map/{id}`) |
 | `camera/EffectEncoder.java` | level event ids, `ParticleTypes.CODEC`, `ExplosionParticleInfo`, `BonemealableBlock` | server particles |
+| `camera/SoundEncoder.java` | `SoundEvents` (the constants `LevelEventHandler` plays), `SoundType`, `JukeboxSong`, `SoundEvent#getRange` | sounds of level events and sound packets |
+| `assets/GameSounds.java`, `ClientAssets#assetIndex` | the launcher's asset index and `sounds.json` format | sound list and files |
 | `camera/EnvironmentSampler.java` | `EnvironmentAttributes`, `DimensionType` | sky, fog, light colours |
 | `camera/WeatherSampler.java`, `BiomeTable.java` | biome precipitation and colours | rain and snow columns, tints |
 | `camera/CameraSession.java`, `CameraManager.java` | chunk access, heightmaps, entity queries | streaming |
@@ -67,6 +69,7 @@ of game APIs on the server and a set of client classes the viewer ports to JavaS
 | `SpawnerRenderer`, `TrialSpawnerRenderer#extractSpawnerData`, `BaseSpawner#clientTick` (spin and particles) | `entities.js` (`drawSpawner`), `particles.js` |
 | `ShieldSpecialRenderer`, `BannerRenderer#submitPatterns`, `ItemTransform#apply` (left hand) and `models/item/*.json` display transforms (in the asset bundle) | `entities.js` (`drawShield`, `drawHeld`, `applyDisplay`) |
 | Block events: `ChestLidController`, `ChestRenderer`/`ChestModel` (lid), `ShulkerBoxBlockEntity#updateAnimation`, `ShulkerBoxModel`, `BellBlockEntity`/`BellModel`, `NoteBlock#triggerEvent`; the server hooks `ServerLevel#doBlockEvent` | `entities.js` (`blockEvent`, `blockAnim`, `chestOpenness`), `particles.js` (`blockEvent`), `ServerLevelMixin.java` |
+| Sounds: `SoundEngine#play`, `Channel#linearAttenuation`, `WeighedSoundEvents#getSound`, `Sound` (sounds.json fields), `SimpleSoundInstance`/`EntityBoundSoundInstance` (seeded pick), `ClientLevel#playSound` (distance delay); the sounds of `LevelEventHandler` are in `SoundEncoder.java` | `sound.js`, `SoundEncoder.java` |
 | `EntityRenderer#extractRenderState` leash states and `LeashFeatureRenderer` (the server sends `Leashable#getLeashOffset`, `Entity#getRopeHoldPosition` and the quad leash offsets) | `entities.js` (`drawLeashes`, `emitLeash`), `EntityEncoder.java` (`writeLeash`) |
 | Server particles: `LevelEventHandler`, `ClientPacketListener#handleParticleEvent`/`handleExplosion`, `ClientExplosionTracker`, `ClientLevel#addDestroyBlockEffect`, the `handleEntityEvent` particles, `ParticleResources` (which class draws a type). The server side hooks `ServerLevel#levelEvent`, `#sendParticles` and `#explode` | `particles.js` (`effect`, `PROVIDERS`), `EffectEncoder.java`, `ServerLevelMixin.java` |
 | `KeyframeAnimation`, `AnimationChannel`, `AnimationState` | `keyframes.js` |

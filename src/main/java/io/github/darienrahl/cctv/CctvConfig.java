@@ -70,6 +70,11 @@ public final class CctvConfig {
 	public boolean gzip = true;
 	/** Serve player skins (fetched from Mojang by the server and cached). */
 	public boolean skins = true;
+	/**
+	 * Let viewers hear the game's sounds (the sounds the server sends players near the camera). The sound files
+	 * are downloaded from Mojang when first played and cached in config/cctv/assets/objects, like the launcher.
+	 */
+	public boolean sounds = true;
 	/** Spawn a small observer-block marker where a camera is placed (vanilla block_display, no client mod needed). */
 	public boolean markers = true;
 	/** Maximum number of browser connections per camera. */

@@ -17,6 +17,7 @@ import net.minecraft.core.particles.ParticleOptions;
 import net.minecraft.network.protocol.game.ClientboundLevelParticlesPacket.RandomizationType;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.sounds.SoundEvent;
+import net.minecraft.sounds.SoundSource;
 import net.minecraft.util.random.WeightedList;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
@@ -70,6 +71,56 @@ public abstract class ServerLevelMixin {
 				manager.onLevelEvent((ServerLevel) (Object) this, type, pos, data);
 			} catch (RuntimeException | LinkageError e) {
 				Problems.report(null, "level event tracking", e);
+			}
+		}
+	}
+
+	/** Sounds at a position sent to the players in range (every other playSound ends up here). */
+	@Inject(
+			method = "playSeededSound(Lnet/minecraft/world/entity/Entity;DDDLnet/minecraft/core/Holder;Lnet/minecraft/sounds/SoundSource;FFJ)V",
+			at = @At("HEAD"),
+			require = 0
+	)
+	private void cctv$onSound(Entity except, double x, double y, double z, Holder<SoundEvent> sound, SoundSource source, float volume, float pitch,
+			long seed, CallbackInfo ci) {
+		CameraManager manager = CctvMod.manager();
+		if (manager != null) {
+			try {
+				manager.onSound((ServerLevel) (Object) this, x, y, z, sound, source, volume, pitch, seed);
+			} catch (RuntimeException | LinkageError e) {
+				Problems.report(null, "sound tracking", e);
+			}
+		}
+	}
+
+	/** Sounds following an entity (ClientboundSoundEntityPacket). */
+	@Inject(
+			method = "playSeededSound(Lnet/minecraft/world/entity/Entity;Lnet/minecraft/world/entity/Entity;Lnet/minecraft/core/Holder;"
+					+ "Lnet/minecraft/sounds/SoundSource;FFJ)V",
+			at = @At("HEAD"),
+			require = 0
+	)
+	private void cctv$onEntitySound(Entity except, Entity entity, Holder<SoundEvent> sound, SoundSource source, float volume, float pitch, long seed,
+			CallbackInfo ci) {
+		CameraManager manager = CctvMod.manager();
+		if (manager != null) {
+			try {
+				manager.onEntitySound((ServerLevel) (Object) this, entity, sound, source, volume, pitch, seed);
+			} catch (RuntimeException | LinkageError e) {
+				Problems.report(null, "sound tracking", e);
+			}
+		}
+	}
+
+	/** Level events every player hears (the wither, the end portal, the dragon's death). */
+	@Inject(method = "globalLevelEvent(ILnet/minecraft/core/BlockPos;I)V", at = @At("HEAD"), require = 0)
+	private void cctv$onGlobalLevelEvent(int type, BlockPos pos, int data, CallbackInfo ci) {
+		CameraManager manager = CctvMod.manager();
+		if (manager != null) {
+			try {
+				manager.onGlobalLevelEvent((ServerLevel) (Object) this, type, pos);
+			} catch (RuntimeException | LinkageError e) {
+				Problems.report(null, "sound tracking", e);
 			}
 		}
 	}
@@ -134,6 +185,8 @@ public abstract class ServerLevelMixin {
 	private ParticleOptions cctv$largeExplosion;
 	@Unique
 	private WeightedList<ExplosionParticleInfo> cctv$explosionBlockParticles;
+	@Unique
+	private Holder<SoundEvent> cctv$explosionSound;
 
 	/** The explosion particles ServerLevel#explode chooses from, for the wrap of ServerExplosion#explode below. */
 	@Inject(
@@ -150,6 +203,7 @@ public abstract class ServerLevelMixin {
 		cctv$smallExplosion = small;
 		cctv$largeExplosion = large;
 		cctv$explosionBlockParticles = blockParticles;
+		cctv$explosionSound = sound;
 	}
 
 	/** Explosions: the blocks it destroyed and its particle, like the ClientboundExplodePacket players get. */
@@ -167,7 +221,7 @@ public abstract class ServerLevelMixin {
 		if (manager != null && cctv$smallExplosion != null && cctv$largeExplosion != null && cctv$explosionBlockParticles != null) {
 			try {
 				manager.onExplosion((ServerLevel) (Object) this, explosion.center(), explosion.radius(), blockCount,
-						explosion.isSmall() ? cctv$smallExplosion : cctv$largeExplosion, cctv$explosionBlockParticles);
+						explosion.isSmall() ? cctv$smallExplosion : cctv$largeExplosion, cctv$explosionBlockParticles, cctv$explosionSound);
 			} catch (RuntimeException | LinkageError e) {
 				Problems.report(null, "explosion tracking", e);
 			}

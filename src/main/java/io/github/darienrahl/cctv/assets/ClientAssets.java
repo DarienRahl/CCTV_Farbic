@@ -4,6 +4,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.Reader;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -331,39 +332,135 @@ public final class ClientAssets implements AutoCloseable {
 		if (!download) {
 			return null;
 		}
-		HttpClient http = HttpClient.newBuilder()
-				.connectTimeout(Duration.ofSeconds(15))
-				.followRedirects(HttpClient.Redirect.NORMAL)
-				.build();
-		String versionUrl = null;
-		for (JsonElement element : getJson(http, MANIFEST).getAsJsonArray("versions")) {
-			JsonObject entry = element.getAsJsonObject();
-			if (entry.get("id").getAsString().equals(version)) {
-				versionUrl = entry.get("url").getAsString();
-				break;
-			}
-		}
-		if (versionUrl == null) {
-			throw new IOException("Version " + version + " not found in Mojang's version manifest");
-		}
-		String indexUrl = getJson(http, versionUrl).getAsJsonObject("assetIndex").get("url").getAsString();
-		JsonObject object = getJson(http, indexUrl).getAsJsonObject("objects").getAsJsonObject("minecraft/lang/" + language + ".json");
-		if (object == null) {
+		byte[] data = assetObject("minecraft/lang/" + language + ".json");
+		if (data == null) {
 			throw new IOException("Minecraft has no language '" + language + "'");
-		}
-		String hash = object.get("hash").getAsString();
-		HttpResponse<byte[]> response = http.send(HttpRequest.newBuilder(URI.create(ASSET_OBJECTS + hash.substring(0, 2) + "/" + hash))
-				.timeout(Duration.ofMinutes(2)).build(), HttpResponse.BodyHandlers.ofByteArray());
-		if (response.statusCode() != 200) {
-			throw new IOException("HTTP " + response.statusCode() + " for language " + language);
-		}
-		byte[] data = response.body();
-		if (!HexFormat.of().formatHex(MessageDigest.getInstance("SHA-1").digest(data)).equalsIgnoreCase(hash)) {
-			throw new IOException("Language file checksum mismatch");
 		}
 		Files.write(cache, data);
 		logger.info("CCTV: downloaded the '{}' language file from Mojang for entity names", language);
 		return data;
+	}
+
+	private volatile @Nullable JsonObject assetIndex;
+
+	/**
+	 * The game's asset index of this version (the files outside the client jar: sounds, languages...), read
+	 * from the cache or downloaded like the launcher does. Null when downloads are off and nothing is cached.
+	 */
+	synchronized @Nullable JsonObject assetIndex() throws Exception {
+		if (assetIndex != null) {
+			return assetIndex;
+		}
+		Path cache = dir.resolve("index-" + version + ".json");
+		if (Files.isRegularFile(cache)) {
+			try (Reader reader = Files.newBufferedReader(cache, StandardCharsets.UTF_8)) {
+				assetIndex = JsonParser.parseReader(reader).getAsJsonObject().getAsJsonObject("objects");
+				return assetIndex;
+			} catch (RuntimeException e) {
+				Files.deleteIfExists(cache);
+			}
+		}
+		if (!download) {
+			return null;
+		}
+		HttpClient http = httpClient();
+		String indexUrl = getJson(http, versionUrl(http)).getAsJsonObject("assetIndex").get("url").getAsString();
+		HttpResponse<String> response = http.send(HttpRequest.newBuilder(URI.create(indexUrl)).timeout(Duration.ofSeconds(60)).build(),
+				HttpResponse.BodyHandlers.ofString());
+		if (response.statusCode() != 200) {
+			throw new IOException("HTTP " + response.statusCode() + " for the asset index");
+		}
+		JsonObject objects = JsonParser.parseString(response.body()).getAsJsonObject().getAsJsonObject("objects");
+		Files.writeString(cache, response.body(), StandardCharsets.UTF_8);
+		assetIndex = objects;
+		return objects;
+	}
+
+	/**
+	 * One file of the asset index (e.g. {@code minecraft/sounds/mob/zombie/say1.ogg}), from the object cache
+	 * ({@code objects/<hh>/<hash>} like the launcher's) or downloaded from Mojang and checked. Null when the
+	 * index does not list it or it cannot be had.
+	 */
+	byte @Nullable [] assetObject(String name) throws Exception {
+		JsonObject index = assetIndex();
+		JsonObject object = index == null ? null : index.getAsJsonObject(name);
+		if (object == null) {
+			return null;
+		}
+		String hash = object.get("hash").getAsString().toLowerCase(java.util.Locale.ROOT);
+		if (!hash.matches("[0-9a-f]{40}")) {
+			return null;
+		}
+		Path file = dir.resolve("objects").resolve(hash.substring(0, 2)).resolve(hash);
+		if (Files.isRegularFile(file)) {
+			return Files.readAllBytes(file);
+		}
+		if (!download) {
+			return null;
+		}
+		HttpResponse<byte[]> response = httpClient().send(HttpRequest.newBuilder(URI.create(ASSET_OBJECTS + hash.substring(0, 2) + "/" + hash))
+				.timeout(Duration.ofMinutes(2)).build(), HttpResponse.BodyHandlers.ofByteArray());
+		if (response.statusCode() != 200) {
+			throw new IOException("HTTP " + response.statusCode() + " for " + name);
+		}
+		byte[] data = response.body();
+		if (!HexFormat.of().formatHex(MessageDigest.getInstance("SHA-1").digest(data)).equalsIgnoreCase(hash)) {
+			throw new IOException("Checksum mismatch for " + name);
+		}
+		Files.createDirectories(file.getParent());
+		Path part = file.resolveSibling(hash + ".part" + Thread.currentThread().threadId());
+		Files.write(part, data);
+		Files.move(part, file, StandardCopyOption.REPLACE_EXISTING);
+		return data;
+	}
+
+	/** The contents of a file in every resource pack that has it (not the client jar), lowest priority first. */
+	synchronized List<byte[]> readFromPacks(String name) {
+		List<byte[]> found = new ArrayList<>();
+		for (int i = 1; i < sources.size(); i++) {
+			ZipEntry entry = sources.get(i).getEntry(name);
+			if (entry != null) {
+				try (InputStream in = sources.get(i).getInputStream(entry)) {
+					found.add(in.readAllBytes());
+				} catch (IOException e) {
+					// A broken pack entry is left out.
+				}
+			}
+		}
+		return found;
+	}
+
+	/** The namespaces of the resource packs' assets (for their sounds.json), without the client jar. */
+	synchronized List<String> packNamespaces() {
+		java.util.TreeSet<String> namespaces = new java.util.TreeSet<>();
+		for (int i = 1; i < sources.size(); i++) {
+			Enumeration<? extends ZipEntry> entries = sources.get(i).entries();
+			while (entries.hasMoreElements()) {
+				String entry = entries.nextElement().getName();
+				if (entry.startsWith("assets/") && entry.endsWith("/sounds.json") && entry.indexOf('/', 7) == entry.length() - "/sounds.json".length()) {
+					namespaces.add(entry.substring(7, entry.length() - "/sounds.json".length()));
+				}
+			}
+		}
+		return new ArrayList<>(namespaces);
+	}
+
+	private static HttpClient httpClient() {
+		return HttpClient.newBuilder()
+				.connectTimeout(Duration.ofSeconds(15))
+				.followRedirects(HttpClient.Redirect.NORMAL)
+				.build();
+	}
+
+	/** The URL of this version's JSON in Mojang's version manifest. */
+	private String versionUrl(HttpClient http) throws Exception {
+		for (JsonElement element : getJson(http, MANIFEST).getAsJsonArray("versions")) {
+			JsonObject entry = element.getAsJsonObject();
+			if (entry.get("id").getAsString().equals(version)) {
+				return entry.get("url").getAsString();
+			}
+		}
+		throw new IOException("Version " + version + " not found in Mojang's version manifest");
 	}
 
 	private static byte[] gzip(byte[] data) throws IOException {
@@ -392,25 +489,8 @@ public final class ClientAssets implements AutoCloseable {
 		}
 
 		logger.info("CCTV: downloading the Minecraft {} client jar from Mojang for block textures (one time, ~30 MB)", version);
-		HttpClient http = HttpClient.newBuilder()
-				.connectTimeout(Duration.ofSeconds(15))
-				.followRedirects(HttpClient.Redirect.NORMAL)
-				.build();
-
-		JsonObject manifest = getJson(http, MANIFEST);
-		String versionUrl = null;
-		for (JsonElement element : manifest.getAsJsonArray("versions")) {
-			JsonObject entry = element.getAsJsonObject();
-			if (entry.get("id").getAsString().equals(version)) {
-				versionUrl = entry.get("url").getAsString();
-				break;
-			}
-		}
-		if (versionUrl == null) {
-			throw new IOException("Version " + version + " not found in Mojang's version manifest");
-		}
-
-		JsonObject client = getJson(http, versionUrl).getAsJsonObject("downloads").getAsJsonObject("client");
+		HttpClient http = httpClient();
+		JsonObject client = getJson(http, versionUrl(http)).getAsJsonObject("downloads").getAsJsonObject("client");
 		String url = client.get("url").getAsString();
 		String sha1 = client.get("sha1").getAsString();
 

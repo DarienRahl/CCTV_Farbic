@@ -299,6 +299,21 @@ def main():
     except RuntimeError as e:
         failures.append(str(e))
 
+    # the game's sounds: the merged sound list and one sound file (downloaded from Mojang via the asset index)
+    try:
+        request = urllib.request.Request(f"{WEB}/assets/sounds.json", headers={"Accept-Encoding": "identity"})
+        with urllib.request.urlopen(request, timeout=120) as response:
+            sound_events = json.load(response)
+        print("sound events:", len(sound_events), flush=True)
+        if "minecraft:entity.cow.ambient" not in sound_events:
+            failures.append("sounds.json has no minecraft:entity.cow.ambient")
+        with urllib.request.urlopen(f"{WEB}/assets/sound/minecraft/mob/cow/say1.ogg", timeout=120) as response:
+            ogg = response.read()
+        if not ogg.startswith(b"OggS"):
+            failures.append(f"the cow's sound is not an Ogg file ({len(ogg)} bytes)")
+    except Exception as e:
+        failures.append(f"sounds unavailable: {e}")
+
     try:
         models = wait_for_models()
         layers = models.get("layers", {})
@@ -350,7 +365,10 @@ def main():
     print("foil:", sorted(stream.foil), "leashed:", sorted(stream.leashed), "effects:", sorted(stream.effects), flush=True)
     for effect, what in (("le:2001", "the broken block's level event"), ("ee:poof", "the killed sheep's death poof"),
                          ("ex:minecraft:explosion_emitter", "the TNT explosion"),
-                         ("be:minecraft:note_block", "the note block's block event")):
+                         ("be:minecraft:note_block", "the note block's block event"),
+                         ("s:minecraft:block.note_block.harp", "the note block's sound"),
+                         ("s:minecraft:block.stone.break", "the broken block's sound (level event 2001)"),
+                         ("s:minecraft:entity.generic.explode", "the explosion's sound")):
         if effect not in stream.effects:
             failures.append(f"{what} ({effect}) was not streamed as an effect")
     print("equipment:", sorted(stream.equipment, key=str), flush=True)

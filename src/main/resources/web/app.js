@@ -12,6 +12,7 @@ import { CloudRenderer } from './clouds.js';
 import { WeatherRenderer } from './weather.js';
 import { PostProcessor } from './post.js';
 import { Particles } from './particles.js';
+import { Sounds } from './sound.js';
 import { perspective, lookDir, multiply, direction, lerp, transformPoint } from './math.js';
 
 const params = new URLSearchParams(location.search);
@@ -59,6 +60,7 @@ const weather = new WeatherRenderer(gl);
 const post = new PostProcessor(gl, renderer);
 const entities = new EntityRenderer(renderer);
 const particles = new Particles(gl);
+const sounds = new Sounds(query);
 const world = new World((key, section, message) => {
 	renderer.setSectionMesh(key, section, message, performance.now());
 });
@@ -269,7 +271,10 @@ function connect() {
 	on('entities', data => {
 		entities.push(data, state.init ? state.init.entityTicks : 1);
 		// particles from level events, particle packets, explosions and entity events, due at the frame's tick
-		if (data.fx) particles.queueEffects(data.t, data.fx);
+		if (data.fx) {
+			particles.queueEffects(data.t, data.fx);
+			sounds.queue(data.t, data.fx);
+		}
 	});
 	on('env', data => environment.push(data, performance.now()));
 	on('weather', data => weather.setColumns(data));
@@ -377,6 +382,41 @@ function resetView() {
 }
 
 $('reset-view').addEventListener('click', resetView);
+
+// The game's sounds at the camera: off until asked for (browsers only play sound after a click), remembered.
+const soundButton = $('sound');
+function showSound() {
+	soundButton.textContent = sounds.enabled ? '🔊 Sound on' : '🔈 Sound off';
+	soundButton.classList.toggle('on', sounds.enabled);
+}
+async function setSound(on) {
+	if (on) await sounds.enable();
+	else sounds.disable();
+	try {
+		localStorage.setItem('cctv-sound', sounds.enabled ? '1' : '0');
+	} catch {
+		// not remembered
+	}
+	showSound();
+}
+soundButton.addEventListener('click', () => setSound(!sounds.enabled));
+let soundWanted = false;
+try {
+	soundWanted = localStorage.getItem('cctv-sound') === '1';
+} catch {
+	// no storage
+}
+if (soundWanted) {
+	// turned on last time: starts with the first click or key on the page
+	const resume = () => {
+		window.removeEventListener('pointerdown', resume, true);
+		window.removeEventListener('keydown', resume, true);
+		if (!sounds.enabled) setSound(true);
+	};
+	window.addEventListener('pointerdown', resume, true);
+	window.addEventListener('keydown', resume, true);
+}
+showSound();
 $('fullscreen').addEventListener('click', () => {
 	const el = $('screen');
 	if (document.fullscreenElement) document.exitFullscreen();
@@ -500,6 +540,7 @@ function frame(now) {
 	limitLook(c, aspect);
 	const pitch = Math.max(-89.9, Math.min(89.9, c.pitch + state.lookPitch));
 	const dir = direction(c.yaw + state.lookYaw, pitch);
+	sounds.update(entities.tick, c, dir, state.entityList);
 	const fov = Math.min(170, c.fov / state.zoom) * Math.PI / 180;
 	const range = c.range;
 
@@ -588,9 +629,10 @@ function frame(now) {
 }
 
 loadViewerInfo().finally(() => {
+	soundButton.hidden = viewerInfo.sounds === false || embed;
 	connect();
 	requestAnimationFrame(frame);
 });
 
 // Handy for debugging from the browser console.
-window.cctv = { world, renderer, entities, particles, state, environment, settings: () => settings, sky, clouds, weather, post };
+window.cctv = { world, renderer, entities, particles, sounds, state, environment, settings: () => settings, sky, clouds, weather, post };
