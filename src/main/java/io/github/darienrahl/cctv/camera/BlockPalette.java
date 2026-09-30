@@ -188,8 +188,8 @@ final class BlockPalette {
 	private static @Nullable List<TagKey<Block>> viewerTags;
 
 	/**
-	 * The block tags the viewer's ports of animateTick check ({@code tg}): the desert, dried ghast and pale oak
-	 * ambience, and the blocks leaves need around them for their ambient sound.
+	 * The block tags the viewer's ports of client code check ({@code tg}): the desert, dried ghast and pale oak
+	 * ambience, the blocks leaves need around them for their ambient sound and a conduit's frame blocks.
 	 */
 	private static List<TagKey<Block>> viewerTags() {
 		if (viewerTags == null) {
@@ -198,7 +198,8 @@ final class BlockPalette {
 					BlockTags.TRIGGERS_AMBIENT_DESERT_DRY_VEGETATION_BLOCK_SOUNDS,
 					BlockTags.TERRACOTTA,
 					BlockTags.PALE_OAK_LOGS,
-					BlockTags.TRIGGERS_AMBIENT_DRIED_GHAST_BLOCK_SOUNDS));
+					BlockTags.TRIGGERS_AMBIENT_DRIED_GHAST_BLOCK_SOUNDS,
+					BlockTags.CONDUIT_EFFECT_BLOCK));
 			for (Block block : BuiltInRegistries.BLOCK) {
 				if (block instanceof LeavesBlock) {
 					AmbientLeavesBlockSoundPlayer sounds = leavesSounds(block);

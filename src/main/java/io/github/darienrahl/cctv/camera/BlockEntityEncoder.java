@@ -27,6 +27,7 @@ import net.minecraft.world.level.block.entity.BannerPatternLayers;
 import net.minecraft.world.level.block.entity.BeaconBeamOwner;
 import net.minecraft.world.level.block.entity.BeaconBlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.entity.BrushableBlockEntity;
 import net.minecraft.world.level.block.entity.CampfireBlockEntity;
 import net.minecraft.world.level.block.entity.DecoratedPotBlockEntity;
 import net.minecraft.world.level.block.entity.DecoratedPotPattern;
@@ -49,7 +50,8 @@ import io.github.darienrahl.cctv.web.Json;
 /**
  * Block entity details the viewer draws on top of the block models, per section. Only what cannot be
  * seen in the block state: the text of signs and hanging signs, banner patterns, pottery sherds on
- * decorated pots, the owners of player heads, beacon beams, food on campfires and the mobs in spawners.
+ * decorated pots, the owners of player heads, beacon beams, food on campfires, the mobs in spawners and
+ * the items in suspicious sand and gravel being brushed.
  */
 final class BlockEntityEncoder {
 	private BlockEntityEncoder() {
@@ -72,6 +74,7 @@ final class BlockEntityEncoder {
 					case SkullBlockEntity skull -> skull(skull);
 					case BeaconBlockEntity beacon -> beacon(beacon);
 					case CampfireBlockEntity campfire -> campfire(campfire);
+					case BrushableBlockEntity brushable -> brushable(brushable);
 					case SpawnerBlockEntity spawner -> spawner(spawner,
 							spawner.getSpawner().getOrCreateDisplayEntity(spawner.getLevel(), spawner.getBlockPos()));
 					case TrialSpawnerBlockEntity trial -> spawner(trial, trial.getTrialSpawner().getStateData()
@@ -166,6 +169,19 @@ final class BlockEntityEncoder {
 	}
 
 	/** Food cooking on a campfire, one item id (or null) per slot: {@code {"k":"campfire", "i": [...]}}; empty ones are left out. */
+	/** Suspicious sand and gravel while being brushed: the item inside and the side it comes out of. */
+	private static @Nullable String brushable(BrushableBlockEntity brushable) {
+		Direction side = brushable.getHitDirection();
+		ItemStack item = brushable.getItem();
+		if (side == null || item.isEmpty()) {
+			return null;
+		}
+		return begin("brush", brushable)
+				.field("i", BuiltInRegistries.ITEM.getKey(item.getItem()).toString())
+				.field("d", side.getSerializedName())
+				.endObject().toString();
+	}
+
 	private static @Nullable String campfire(CampfireBlockEntity campfire) {
 		List<ItemStack> items = campfire.getItems();
 		if (items.stream().allMatch(ItemStack::isEmpty)) {

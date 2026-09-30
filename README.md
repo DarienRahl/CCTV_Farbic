@@ -5,7 +5,7 @@
   <a href="https://github.com/DarienRahl/CCTV_Farbic/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/DarienRahl/CCTV_Farbic?style=for-the-badge&amp;label=release&amp;color=5d8c3e"></a>
   <img alt="Minecraft 26.3" src="https://img.shields.io/badge/minecraft-26.3-866043?style=for-the-badge">
   <img alt="Fabric, server side only" src="https://img.shields.io/badge/fabric-server%20side%20only-8b8b8b?style=for-the-badge">
-  <a href="#roadmap"><img alt="Roadmap" src="https://img.shields.io/badge/roadmap-43%2F58%20done-80ff20?style=for-the-badge"></a>
+  <a href="#roadmap"><img alt="Roadmap" src="https://img.shields.io/badge/roadmap-44%2F58%20done-80ff20?style=for-the-badge"></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-555555?style=for-the-badge"></a>
 </p>
 <!-- badges:end -->
@@ -49,7 +49,7 @@ in a web browser: players, mobs, opening doors and placed blocks show up right a
 ## Roadmap
 
 <!-- roadmap:start -->
-<p align="center"><img src="docs/images/roadmap/banner.svg" width="100%" alt="CCTV roadmap: 43 of 58 done"></p>
+<p align="center"><img src="docs/images/roadmap/banner.svg" width="100%" alt="CCTV roadmap: 44 of 58 done"></p>
 
 What is done and what comes next, milestone by milestone (the full plan with its principles is in
 [docs/ROADMAP.md](docs/ROADMAP.md)).
@@ -86,10 +86,10 @@ What is done and what comes next, milestone by milestone (the full plan with its
 
 </details>
 
-<img src="docs/images/roadmap/1-3.svg" width="100%" alt="1.3 — 1:1 picture: in progress - 1.3.2 is out, 28 of 35 done">
+<img src="docs/images/roadmap/1-3.svg" width="100%" alt="1.3 — 1:1 picture: in progress - 1.3.2 is out, 29 of 35 done">
 
 <details open>
-<summary><b>1.3 — 1:1 picture</b> · in progress - 1.3.2 is out · 28 of 35 done</summary>
+<summary><b>1.3 — 1:1 picture</b> · in progress - 1.3.2 is out · 29 of 35 done</summary>
 
 - [ ] **Reference renders in CI**: a Fabric client game test builds the CI scene in single player, takes a screenshot from the camera position with the game, and the viewer takes one from the same camera; both are published side by side with a difference score
 - [x] **Signs and hanging signs** with their text in the game font (text sent by the server; boards and beds are block models in 26.3 and were already drawn)
@@ -100,7 +100,7 @@ What is done and what comes next, milestone by milestone (the full plan with its
 - [x] **Books on enchanting tables** (turning to the nearest player, opening and flipping pages) **and lecterns**
 - [x] **Mobs in spawners** (SpawnerRenderer: the spawner's mob small, tilted and spinning while a player - the camera - is near, with its smoke and flames; trial spawners by their state)
 - [x] **Block breaking progress**: the cracks of blocks players are mining (the destroy stages drawn over the block's own model like SheetedDecalTextureGenerator and the crumbling pipeline)
-- [ ] Conduit, the end gateway beam, brushable blocks
+- [x] **Conduits** (ConduitRenderer: the shell, or the turning cage, wind and eye of an active conduit, which the viewer works out from the water and prismarine around it like the client), **end gateway beams** after a teleport (TheEndGatewayRenderer), the item in **suspicious sand and gravel** being brushed (BrushableBlockRenderer)
 - [x] **Shields with their patterns** (ShieldSpecialRenderer: the base colour and banner patterns, held, dropped and in item frames; items in the left hand mirrored like ItemTransform)
 - [x] **Chests, ender chests and shulker boxes open, bells swing, note blocks show their notes** from the server's block events (ChestLidController, ShulkerBoxBlockEntity, BellBlockEntity, NoteBlock)
 - [x] **Pistons move** the blocks they push and pull (PistonMovingBlockEntity, PistonHeadRenderer: the head short while it slides through the base, a retracting piston's base in place)

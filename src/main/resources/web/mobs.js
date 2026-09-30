@@ -1560,6 +1560,6 @@ export const BLOCK_ENTITY_NAMES = (() => {
 	const names = [...Object.keys(CHESTS), ...Object.keys(CHESTS).map(n => 'waxed_' + n), 'shulker_box', 'bell', 'decorated_pot'];
 	for (const color of Object.keys(DYE)) names.push(color + '_shulker_box', color + '_banner', color + '_wall_banner');
 	for (const head of Object.keys(HEADS)) names.push(head, head.replace(/_(skull|head)$/, '_wall_$1'));
-	names.push('end_portal', 'end_gateway');
+	names.push('end_portal', 'end_gateway', 'conduit');
 	return names.map(n => 'minecraft:' + n);
 })();

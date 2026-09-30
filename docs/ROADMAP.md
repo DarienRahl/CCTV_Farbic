@@ -82,7 +82,10 @@ to the milestone it belongs to. The roadmap on the README page is drawn from thi
       player - the camera - is near, with its smoke and flames; trial spawners by their state)
 - [x] **Block breaking progress**: the cracks of blocks players are mining (the destroy stages drawn
       over the block's own model like SheetedDecalTextureGenerator and the crumbling pipeline)
-- [ ] Conduit, the end gateway beam, brushable blocks
+- [x] **Conduits** (ConduitRenderer: the shell, or the turning cage, wind and eye of an active conduit,
+      which the viewer works out from the water and prismarine around it like the client), **end
+      gateway beams** after a teleport (TheEndGatewayRenderer), the item in **suspicious sand and gravel**
+      being brushed (BrushableBlockRenderer)
 - [x] **Shields with their patterns** (ShieldSpecialRenderer: the base colour and banner patterns, held,
       dropped and in item frames; items in the left hand mirrored like ItemTransform)
 - [x] **Chests, ender chests and shulker boxes open, bells swing, note blocks show their notes** from the

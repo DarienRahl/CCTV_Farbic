@@ -277,3 +277,9 @@ net/minecraft/client/renderer/blockentity/PistonHeadRenderer
 # drips (particles.js animateBlock, DripParticle providers)
 net/minecraft/world/level/block/PointedDripstoneBlock
 net/minecraft/world/level/block/BeehiveBlock
+# conduits, end gateway beams, brushable blocks (entities.js drawConduit, drawGatewayBeam, drawBrushable)
+net/minecraft/client/renderer/blockentity/ConduitRenderer
+net/minecraft/world/level/block/entity/ConduitBlockEntity
+net/minecraft/client/renderer/blockentity/TheEndGatewayRenderer
+net/minecraft/world/level/block/entity/TheEndGatewayBlockEntity
+net/minecraft/client/renderer/blockentity/BrushableBlockRenderer

@@ -235,6 +235,10 @@ def main():
     rcon.command("setblock -3 -61 11 minecraft:end_portal")
     rcon.command("setblock 1 -60 -3 minecraft:enchanting_table")
     rcon.command("setblock -2 -60 -3 minecraft:lectern[facing=north,has_book=true]")
+    # suspicious sand brushed from above, a diamond showing (BrushableBlockRenderer), and a conduit (its shell)
+    rcon.command('setblock 6 -60 0 minecraft:suspicious_sand[dusted=2]'
+                 '{item:{id:"minecraft:diamond",count:1},hit_direction:1}')
+    rcon.command("setblock 7 -60 0 minecraft:conduit")
     # a spawner with a zombie turning inside (no player near, so it spawns nothing)
     rcon.command('setblock -4 -60 -5 minecraft:spawner{SpawnData:{entity:{id:"minecraft:zombie"}}}')
     rcon.command("place feature minecraft:oak -6 -60 18")
@@ -430,6 +434,9 @@ def main():
         failures.append(f"the food on the campfire was not streamed (got {campfire})")
     if stream.block_entities.get("spawner", {}).get("e") != "minecraft:zombie":
         failures.append(f"the spawner's zombie was not streamed (got {stream.block_entities.get('spawner')})")
+    brush = stream.block_entities.get("brush", {})
+    if brush.get("i") != "minecraft:diamond" or brush.get("d") != "up":
+        failures.append(f"the diamond in the brushed suspicious sand was not streamed (got {brush})")
     if stream.block_entities.get("head", {}).get("name") != "Notch":
         failures.append(f"the player head's owner was not streamed (got {stream.block_entities.get('head')})")
     for line in ("CCTV", "Camera ci", "Welcome", "edited"):

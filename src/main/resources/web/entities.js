@@ -16,6 +16,19 @@ import { lerp, lerpAngle, wrapDegrees } from './math.js';
 import { TextRenderer, rgb, matrixTransform, FULL_BRIGHT } from './text.js';
 
 const PI = Math.PI;
+/** A rotation matrix (column-major) by an angle in radians about an axis (normalised here). */
+function axisRotation(x, y, z, angle) {
+	const len = Math.hypot(x, y, z) || 1;
+	x /= len; y /= len; z /= len;
+	const c = Math.cos(angle), s = Math.sin(angle), k = 1 - c;
+	return new Float32Array([
+		c + x * x * k, y * x * k + z * s, z * x * k - y * s, 0,
+		x * y * k - z * s, c + y * y * k, z * y * k + x * s, 0,
+		x * z * k + y * s, y * z * k - x * s, c + z * z * k, 0,
+		0, 0, 0, 1,
+	]);
+}
+
 /** A standard normal random number (Random.nextGaussian). */
 const gaussian = () => Math.sqrt(-2 * Math.log(1 - Math.random())) * Math.cos(2 * PI * Math.random());
 
@@ -2101,6 +2114,9 @@ export class EntityRenderer {
 			this.blockAnims.set(key, anim);
 		} else if (name === 'bell') {
 			this.blockAnims.set(key, { kind: 'bell', shaking: true, ticks: 0, direction: b, tick });
+		} else if (name === 'end_gateway') {
+			// TheEndGatewayBlockEntity.triggerEvent: an entity went through, the beam flares for 40 ticks
+			this.blockAnims.set(key, { kind: 'gateway', start: performance.now(), tick });
 		}
 	}
 
@@ -2208,6 +2224,189 @@ export class EntityRenderer {
 		}
 	}
 
+	/**
+	 * ConduitRenderer: a still shell while the conduit is not active; an active one has a cage turning about a
+	 * tilted axis and bobbing, two cubes of wind around it (switching axis every 66 ticks) and an eye that
+	 * faces the camera, open while it hunts. Like the client (ConduitBlockEntity.clientTick) the viewer checks
+	 * every 40 ticks whether it sits in water inside a frame of at least 16 prismarine blocks (42 to hunt).
+	 */
+	drawConduit(be, pos, frame, world) {
+		const key = be.x + ',' + be.y + ',' + be.z;
+		const conduits = this.conduits || (this.conduits = new Map());
+		let c = conduits.get(key);
+		const tick = Math.floor(frame.now / 50);
+		if (!c) {
+			c = { tick, tickCount: 0, rotation: 0, active: false, hunting: false, frame: [] };
+			conduits.set(key, c);
+			if (conduits.size > 64) conduits.delete(conduits.keys().next().value);
+		}
+		for (let n = Math.min(40, tick - c.tick); n > 0; n--) {
+			c.tickCount++;
+			if ((tick - n + 1) % 40 === 0 || c.tickCount === 1) this.conduitShape(c, be, world);
+			if (c.active) c.rotation++;
+		}
+		c.tick = tick;
+		const partial = frame.now / 50 - tick;
+		const [sky, block] = world.lightAt(be.x, be.y, be.z);
+		const style = { color: [1, 1, 1, 1], light: [block * 16, sky * 16], overlay: [0, 0] };
+		const part = (layer, texture, m, mode, cull = true) => {
+			const model = this.library.get('minecraft:conduit#' + layer);
+			if (!model || !texture) return;
+			model.reset();
+			const start = this.sink.count;
+			emitModel(this.sink, model, m, style);
+			this.batch(texture, mode, start, cull);
+		};
+		if (!c.active) {
+			const m = mat4();
+			translate(m, pos[0] + 0.5, pos[1] + 0.5, pos[2] + 0.5);
+			rotate(m, 1, c.rotation * -0.0375 * DEG);
+			part('shell', this.texture('conduit/base'), m, MODE_CUTOUT);
+			return;
+		}
+		const rotation = (c.rotation + partial) * -0.0375;
+		const animTime = c.tickCount + partial;
+		let hh = Math.sin(animTime * 0.1) / 2 + 0.5;
+		hh = hh * hh + hh;
+		// the cage turns about the axis (0.5, 1, 0.5)
+		const cage = mat4();
+		translate(cage, pos[0] + 0.5, pos[1] + 0.3 + hh * 0.2, pos[2] + 0.5);
+		cage.set(mul(cage, axisRotation(0.5, 1, 0.5, rotation)));
+		part('cage', this.texture('conduit/cage'), cage, MODE_CUTOUT);
+		const phase = Math.floor(c.tickCount / 66) % 3;
+		// animated wind (textures/entity/conduit/wind*.png.mcmeta: frames 32 pixels high, 3 ticks each)
+		const wind = this.animatedTexture(phase === 1 ? 'conduit/wind_vertical' : 'conduit/wind', 32, 3, c.tickCount);
+		const w1 = mat4();
+		translate(w1, pos[0] + 0.5, pos[1] + 0.5, pos[2] + 0.5);
+		if (phase === 1) rotate(w1, 0, PI / 2);
+		else if (phase === 2) rotate(w1, 2, PI / 2);
+		part('wind', wind, w1, MODE_CUTOUT);
+		const w2 = mat4();
+		translate(w2, pos[0] + 0.5, pos[1] + 0.5, pos[2] + 0.5);
+		scale(w2, 0.875);
+		rotate(w2, 0, PI);
+		rotate(w2, 2, PI);
+		part('wind', wind, w2, MODE_CUTOUT);
+		// the eye: camera.orientation, then turned half round about z and y (x stays, y and z flip)
+		const v = frame.viewRotation;
+		const eye = mat4();
+		translate(eye, pos[0] + 0.5, pos[1] + 0.3 + hh * 0.2, pos[2] + 0.5);
+		scale(eye, 0.5);
+		const b = new Float32Array([v[0], v[4], v[8], 0, -v[1], -v[5], -v[9], 0, -v[2], -v[6], -v[10], 0, 0, 0, 0, 1]);
+		eye.set(mul(eye, b));
+		scale(eye, 4 / 3);
+		part('eye', this.texture(c.hunting ? 'conduit/open_eye' : 'conduit/closed_eye'), eye, MODE_CUTOUT, false);
+	}
+
+	/**
+	 * TheEndGatewayRenderer: after an entity goes through, a purple beacon beam flares up and down from the
+	 * gateway (height and texture scale sin(pi * the cooldown left), up to 50 blocks each way).
+	 */
+	drawGatewayBeam(be, p, frame) {
+		const key = be.x + ',' + be.y + ',' + be.z;
+		const anim = this.blockAnims.get(key);
+		if (!anim || anim.kind !== 'gateway') return;
+		const ticks = (frame.now - anim.start) / 50;
+		if (ticks >= 40) {
+			this.blockAnims.delete(key);
+			return;
+		}
+		const percent = Math.max(0, Math.min(1, (40 - ticks) / 40));
+		const beamScale = Math.sin(percent * PI);
+		const height = Math.floor(beamScale * 50);
+		const texture = this.texture('end_portal/end_gateway_beam');
+		if (height <= 0 || !texture) return;
+		const time = this.env ? this.env.gameTime(frame.now) : frame.now / 50;
+		const animationTime = ((Math.floor(time) % 40) + 40) % 40 + (time - Math.floor(time));
+		// DyeColor.PURPLE.getTextureDiffuseColor()
+		this.beaconBeam(texture, p, animationTime, -height, height * 2, 0x8932b8, 0.15, 0.175, beamScale);
+	}
+
+	/**
+	 * BrushableBlockRenderer: the item in suspicious sand or gravel pokes out of the side being brushed,
+	 * further with every dusting step.
+	 */
+	drawBrushable(be, p, world) {
+		const data = world.blockEntityAt(be.x, be.y, be.z);
+		const dusted = Number(be.info.props && be.info.props.dusted) || 0;
+		if (!data || data.k !== 'brush' || !data.i || !data.d || dusted <= 0) return;
+		const mesh = this.itemMesh(data.i);
+		if (!mesh) return;
+		const step = { east: [1, 0, 0], west: [-1, 0, 0], up: [0, 1, 0], down: [0, -1, 0], north: [0, 0, -1], south: [0, 0, 1] }[data.d] || [0, 0, 0];
+		const [sky, block] = world.lightAt(be.x + step[0], be.y + step[1], be.z + step[2]);
+		const style = { color: [1, 1, 1, 1], light: [block * 16, sky * 16], overlay: [0, 0] };
+		const offset = dusted / 10 * 0.75;
+		const t = [0.5, 0, 0.5];
+		switch (data.d) {
+			case 'east': t[0] = 0.73 + offset; break;
+			case 'west': t[0] = 0.25 - offset; break;
+			case 'up': t[1] = 0.25 + offset; break;
+			case 'down': t[1] = -0.23 - offset; break;
+			case 'north': t[2] = 0.25 - offset; break;
+			case 'south': t[2] = 0.73 + offset; break;
+			default: break;
+		}
+		const m = mat4();
+		translate(m, p[0], p[1] + 0.5, p[2]);
+		translate(m, t[0], t[1], t[2]);
+		rotate(m, 1, 75 * DEG);
+		rotate(m, 1, ((data.d === 'east' || data.d === 'west' ? 90 : 0) + 11) * DEG);
+		scale(m, 0.5);
+		const fallback = mesh.kind === 'block' ? { scale: [0.5, 0.5, 0.5] } : { rotation: [0, 180, 0] };
+		this.applyDisplay(m, this.displayTransform(data.i, 'fixed', fallback), false);
+		this.emitItem(mesh, m, style);
+	}
+
+	/** ConduitBlockEntity.updateShape and updateHunting from the blocks the viewer knows. */
+	conduitShape(c, be, world) {
+		const water = (x, y, z) => {
+			const info = world.infoAt(x, y, z);
+			return !!(info && info.water);
+		};
+		for (let x = -1; x <= 1; x++) for (let y = -1; y <= 1; y++) for (let z = -1; z <= 1; z++) {
+			if (!water(be.x + x, be.y + y, be.z + z)) {
+				c.active = false;
+				c.hunting = false;
+				return;
+			}
+		}
+		let count = 0;
+		for (let x = -2; x <= 2; x++) for (let y = -2; y <= 2; y++) for (let z = -2; z <= 2; z++) {
+			const ax = Math.abs(x), ay = Math.abs(y), az = Math.abs(z);
+			if ((ax > 1 || ay > 1 || az > 1) && ((x === 0 && (ay === 2 || az === 2)) || (y === 0 && (ax === 2 || az === 2)) || (z === 0 && (ax === 2 || ay === 2)))) {
+				const entry = world.entryAt(be.x + x, be.y + y, be.z + z);
+				if (entry && entry.tg && entry.tg.includes('minecraft:conduit_effect_block')) count++;
+			}
+		}
+		c.active = count >= 16;
+		c.hunting = count >= 42;
+	}
+
+	/**
+	 * A texture below textures/entity animated like its .mcmeta says: frames frameHeight pixels high stacked
+	 * downwards, each shown for frametime ticks; the frame for the given tick (null while loading).
+	 */
+	animatedTexture(path, frameHeight, frametime, ticks) {
+		const key = 'animated/' + path;
+		let entry = this.textures.get(key);
+		if (!entry) {
+			entry = { frames: null };
+			this.textures.set(key, entry);
+			const options = { premultiplyAlpha: 'none', colorSpaceConversion: 'none' };
+			fetch('/assets/entity/' + path + '.png' + tokenSuffix('?'), { credentials: 'same-origin' })
+				.then(r => { if (!r.ok) throw new Error('missing'); return r.blob(); })
+				.then(blob => createImageBitmap(blob, options))
+				.then(async image => {
+					const count = Math.max(1, Math.floor(image.height / frameHeight));
+					const frames = [];
+					for (let i = 0; i < count; i++) frames.push(this.createTexture(await createImageBitmap(image, 0, i * frameHeight, image.width, frameHeight, options)));
+					entry.frames = frames;
+				})
+				.catch(() => { entry.failed = true; });
+		}
+		return entry.frames ? entry.frames[Math.floor(ticks / frametime) % entry.frames.length] : null;
+	}
+
 	prepareBlockEntities(frame, world, list) {
 		const o = frame.origin, cam = frame.camPos;
 		this.drawBreaking(frame, world);
@@ -2228,11 +2427,20 @@ export class EntityRenderer {
 					continue;
 				}
 				if (be.info.shortName === 'end_portal' || be.info.shortName === 'end_gateway') {
+					if (be.info.shortName === 'end_gateway' && this.blockAnims.size) this.drawGatewayBeam(be, [bx, by, bz], frame);
 					this.addPortal(be, [bx, by, bz], frame, world);
 					continue;
 				}
 				if (be.info.shortName === 'spawner' || be.info.shortName === 'trial_spawner') {
 					if (Math.hypot(bx, by, bz) <= Math.min(frame.fogEnd, 64) && frame.frustum(bx + 0.5, by + 0.5, bz + 0.5, 1.5)) this.drawSpawner(be, [bx, by, bz], world);
+					continue;
+				}
+				if (be.info.shortName === 'suspicious_sand' || be.info.shortName === 'suspicious_gravel') {
+					if (Math.hypot(bx, by, bz) <= Math.min(frame.fogEnd, 64) && frame.frustum(bx + 0.5, by + 0.5, bz + 0.5, 1.5)) this.drawBrushable(be, [bx, by, bz], world);
+					continue;
+				}
+				if (be.info.shortName === 'conduit') {
+					if (Math.hypot(bx, by, bz) <= Math.min(frame.fogEnd, 64) && frame.frustum(bx + 0.5, by + 0.5, bz + 0.5, 1.5)) this.drawConduit(be, [bx, by, bz], frame, world);
 					continue;
 				}
 				if (be.info.shortName === 'enchanting_table' || be.info.shortName === 'lectern') {
@@ -2435,7 +2643,7 @@ export class EntityRenderer {
 	}
 
 	/** BeaconRenderer.submitBeaconBeam */
-	beaconBeam(texture, p, animationTime, beamStart, height, color, solidRadius, glowRadius) {
+	beaconBeam(texture, p, animationTime, beamStart, height, color, solidRadius, glowRadius, textureScale = 1) {
 		const beamEnd = beamStart + height;
 		const scroll = height < 0 ? animationTime : -animationTime;
 		const v = scroll * 0.2 - Math.floor(scroll * 0.1);
@@ -2465,12 +2673,12 @@ export class EntityRenderer {
 		translate(m, p[0] + 0.5, p[1], p[2] + 0.5);
 		rotate(m, 1, (animationTime * 2.25 - 45) * DEG);
 		let v2 = -1 + vOffset;
-		emit(part([0, solidRadius, solidRadius, 0, -solidRadius, 0, 0, -solidRadius], 0, 1, height * (0.5 / solidRadius) + v2, v2), m, 1, MODE_CUTOUT);
+		emit(part([0, solidRadius, solidRadius, 0, -solidRadius, 0, 0, -solidRadius], 0, 1, height * textureScale * (0.5 / solidRadius) + v2, v2), m, 1, MODE_CUTOUT);
 		// the glow does not
 		const g = mat4();
 		translate(g, p[0] + 0.5, p[1], p[2] + 0.5);
 		v2 = -1 + vOffset;
-		emit(part([-glowRadius, -glowRadius, glowRadius, -glowRadius, -glowRadius, glowRadius, glowRadius, glowRadius], 0, 1, height + v2, v2), g, 32 / 255, MODE_TRANSLUCENT);
+		emit(part([-glowRadius, -glowRadius, glowRadius, -glowRadius, -glowRadius, glowRadius, glowRadius, glowRadius], 0, 1, height * textureScale + v2, v2), g, 32 / 255, MODE_TRANSLUCENT);
 	}
 
 	/**
