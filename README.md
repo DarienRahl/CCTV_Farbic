@@ -278,7 +278,7 @@ What is done and what comes next, milestone by milestone (the full plan with its
 <details>
 <summary><b>1.4 — performance</b> · in progress - 1.4.0 is out · 6 of 7 done</summary>
 
-- [ ] Binary section messages instead of JSON with base64 (sections are already palette + run-length encoded and gzipped, so this saves roughly a quarter; lower priority)
+- [ ] Binary section messages instead of JSON with base64 (sections are already palette + run-length encoded and gzipped; measured on a 128-block view: 21 % fewer section bytes, 9 % of the whole gzipped stream, and the section cache already skips unchanged sections, so a second transport next to SSE is not worth it yet; lower priority)
 - [x] **Section cache in the browser** (IndexedDB): the viewer keeps the sections it got; after "init" it tells the server which ones it has (position and a hash of the message) and the server answers "keep" for the unchanged ones, so reopening a camera downloads only what changed (`?cache=0` turns it off)
 - [x] **Server memory**: far sections kept only as their message (a few KB instead of about 25), read back from it when a block or the light in them changes
 - [x] **Per-section culling inside merged far regions**: each section of a merged region is checked against the frustum, the render distance and the occlusion graph and only the visible runs of sections are drawn (one multi-draw call per region with `WEBGL_multi_draw`)
