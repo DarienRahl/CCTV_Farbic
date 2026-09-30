@@ -686,6 +686,7 @@ public final class ClientAssets implements AutoCloseable {
 		TreeSet<String> entityTextures = new TreeSet<>();
 		Map<String, JsonElement> equipment = new LinkedHashMap<>();
 		Map<String, JsonElement> specialItems = new LinkedHashMap<>();
+		Map<String, String> itemModels = new LinkedHashMap<>();
 
 		List<PackSource> packs;
 		synchronized (this) {
@@ -721,11 +722,17 @@ public final class ClientAssets implements AutoCloseable {
 					} else if (rest.startsWith("items/") && rest.endsWith(".json")) {
 						// Items drawn by a SpecialModelRenderer (chests, heads, banners...) or several models (beds)
 						String id = namespace + ":" + strip(rest, "items/", ".json");
-						JsonElement special = findSpecial(parse(zip, name), 0);
+						JsonElement definition = parse(zip, name);
+						JsonElement special = findSpecial(definition, 0);
 						if (special != null) {
 							specialItems.put(id, special);
 						} else {
 							specialItems.remove(id);
+						}
+						// the model of the packs' own items (custom discs...): the viewer finds vanilla ones by name
+						String model = namespace.equals("minecraft") ? null : plainModel(definition);
+						if (model != null) {
+							itemModels.put(id, model);
 						}
 					} else if (rest.startsWith("equipment/") && rest.endsWith(".json")) {
 						equipment.put(namespace + ":" + strip(rest, "equipment/", ".json"), parse(zip, name));
@@ -796,6 +803,10 @@ public final class ClientAssets implements AutoCloseable {
 		// Item definitions' "minecraft:special" ({"base", "model": {"type"...}, "transformation"}) and
 		// "minecraft:composite" ({"models": [...]}) item models
 		root.add("specialItems", toObject(specialItems));
+		// item definitions of the packs' namespaces that are one "minecraft:model": {item model id: model id}
+		JsonObject itemModelObject = new JsonObject();
+		itemModels.forEach(itemModelObject::addProperty);
+		root.add("itemModels", itemModelObject);
 
 		JsonArray list = new JsonArray();
 		entityTextures.forEach(list::add);
@@ -836,6 +847,25 @@ public final class ClientAssets implements AutoCloseable {
 			}
 		}
 		return null;
+	}
+
+	/** The model of an item definition that is a plain {@code "minecraft:model"}, else null. */
+	private static @Nullable String plainModel(JsonElement definition) {
+		if (!definition.isJsonObject() || !definition.getAsJsonObject().has("model")) {
+			return null;
+		}
+		JsonElement model = definition.getAsJsonObject().get("model");
+		if (!model.isJsonObject()) {
+			return null;
+		}
+		JsonObject object = model.getAsJsonObject();
+		JsonElement type = object.get("type");
+		JsonElement id = object.get("model");
+		if (type == null || !type.isJsonPrimitive() || !type.getAsString().replace("minecraft:", "").equals("model")
+				|| id == null || !id.isJsonPrimitive()) {
+			return null;
+		}
+		return id.getAsString().contains(":") ? id.getAsString() : "minecraft:" + id.getAsString();
 	}
 
 	private static JsonObject toObject(Map<String, JsonElement> map) {

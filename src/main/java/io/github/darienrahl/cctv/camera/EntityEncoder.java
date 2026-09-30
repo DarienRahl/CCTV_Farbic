@@ -569,9 +569,18 @@ final class EntityEncoder {
 		return !stack.isEmpty() && stack.hasFoil() ? bit : 0;
 	}
 
+	/**
+	 * An item id, and as {@code <name>Model} the item model it is drawn with when that is not the item's own
+	 * (the item_model component: custom music discs and other items of data packs).
+	 */
 	private static void writeItem(Json json, String name, ItemStack stack) {
 		if (!stack.isEmpty()) {
-			json.field(name, BuiltInRegistries.ITEM.getKey(stack.getItem()).toString());
+			String id = BuiltInRegistries.ITEM.getKey(stack.getItem()).toString();
+			json.field(name, id);
+			Object model = stack.get(DataComponents.ITEM_MODEL);
+			if (model != null && !model.toString().equals(id)) {
+				json.field(name + "Model", model.toString());
+			}
 		}
 	}
 

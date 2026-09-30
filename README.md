@@ -424,7 +424,7 @@ The viewer uses the same packs as the players, lowest priority first:
 So custom content looks and sounds like it does in the game: blocks and items, **custom paintings** of
 data packs (their pictures come from the packs' `textures/painting/`), **custom music discs** (the
 data pack's `jukebox_song` with its sound from the pack's `sounds.json`, and its description in the
-"Now Playing" line), mob textures, sounds and languages. Packs are read when the server starts.
+"Now Playing" line), items with their own `item_model`, mob textures, sounds and languages. Packs are read when the server starts.
 
 ## How it works
 

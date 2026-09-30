@@ -1592,10 +1592,10 @@ export class EntityRenderer {
 
 		// Held items (ItemInHandLayer).
 		if (e.hand && base.parts.right_arm && base.parts.right_arm.visible) {
-			this.drawHeld(base, m, 'right_arm', e.hand, e.foil & FOIL_HAND ? { ...style, glint: GLINT_ITEM } : style, 1, e.handPatterns);
+			this.drawHeld(base, m, 'right_arm', e.handModel || e.hand, e.foil & FOIL_HAND ? { ...style, glint: GLINT_ITEM } : style, 1, e.handPatterns);
 		}
 		if (e.offhand && base.parts.left_arm && base.parts.left_arm.visible) {
-			this.drawHeld(base, m, 'left_arm', e.offhand, e.foil & FOIL_OFFHAND ? { ...style, glint: GLINT_ITEM } : style, -1, e.offhandPatterns);
+			this.drawHeld(base, m, 'left_arm', e.offhandModel || e.offhand, e.foil & FOIL_OFFHAND ? { ...style, glint: GLINT_ITEM } : style, -1, e.offhandPatterns);
 		}
 
 		// CarriedBlockLayer: the block an enderman holds in front of it
@@ -1620,7 +1620,7 @@ export class EntityRenderer {
 			}
 			const im = Float32Array.from(m);
 			translate(im, 0.1, y, z);
-			this.drawGroundItem(e.hand, im, style);
+			this.drawGroundItem(e.handModel || e.hand, im, style);
 		}
 		// IronGolemFlowerLayer: the poppy in the right hand while the golem offers it
 		if (def.flower && e.d && e.d.flower > 0) {
@@ -2074,7 +2074,14 @@ export class EntityRenderer {
 		const colon = id.indexOf(':');
 		const ns = id.slice(0, colon), name = id.slice(colon + 1);
 		const models = this.assets.models;
-		const sprite = this.assets.sprites.get(ns + ':item/' + name);
+		let sprite = this.assets.sprites.get(ns + ':item/' + name);
+		if (!sprite) {
+			// an item definition of a pack's own namespace: the texture of the model it names
+			const modelId = (this.assets.bundle.itemModels || {})[id];
+			const model = modelId && (this.assets.bundle.models || {})[modelId];
+			const layer = model && model.textures && model.textures.layer0;
+			if (layer) sprite = this.assets.sprites.get(layer.includes(':') ? layer : 'minecraft:' + layer);
+		}
 		const special = this.specialItem(id);
 		if (special && strip(special.type) === 'composite') {
 			mesh = this.compositeMesh(special);
@@ -2325,7 +2332,7 @@ export class EntityRenderer {
 
 	drawDroppedItem(e, pos, style) {
 		const shield = isShield(e.item);
-		const mesh = shield ? null : this.itemMesh(e.item);
+		const mesh = shield ? null : this.itemMesh(e.itemModel || e.item);
 		if (!mesh && !shield) return this.drawBox(e, pos, style);
 		const age = e.age || 0;
 		const bobOffset = (e.id * 0.618) % (Math.PI * 2);
@@ -2374,7 +2381,7 @@ export class EntityRenderer {
 		else translate(im, 0.06, 0.27, -0.5);
 		rotate(im, 0, 90 * DEG);
 		if (sleeping) rotate(im, 2, 90 * DEG);
-		this.drawGroundItem(e.hand, im, style);
+		this.drawGroundItem(e.handModel || e.hand, im, style);
 	}
 
 	drawThrown(pos, style, item) {
@@ -2531,7 +2538,7 @@ export class EntityRenderer {
 			scale(m, 0.5);
 			this.drawShield(m, 'fixed', glow ? { ...style, light: [240, 240] } : style, e.itemPatterns);
 		} else if (e.item) {
-			const mesh = this.itemMesh(e.item);
+			const mesh = this.itemMesh(e.itemModel || e.item);
 			if (mesh) {
 				rotate(m, 2, rotation * 45 * DEG);
 				scale(m, 0.5);
