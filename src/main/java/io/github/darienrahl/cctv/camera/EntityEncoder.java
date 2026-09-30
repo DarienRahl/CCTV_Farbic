@@ -366,7 +366,8 @@ final class EntityEncoder {
 			}
 		}
 
-		if (entity instanceof Sniffer sniffer && sniffer.getState() == Sniffer.State.DIGGING) {
+		// Sniffer.getState is private: digging is the state with the digging sound that is not searching
+		if (entity instanceof Sniffer sniffer && sniffer.canPlayDiggingSound() && !sniffer.isSearching()) {
 			writeDigging(json, sniffer, blockStates);
 		}
 		if (entity instanceof FishingHook hook && hook.getPlayerOwner() != null) {

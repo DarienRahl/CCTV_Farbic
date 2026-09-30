@@ -253,7 +253,7 @@ export class Sounds {
 			if (last === undefined || age <= last) continue;
 			for (let t = Math.max(last + 1, age - 4); t <= age; t++) {
 				if (type === 'minecraft:sniffer') {
-					if (t % 20 === 0 && e.d && e.d.state === 'searching') this.entityLocal('minecraft:entity.sniffer.searching', e, 'neutral', 1, 1);
+					if (t % 20 === 0 && e.d && e.d.searching) this.entityLocal('minecraft:entity.sniffer.searching', e, 'neutral', 1, 1);
 				} else if (type === 'minecraft:phantom') {
 					const flap = tick => Math.cos((e.id * 3 + tick) * 7.448451 * Math.PI / 180 + Math.PI);
 					if (flap(t) > 0 && flap(t + 1) <= 0) {

@@ -101,6 +101,11 @@ final class CameraSession {
 		int inFlight;
 		/** Block changes made while a snapshot was in flight: re-applied to its result. */
 		@Nullable List<int[]> changesInFlight;
+		/**
+		 * A block entity appeared, went away or changed while a snapshot was in flight: that snapshot has the old
+		 * block entities (a player head placed with its owner), so the section is read again once it is in.
+		 */
+		boolean blockEntitiesStale;
 		/** Far enough to be skipped when it lies completely under the ground. */
 		boolean mayBeBuried;
 		long lightWatchUntil;
@@ -538,6 +543,9 @@ final class CameraSession {
 				entry.changesInFlight = new ArrayList<>(4);
 			}
 			entry.changesInFlight.add(new int[]{index, id});
+			if (state.hasBlockEntity() || entry.data != null && Block.stateById(entry.data.state(index)).hasBlockEntity()) {
+				entry.blockEntitiesStale = true;
+			}
 		}
 		if (entry.data == null) {
 			return;
@@ -874,6 +882,10 @@ final class CameraSession {
 				continue;
 			}
 			entry.inFlight = Math.max(0, entry.inFlight - 1);
+			if (entry.inFlight == 0 && entry.blockEntitiesStale) {
+				entry.blockEntitiesStale = false;
+				blockEntityRefresh.add(entry);
+			}
 
 			SectionCapture data = result.data();
 			if (data == null) {
