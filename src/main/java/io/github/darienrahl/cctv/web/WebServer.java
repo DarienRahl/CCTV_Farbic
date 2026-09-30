@@ -184,7 +184,7 @@ public final class WebServer {
 			sendText(exchange, 200, "application/json; charset=utf-8", directory.camerasJson());
 		} else if (path.startsWith("/api/cameras/") && path.endsWith("/stream")) {
 			String name = path.substring("/api/cameras/".length(), path.length() - "/stream".length());
-			stream(exchange, name, "1".equals(query.get("cache")));
+			stream(exchange, name, "1".equals(query.get("cache")), viewerFov(query.get("fov")));
 		} else if (path.startsWith("/skin/")) {
 			skin(exchange, path.substring("/skin/".length()), query.get("name"));
 		} else if (path.startsWith("/cape/")) {
@@ -252,7 +252,20 @@ public final class WebServer {
 		return values;
 	}
 
-	private void stream(HttpExchange exchange, String name, boolean cache) throws IOException {
+	/** {@code ?fov=}: the viewer's own field of view, 30 to 110 degrees like the game's option; 0 for the camera's. */
+	private static double viewerFov(@Nullable String value) {
+		if (value == null) {
+			return 0;
+		}
+		try {
+			double fov = Double.parseDouble(value);
+			return Double.isFinite(fov) ? Math.max(30, Math.min(110, fov)) : 0;
+		} catch (NumberFormatException e) {
+			return 0;
+		}
+	}
+
+	private void stream(HttpExchange exchange, String name, boolean cache, double fov) throws IOException {
 		Headers headers = exchange.getResponseHeaders();
 		headers.add("Access-Control-Allow-Origin", "*");
 
@@ -263,7 +276,7 @@ public final class WebServer {
 
 		byte[] idBytes = new byte[12];
 		RANDOM.nextBytes(idBytes);
-		SseViewer viewer = new SseViewer(config.maxQueuedMessages, HexFormat.of().formatHex(idBytes), cache);
+		SseViewer viewer = new SseViewer(config.maxQueuedMessages, HexFormat.of().formatHex(idBytes), cache, fov);
 		CameraDirectory.Subscription result = directory.subscribe(name, viewer);
 		if (result == CameraDirectory.Subscription.NOT_FOUND) {
 			sendText(exchange, 404, "text/plain", "Unknown camera");

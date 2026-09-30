@@ -48,8 +48,30 @@ async function shoot(name, settings, camera = 'ci') {
 
 const vanilla = await shoot('viewer', null);
 await shoot('viewer-shaders', { graphics: 'shaders', shaderQuality: 'high' });
-await shoot('viewer-far', null, 'far');
+// the far camera with the viewer's own wider field of view (the server widens the camera's cone for it),
+// atmospheric haze and a built-in post effect
+const far = await shoot('viewer-far', { fov: '90', fog: 'atmospheric', postShader: 'builtin:cinematic' }, 'far');
 const wet = await shoot('viewer-water', null, 'wet');
+
+// Every built-in post effect (effects.js) compiles with the CI's WebGL.
+const effectsPage = await browser.newPage({ viewport: { width: 640, height: 360 } });
+await effectsPage.goto('http://127.0.0.1:8100/cam/ci');
+await effectsPage.waitForFunction(() => window.cctv && window.cctv.state.init, null, { timeout: 60000 }).catch(() => {});
+const effectErrors = await effectsPage.evaluate(async () => {
+	const select = document.querySelector('[data-setting="postShader"]');
+	const builtIn = [...select.options].filter(o => o.value.startsWith('builtin:'));
+	const errors = [];
+	for (const option of builtIn) {
+		select.value = option.value;
+		select.dispatchEvent(new Event('change'));
+		await new Promise(resolve => setTimeout(resolve, 300));
+		const status = document.getElementById('assets-status').textContent;
+		if (status.startsWith('Shader')) errors.push(option.value + ': ' + status);
+	}
+	return { count: builtIn.length, errors };
+});
+console.log('built-in effects:', JSON.stringify(effectErrors));
+await effectsPage.close();
 
 const index = await browser.newPage({ viewport: { width: 1280, height: 720 } });
 await index.goto('http://127.0.0.1:8100/');
@@ -59,6 +81,14 @@ await browser.close();
 
 if (!vanilla.textures || vanilla.units === 0 || !vanilla.models) {
 	console.error('viewer did not render a textured world with entity models');
+	process.exit(1);
+}
+if (effectErrors.count < 10 || effectErrors.errors.length) {
+	console.error('built-in post effects missing or not compiling:', JSON.stringify(effectErrors));
+	process.exit(1);
+}
+if (!far.textures || far.units === 0) {
+	console.error('the far camera with a 90 degree field of view shows no terrain');
 	process.exit(1);
 }
 if (pageErrors.length) {

@@ -95,7 +95,10 @@ public final class CctvConfig {
 		public String graphics = "vanilla";
 		/** Shader quality when graphics is "shaders": "low", "medium", "high" or "ultra". */
 		public String shaderQuality = "medium";
-		/** Custom post-processing shader: a file name (without .glsl) from config/cctv/shaders, empty for none. */
+		/**
+		 * Post-processing shader: a file name (without .glsl) from config/cctv/shaders, one of the viewer's own
+		 * effects ("builtin:cinematic", "builtin:fisheye", see effects.js) or empty for none.
+		 */
 		public String postShader = "";
 		/** Sky box per dimension, e.g. {"minecraft:overworld": "sunset"}: a folder or image in config/cctv/skyboxes. */
 		public Map<String, String> skyboxes = new LinkedHashMap<>();
@@ -111,6 +114,13 @@ public final class CctvConfig {
 		public String mode = "color";
 		/** CCTV look (scan lines, vignette). */
 		public boolean cctvEffect = false;
+		/**
+		 * How the terrain fades out in the distance: "vanilla" (the game's fog), "smooth" (a longer, softer fade),
+		 * "atmospheric" (plus haze that grows with distance) or "minimal" (only at the edge of the camera's range).
+		 */
+		public String fog = "vanilla";
+		/** The viewers' field of view in degrees (30 to 110, like the game's option); 0 for each camera's own. */
+		public int fov = 0;
 		/** Visitors cannot change the settings above. */
 		public boolean lockSettings = false;
 	}
@@ -196,7 +206,9 @@ public final class CctvConfig {
 		viewer.shaderQuality = oneOf(viewer.shaderQuality, "medium", "low", "medium", "high", "ultra");
 		viewer.clouds = oneOf(viewer.clouds, "fancy", "fancy", "fast", "off");
 		viewer.mode = oneOf(viewer.mode, "color", "color", "mono", "night");
-		if (viewer.postShader == null || !viewer.postShader.matches("[A-Za-z0-9_-]{0,64}")) {
+		viewer.fog = oneOf(viewer.fog, "vanilla", "vanilla", "smooth", "atmospheric", "minimal");
+		viewer.fov = viewer.fov == 0 ? 0 : clamp(viewer.fov, 30, 110);
+		if (viewer.postShader == null || !viewer.postShader.matches("(builtin:)?[A-Za-z0-9_-]{0,64}")) {
 			viewer.postShader = "";
 		}
 		if (language == null || !language.matches("[a-z]{2,3}_[a-z0-9]{2,4}")) {

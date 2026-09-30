@@ -14,6 +14,7 @@ import { PostProcessor } from './post.js';
 import { Particles } from './particles.js';
 import { Sounds } from './sound.js';
 import { SectionCache } from './cache.js';
+import { EFFECTS } from './effects.js';
 import { perspective, lookDir, multiply, direction, lerp, transformPoint } from './math.js';
 
 const params = new URLSearchParams(location.search);
@@ -71,7 +72,7 @@ const world = new World((key, section, message) => {
 
 const DEFAULTS = {
 	graphics: 'vanilla', shaderQuality: 'medium', postShader: '', clouds: 'fancy', labels: true, mobLabels: false,
-	mode: 'color', cctvEffect: false, skybox: 'default', renderScale: 1, particles: true,
+	mode: 'color', cctvEffect: false, skybox: 'default', renderScale: 1, particles: true, fog: 'vanilla', fov: '',
 };
 const viewerInfo = { defaults: { ...DEFAULTS, skyboxes: {} }, locked: false, skyboxes: {}, shaders: [] };
 let settings = { ...DEFAULTS };
@@ -104,6 +105,7 @@ async function loadViewerInfo() {
 	const server = {
 		graphics: d.graphics, shaderQuality: d.shaderQuality, postShader: d.postShader || '', clouds: d.clouds,
 		labels: d.labels, mobLabels: d.mobLabels, particles: d.particles, mode: d.mode, cctvEffect: d.cctvEffect,
+		fog: d.fog, fov: d.fov ? String(d.fov) : undefined,
 	};
 	for (const key of Object.keys(server)) if (server[key] === undefined) delete server[key];
 	settings = { ...DEFAULTS, ...server, ...(viewerInfo.locked ? {} : loadLocal()) };
@@ -121,9 +123,17 @@ function applySettings() {
 	entities.showMobLabels = !!settings.mobLabels;
 	particles.enabled = settings.particles !== false;
 	if (!particles.enabled) particles.clear();
+	environment.fogMode = settings.fog || 'vanilla';
+	// A wider field of view than the stream was opened with needs the server to send a wider cone of sections.
+	if (source && viewFovSetting() > streamFov) connect();
 	const name = settings.postShader || '';
 	if (name !== (post.customName || '')) {
+		const builtin = name.startsWith('builtin:') ? EFFECTS[name.slice(8)] : null;
 		if (!name) {
+			post.setCustomShader(null, null);
+		} else if (builtin) {
+			reportShaderError(post.setCustomShader(name, builtin.source));
+		} else if (name.startsWith('builtin:')) {
 			post.setCustomShader(null, null);
 		} else if (shaderSources.has(name)) {
 			reportShaderError(post.setCustomShader(name, shaderSources.get(name)));
@@ -166,7 +176,16 @@ function buildSettingsPanel() {
 	const skyboxSelect = panel.querySelector('[data-setting="skybox"]');
 	for (const name of Object.keys(viewerInfo.skyboxes || {})) skyboxSelect.append(new Option(name, name));
 	const shaderSelect = panel.querySelector('[data-setting="postShader"]');
-	for (const name of viewerInfo.shaders || []) shaderSelect.append(new Option(name, name));
+	const builtIn = document.createElement('optgroup');
+	builtIn.label = 'Built in';
+	for (const [id, effect] of Object.entries(EFFECTS)) builtIn.append(new Option(effect.name, 'builtin:' + id));
+	shaderSelect.append(builtIn);
+	if ((viewerInfo.shaders || []).length) {
+		const server = document.createElement('optgroup');
+		server.label = 'This server (config/cctv/shaders)';
+		for (const name of viewerInfo.shaders) server.append(new Option(name, name));
+		shaderSelect.append(server);
+	}
 	for (const input of panel.querySelectorAll('[data-setting]')) {
 		input.addEventListener('change', () => {
 			const key = input.dataset.setting;
@@ -211,9 +230,27 @@ let retryTimer = null;
 const sectionCache = new SectionCache();
 const useCache = sectionCache.available && params.get('cache') !== '0';
 
+/** Settings > Field of view in degrees, 0 for the camera's own. */
+function viewFovSetting() {
+	const fov = Number(settings.fov);
+	return fov >= 30 && fov <= 110 ? fov : 0;
+}
+
+/** The field of view the picture uses before zooming: the viewer's own, else the camera's. */
+function viewFov(c) {
+	return viewFovSetting() || (c ? c.fov : 70);
+}
+
+/** The FOV the current stream asked the server to cover (0: the camera's). */
+let streamFov = 0;
+
 function streamUrl() {
+	const params = [];
+	if (useCache) params.push('cache=1');
+	streamFov = viewFovSetting();
+	if (streamFov) params.push('fov=' + streamFov);
 	const base = '/api/cameras/' + encodeURIComponent(cameraName) + '/stream' + query;
-	return useCache ? base + (query ? '&' : '?') + 'cache=1' : base;
+	return params.length ? base + (query ? '&' : '?') + params.join('&') : base;
 }
 
 /** Tells the server which sections the cache has near the camera (after each "init"), so it sends only the rest. */
@@ -396,7 +433,7 @@ canvas.addEventListener('pointerdown', e => {
 });
 canvas.addEventListener('pointermove', e => {
 	if (!drag) return;
-	const fov = (state.camera ? state.camera.fov : 70) / state.zoom;
+	const fov = viewFov(state.camera) / state.zoom;
 	const perPixel = fov / canvas.clientHeight;
 	drag.lastX = e.clientX;
 	drag.lastY = e.clientY;
@@ -487,7 +524,7 @@ function limitLook(c, aspect) {
 	if (!cone || cone >= 179 || (state.lookYaw === 0 && state.lookPitch === 0)) return;
 	const limit = Math.cos(cone * Math.PI / 180);
 	const base = direction(c.yaw, c.pitch);
-	const t = Math.tan(Math.min(170, c.fov / state.zoom) * Math.PI / 360);
+	const t = Math.tan(Math.min(170, viewFov(c) / state.zoom) * Math.PI / 360);
 	const inside = k => {
 		const f = direction(c.yaw + state.lookYaw * k, Math.max(-89.9, Math.min(89.9, c.pitch + state.lookPitch * k)));
 		const l = Math.hypot(f[0], f[2]) || 1;
@@ -585,7 +622,7 @@ function frame(now) {
 	const pitch = Math.max(-89.9, Math.min(89.9, c.pitch + state.lookPitch));
 	const dir = direction(c.yaw + state.lookYaw, pitch);
 	sounds.update(entities.tick, c, dir, state.entityList);
-	const fov = Math.min(170, c.fov / state.zoom) * Math.PI / 180;
+	const fov = Math.min(170, viewFov(c) / state.zoom) * Math.PI / 180;
 	const range = c.range;
 
 	// Environment at the camera.

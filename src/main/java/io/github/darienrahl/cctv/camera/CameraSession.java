@@ -184,6 +184,9 @@ final class CameraSession {
 	/** False while the camera is under the ground (caves, cellars): then it can see buried sections. */
 	private boolean skipBuried = true;
 	private double coneDegrees = 180;
+	/** The field of view the cone was made for: the camera's, or the widest of its viewers' own. */
+	private double coneFov;
+	private static final double MAX_VIEWER_FOV = 110;
 	private int minX;
 	private int minY;
 	private int minZ;
@@ -299,6 +302,11 @@ final class CameraSession {
 			if (joined.isOpen()) {
 				ViewerState state = new ViewerState(joined);
 				viewers.add(state);
+				if (level != null && Math.min(MAX_VIEWER_FOV, joined.fov()) > coneFov + 0.5) {
+					// A wider field of view than the cone was made for: the next tick reads the wider cone (the
+					// viewers' caches keep what they had) and sends everybody a new "init".
+					needsRebuild = true;
+				}
 				sendInit(state, tick);
 				if (level != null) {
 					String env = sampleEnvironment(level, tick);
@@ -633,7 +641,15 @@ final class CameraSession {
 
 		// Half-angle of the view cone: vertical FOV widened for up to ~21:9 screens, plus a margin
 		// (the viewer keeps its picture inside this cone when the view is turned).
-		double halfVertical = Math.toRadians(c.fov() / 2);
+		double fov = c.fov();
+		for (ViewerState state : viewers) {
+			fov = Math.max(fov, Math.min(MAX_VIEWER_FOV, state.viewer.fov()));
+		}
+		for (Viewer waiting : pending) {
+			fov = Math.max(fov, Math.min(MAX_VIEWER_FOV, waiting.fov()));
+		}
+		coneFov = fov;
+		double halfVertical = Math.toRadians(fov / 2);
 		double halfAngle = Math.atan(Math.tan(halfVertical) * 2.4) + Math.toRadians(VIEW_MARGIN_DEGREES);
 		coneDegrees = Math.toDegrees(halfAngle);
 

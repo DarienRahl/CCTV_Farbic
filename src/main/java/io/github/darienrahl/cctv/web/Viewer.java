@@ -35,6 +35,14 @@ public interface Viewer {
 	}
 
 	/**
+	 * The field of view the viewer shows (its own FOV setting, 30 to 110 degrees like the game's), or 0 for the
+	 * camera's: a wider one widens the cone of sections the camera sends.
+	 */
+	default double fov() {
+		return 0;
+	}
+
+	/**
 	 * The sections the browser has cached, sent after the "init" numbered {@code epoch}: x, y, z and hash of
 	 * each, one after the other; null while none arrived. Taking it clears it.
 	 */

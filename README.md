@@ -273,7 +273,7 @@ can really see. "Mob labels" adds tags for every other mob (its custom name or i
 | `sounds` | `true` | The game's sounds in the viewer (files downloaded from Mojang when first played, cached) |
 | `markers` | `true` | Camera marker block in the world |
 | `maxViewersPerCamera` | `16` | Viewer limit per camera |
-| `viewer` | | Viewer defaults: `graphics` (`vanilla`/`shaders`), `shaderQuality` (`low`…`ultra`), `postShader`, `skyboxes` (dimension → name), `clouds` (`fancy`/`fast`/`off`), `labels`, `mobLabels`, `particles`, `mode` (`color`/`mono`/`night`), `cctvEffect`, `lockSettings` |
+| `viewer` | | Viewer defaults: `graphics` (`vanilla`/`shaders`), `shaderQuality` (`low`…`ultra`), `postShader`, `skyboxes` (dimension → name), `clouds` (`fancy`/`fast`/`off`), `labels`, `mobLabels`, `particles`, `mode` (`color`/`mono`/`night`), `cctvEffect`, `fog` (`vanilla`/`smooth`/`atmospheric`/`minimal`), `fov` (30–110, 0 = each camera's), `lockSettings` |
 
 Resource packs (`*.zip`) put into `config/cctv/resourcepacks/` override block textures and models
 in the viewer, for example to match the server's resource pack.

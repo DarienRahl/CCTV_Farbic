@@ -44,6 +44,8 @@ export class Environment {
 		this.b = null;
 		this.flicker = 0;
 		this.rainFog = 0;
+		/** Settings > Distance fog: 'vanilla', 'smooth', 'atmospheric' or 'minimal' */
+		this.fogMode = 'vanilla';
 		this.skyFlash = 0;
 		this.gamma = 0.5; // the game's default "Brightness" option
 		this.pixels = new Uint8Array(16 * 16 * 4);
@@ -227,6 +229,29 @@ export class Environment {
 		const span = clamp(renderDistance / 10, 4, 64);
 		fog.rdStart = renderDistance - span;
 		fog.rdEnd = renderDistance;
+		fog.smooth = 0;
+		fog.haze = 0;
+		// The viewer's own fades (Settings > Distance fog); under water, in lava and powder snow the game's fog
+		if (!dense && !inWater) {
+			switch (this.fogMode) {
+				case 'smooth':
+					fog.rdStart = renderDistance * 0.55;
+					fog.smooth = 1;
+					break;
+				case 'atmospheric':
+					fog.rdStart = renderDistance * 0.6;
+					fog.smooth = 1;
+					fog.haze = 1.05 / Math.max(16, renderDistance);
+					break;
+				case 'minimal':
+					fog.rdStart = renderDistance - Math.max(2, renderDistance * 0.04);
+					fog.envStart = Math.max(fog.envStart, renderDistance * 4);
+					fog.envEnd = Math.max(fog.envEnd, renderDistance * 4 + 1);
+					break;
+				default:
+					break;
+			}
+		}
 		fog.color = color;
 		return fog;
 	}

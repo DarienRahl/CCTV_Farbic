@@ -46,6 +46,8 @@ final class CustomContent {
 				.field("particles", viewer.particles)
 				.field("mode", viewer.mode)
 				.field("cctvEffect", viewer.cctvEffect)
+				.field("fog", viewer.fog)
+				.field("fov", viewer.fov)
 				.name("skyboxes").beginObject();
 		for (Map.Entry<String, String> entry : viewer.skyboxes.entrySet()) {
 			json.field(entry.getKey(), entry.getValue());

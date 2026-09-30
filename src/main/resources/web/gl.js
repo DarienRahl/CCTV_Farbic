@@ -96,20 +96,33 @@ void main() {
 	gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
 }`;
 
-/** Fog as in Minecraft's fog.glsl (environmental: spherical distance, render distance: cylindrical). */
+/**
+ * Fog as in Minecraft's fog.glsl (environmental: spherical distance, render distance: cylindrical), with the
+ * viewer's softer fades: uFogSmooth eases both ramps in and out, uFogHaze adds a haze that thickens with
+ * distance (aerial perspective); both 0 is the game's fog.
+ */
 export const FOG_GLSL = `
 uniform vec4 uFogColor;
 uniform float uFogEnvStart;
 uniform float uFogEnvEnd;
 uniform float uFogRdStart;
 uniform float uFogRdEnd;
+uniform float uFogSmooth;
+uniform float uFogHaze;
 float linear_fog_value(float d, float start, float end) {
 	if (d <= start) return 0.0;
 	if (d >= end) return 1.0;
 	return (d - start) / (end - start);
 }
 float total_fog_value(float sph, float cyl) {
-	return max(linear_fog_value(sph, uFogEnvStart, uFogEnvEnd), linear_fog_value(cyl, uFogRdStart, uFogRdEnd));
+	float env = linear_fog_value(sph, uFogEnvStart, uFogEnvEnd);
+	float rd = linear_fog_value(cyl, uFogRdStart, uFogRdEnd);
+	if (uFogSmooth > 0.5) {
+		env = env * env * (3.0 - 2.0 * env);
+		rd = rd * rd * (3.0 - 2.0 * rd);
+	}
+	float haze = uFogHaze > 0.0 ? (1.0 - exp(-sph * sph * uFogHaze * uFogHaze)) * 0.85 : 0.0;
+	return max(max(env, rd), haze);
 }
 vec4 apply_fog(vec4 color, float sph, float cyl) {
 	return vec4(mix(color.rgb, uFogColor.rgb, total_fog_value(sph, cyl) * uFogColor.a), color.a);
@@ -124,4 +137,6 @@ export function setFog(gl, u, fog) {
 	gl.uniform1f(u.uFogEnvEnd, fog.envEnd);
 	gl.uniform1f(u.uFogRdStart, fog.rdStart);
 	gl.uniform1f(u.uFogRdEnd, fog.rdEnd);
+	gl.uniform1f(u.uFogSmooth, fog.smooth || 0);
+	gl.uniform1f(u.uFogHaze, fog.haze || 0);
 }

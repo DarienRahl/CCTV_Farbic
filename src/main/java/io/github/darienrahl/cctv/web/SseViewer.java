@@ -26,6 +26,7 @@ final class SseViewer implements Viewer {
 	private final int maxQueuedMessages;
 	private final String id;
 	private final boolean wantsCache;
+	private final double fov;
 	/** The latest cache manifest and the "init" it answers. */
 	private final AtomicReference<Manifest> manifest = new AtomicReference<>();
 	private volatile boolean open = true;
@@ -33,10 +34,11 @@ final class SseViewer implements Viewer {
 	private record Manifest(int epoch, long[] sections) {
 	}
 
-	SseViewer(int maxQueuedMessages, String id, boolean wantsCache) {
+	SseViewer(int maxQueuedMessages, String id, boolean wantsCache, double fov) {
 		this.maxQueuedMessages = maxQueuedMessages;
 		this.id = id;
 		this.wantsCache = wantsCache;
+		this.fov = fov;
 	}
 
 	@Override
@@ -47,6 +49,11 @@ final class SseViewer implements Viewer {
 	@Override
 	public boolean wantsCache() {
 		return wantsCache;
+	}
+
+	@Override
+	public double fov() {
+		return fov;
 	}
 
 	/** Web thread: the browser's cache manifest arrived. */
