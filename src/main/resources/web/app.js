@@ -500,6 +500,7 @@ const recorder = new Recorder(canvas, {
 		left: [$('cam-name').textContent, $('cam-sub').textContent],
 		right: [clockEl.textContent, gameTimeEl.textContent],
 	}),
+	overlay: () => $('gui'),
 });
 const recordButton = $('record');
 const timelapseButton = $('timelapse');

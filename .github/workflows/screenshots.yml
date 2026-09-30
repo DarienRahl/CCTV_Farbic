@@ -1,5 +1,6 @@
-# The README's pictures (docs/images/screenshots): starts a real dedicated server with the mod from the branch
-# it runs on, builds the smoke test's scene, takes the cameras' pictures in headless Chromium and commits them.
+# The README's pictures and video (docs/images/screenshots, docs/media): starts a real dedicated server with the
+# mod from the branch it runs on, builds the smoke test's scene, takes the cameras' pictures in headless Chromium,
+# records the party of showcase.py with the viewer's own Record button, and commits them.
 # The release workflow runs it after publishing a release; it can also be run from the Actions tab.
 
 name: screenshots
@@ -62,6 +63,19 @@ jobs:
         run: |
           pip install --quiet pillow
           python3 .github/e2e/readme_images.py .github/e2e/shots docs/images/screenshots
+      - name: install ffmpeg
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg > /dev/null
+      - name: record the party (the README's video)
+        working-directory: .github/e2e
+        run: |
+          python3 showcase.py
+          python3 showcase.py --speed 0.25
+          SPEED=0.25 node record_showcase.mjs showcase.webm
+          python3 showcase.py --speed 1
+          bash make_video.sh showcase.webm 0.25 ../../docs/media
+          python3 video_preview.py ../../docs/media/showcase.mp4
       - name: stop server
         if: always()
         run: |
@@ -74,14 +88,16 @@ jobs:
           name: screenshots
           path: |
             docs/images/screenshots/
+            docs/media/
             .github/e2e/shots/*.png
+            .github/e2e/showcase.webm
             server.log
       - name: commit the pictures
         if: inputs.commit
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add docs/images/screenshots
+          git add docs/images/screenshots docs/media
           if git diff --cached --quiet; then
             echo "the pictures did not change"
             exit 0

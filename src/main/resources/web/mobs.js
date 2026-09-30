@@ -853,11 +853,76 @@ const ANIMS = {
 		if (p.right_wing) { p.right_wing.yRot = 0.47123894 + flap; }
 		if (p.left_wing) { p.left_wing.yRot = -0.47123894 - flap; }
 	},
-	parrot(p, a) {
-		headLook(p, a);
-		const flap = sin(a.age * 0.3) * 0.2;
-		if (p.right_wing) p.right_wing.zRot = flap;
-		if (p.left_wing) p.left_wing.zRot = -flap;
+	/**
+	 * ParrotModel.setupAnim with its poses (ParrotModel.getPose): PARTY next to a jukebox playing a song
+	 * (entities.js partyParrot), SITTING, FLYING while off the ground, else STANDING; ParrotRenderer's flap angle
+	 * is (sin(flap) + 1) * flapSpeed of Parrot.calculateFlapping.
+	 */
+	parrot(p, a, e) {
+		const { head, body, tail, left_wing: lw, right_wing: rw, left_leg: ll, right_leg: rl } = p;
+		if (!head || !body || !tail || !lw || !rw || !ll || !rl) return;
+		const d = e.d || {};
+		const pose = a.party ? 'party' : d.sitting ? 'sitting' : !d.onGround ? 'flying' : 'standing';
+		const flapAngle = (sin(Number(d.flap) || 0) + 1) * (Number(d.flapSpeed) || 0);
+		// prepare
+		if (pose === 'flying') {
+			ll.xRot += PI * 2 / 9;
+			rl.xRot += PI * 2 / 9;
+		} else if (pose === 'sitting') {
+			head.y++;
+			tail.xRot += PI / 6;
+			tail.y++;
+			body.y++;
+			lw.zRot = -0.0873;
+			lw.y++;
+			rw.zRot = 0.0873;
+			rw.y++;
+			ll.y++;
+			rl.y++;
+			ll.xRot++;
+			rl.xRot++;
+		} else if (pose === 'party') {
+			ll.zRot = -PI / 9;
+			rl.zRot = PI / 9;
+		}
+		head.xRot = a.headPitch * DEG;
+		head.yRot = a.netHeadYaw * DEG;
+		const w = a.walk * 0.6662, s = a.walkSpeed;
+		if (pose === 'standing') {
+			ll.xRot += cos(w) * 1.4 * s;
+			rl.xRot += cos(w + PI) * 1.4 * s;
+		}
+		if (pose === 'standing' || pose === 'flying') {
+			const bob = flapAngle * 0.3;
+			head.y += bob;
+			tail.xRot += cos(w) * 0.3 * s;
+			tail.y += bob;
+			body.y += bob;
+			lw.zRot = -0.0873 - flapAngle;
+			lw.y += bob;
+			rw.zRot = 0.0873 + flapAngle;
+			rw.y += bob;
+			ll.y += bob;
+			rl.y += bob;
+		} else if (pose === 'party') {
+			// the dance: everything but the legs goes round in a circle, the head tilting from side to side
+			const x = cos(a.age), y = sin(a.age);
+			head.x += x;
+			head.y += y;
+			head.xRot = 0;
+			head.yRot = 0;
+			head.zRot = sin(a.age) * 0.4;
+			body.x += x;
+			body.y += y;
+			lw.zRot = -0.0873 - flapAngle;
+			lw.x += x;
+			lw.y += y;
+			rw.zRot = 0.0873 + flapAngle;
+			rw.x += x;
+			rw.y += y;
+			tail.x += x;
+			tail.y += y;
+		}
 	},
 	phantom(p, a) {
 		const f = a.flap * 7.448451 * DEG;
@@ -1941,11 +2006,28 @@ function pandaGene(e) {
 	return main;
 }
 
-/** SheepRenderer / Sheep.getColor: white is 0xE6E6E6, other colours are darkened to 75 %. */
+/** ColorLerper.Type.SHEEP.getColor: white is 0xE6E6E6, the other dye colours darkened to 75 % (floored). */
+function sheepRgb(color) {
+	if (color === 'white') return [0xe6, 0xe6, 0xe6];
+	const c = DYE[color] ?? 0xffffff;
+	return [c >> 16 & 255, c >> 8 & 255, c & 255].map(v => clamp(Math.floor(v * 0.75), 0, 255));
+}
+
+/**
+ * SheepRenderState.getWoolColor: the dye colour, or for a sheep named jeb_ ColorLerper.getLerpedColor(SHEEP,
+ * ageInTicks): every dye colour in turn (DyeColor's order), 25 ticks each, blended like ARGB.srgbLerp.
+ */
 function sheepColor(e) {
-	const color = strip(e.d && e.d.color) || 'white';
-	if (color === 'white') return [0xe6 / 255, 0xe6 / 255, 0xe6 / 255, 1];
-	return dyeRgb(color, 0.75);
+	if (e.name === 'jeb_') {
+		const colors = Object.keys(DYE);
+		const age = Math.max(0, e.age || 0);
+		const tick = Math.floor(age);
+		const value = Math.floor(tick / 25);
+		const a = sheepRgb(colors[value % colors.length]), b = sheepRgb(colors[(value + 1) % colors.length]);
+		const t = (tick % 25 + (age - tick)) / 25;
+		return [0, 1, 2].map(i => (a[i] + Math.floor(t * (b[i] - a[i]))) / 255).concat(1);
+	}
+	return sheepRgb(strip(e.d && e.d.color) || 'white').map(v => v / 255).concat(1);
 }
 
 const TROPICAL_SMALL = ['kob', 'sunstreak', 'snooper', 'dasher', 'brinely', 'spotty'];

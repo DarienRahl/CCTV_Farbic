@@ -681,6 +681,8 @@ export class EntityRenderer {
 		this.spawners = new Map();
 		/** Lid, shake and similar animation state of block entities by "x,y,z", from block events. */
 		this.blockAnims = new Map();
+		/** Parrots dancing to a jukebox: entity id -> the jukebox's position (Parrot.jukebox) */
+		this.partyParrots = new Map();
 		this.breaking = [];
 		this.states = new Map();
 		this.events = new Map();
@@ -947,6 +949,34 @@ export class EntityRenderer {
 
 	// --- snapshots -------------------------------------------------------------------------------
 
+	/**
+	 * LevelEventHandler.playJukeboxSong / stopJukeboxSongAndNotifyNearby: the living entities within three blocks
+	 * of a jukebox hear that it starts or stops a song (LivingEntity.setRecordPlayingNearby); parrots dance to it.
+	 */
+	jukeboxParty(fx, list) {
+		const playing = fx[0] === 'js';
+		const [x, y, z] = playing ? fx.slice(2, 5) : fx.slice(1, 4);
+		for (const e of list) {
+			if (strip(e.type) !== 'parrot') continue;
+			// AABB(pos).inflate(3) against the parrot's box
+			const hw = (e.w || 0.5) / 2, h = e.h || 0.9;
+			if (e.x + hw < x - 3 || e.x - hw > x + 4 || e.y + h < y - 3 || e.y > y + 4 || e.z + hw < z - 3 || e.z - hw > z + 4) continue;
+			if (playing) this.partyParrots.set(e.id, [x, y, z]);
+			else this.partyParrots.delete(e.id);
+		}
+	}
+
+	/** Parrot.aiStep: a parrot stops dancing once it is more than 3.46 blocks from its jukebox's centre. */
+	isPartyParrot(e) {
+		const jukebox = this.partyParrots.get(e.id);
+		if (!jukebox) return false;
+		if (Math.hypot(e.x - jukebox[0] - 0.5, e.y - jukebox[1] - 0.5, e.z - jukebox[2] - 0.5) > 3.46) {
+			this.partyParrots.delete(e.id);
+			return false;
+		}
+		return true;
+	}
+
 	/** Called for every "entities" message. */
 	push(frame, entityTicks) {
 		const now = performance.now();
@@ -984,6 +1014,7 @@ export class EntityRenderer {
 		for (const fx of frame.fx || []) {
 			if (fx[0] === 'be') this.blockEvent(fx);
 			else if (fx[0] === 'pm') this.pistonMove(fx, now);
+			else if (fx[0] === 'js' || fx[0] === 'jx') this.jukeboxParty(fx, frame.e);
 		}
 		this.frames.push({ t: frame.t, map });
 		while (this.frames.length > 40) this.frames.shift();
@@ -1574,6 +1605,7 @@ export class EntityRenderer {
 			headPitch: e.pitch || 0,
 			flap: e.id * 3 + age,
 			swimAmount: e.swimAmount || 0,
+			party: type === 'parrot' && this.isPartyParrot(e),
 		};
 		if (def.anim === 'guardian') {
 			// GuardianRenderer.getEntityToLookAt: the beam's target, else the camera

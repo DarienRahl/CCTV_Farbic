@@ -126,6 +126,8 @@ to the milestone it belongs to. The roadmap on the README page is drawn from thi
 - [x] **Now Playing toast** like the game's NowPlayingToast: the song's title in the game's font on the toast
       sprite, with the animated music notes changing colour, sliding in from the top left for five seconds; the
       jukebox's rainbow "Now Playing" line in the game's font above where the hotbar would be
+- [x] **Party parrots and jeb_ sheep**: ParrotModel's poses (dancing next to a playing jukebox, sitting,
+      flying), the rainbow wool of a sheep named jeb_ (ColorLerper)
 - [x] **The pages in the game's font**: a web font the server builds from the game's glyph sheets (bold like the
       game's bold, resource packs included) for the camera list, the buttons, the settings and the HUD, whose lines
       sit on translucent grey boxes like the debug screen

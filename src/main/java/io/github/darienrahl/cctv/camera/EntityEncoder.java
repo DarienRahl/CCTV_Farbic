@@ -175,7 +175,9 @@ final class EntityEncoder {
 			{"shouldHideInShell", "hiding"},
 			// Methods every entity has: only sent for the types that need them (third column).
 			{"isInWater", "inWater", "minecraft:frog minecraft:axolotl"},
-			{"onGround", "onGround", "minecraft:axolotl minecraft:bee minecraft:turtle"},
+			{"onGround", "onGround", "minecraft:axolotl minecraft:bee minecraft:turtle minecraft:parrot"},
+			// ParrotModel.getPose: sitting on its owner's order
+			{"isInSittingPose", "sitting", "minecraft:parrot"},
 			// Fish tails beat harder out of water; TurtleModel swims or walks.
 			{"isInWater", "inWater", "minecraft:cod minecraft:salmon minecraft:tropical_fish minecraft:tadpole minecraft:turtle"},
 			{"isInterested", "interested", "minecraft:wolf"},
@@ -231,9 +233,9 @@ final class EntityEncoder {
 			{"getLieDownAmountTail", "lieTail", "minecraft:cat"},
 			{"getRelaxStateOneAmount", "relax", "minecraft:cat"},
 			{"getRollAmount", "rollAmount", "minecraft:bee"},
-			// Chicken.aiStep: the wings flap while it falls
-			{"flap", "flap", "minecraft:chicken"},
-			{"flapSpeed", "flapSpeed", "minecraft:chicken"},
+			// Chicken.aiStep and Parrot.calculateFlapping: the wings flap while off the ground
+			{"flap", "flap", "minecraft:chicken minecraft:parrot"},
+			{"flapSpeed", "flapSpeed", "minecraft:chicken minecraft:parrot"},
 	};
 
 	private record Amount(Member member, String key) {

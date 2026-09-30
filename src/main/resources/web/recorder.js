@@ -82,7 +82,8 @@ function download(blob, name) {
 export class Recorder {
 	/**
 	 * canvas: the picture; options.audio(): a MediaStream with the game's sounds or null; options.name(): the
-	 * camera's name for file names; options.label(): {left: [lines], right: [lines]} burnt into the picture
+	 * camera's name for file names; options.label(): {left: [lines], right: [lines]} burnt into the picture;
+	 * options.overlay(): a canvas drawn over the picture (the game's GUI), or null
 	 */
 	constructor(canvas, options) {
 		this.canvas = canvas;
@@ -120,6 +121,9 @@ export class Recorder {
 		}
 		const g = out.getContext('2d');
 		g.drawImage(this.canvas, 0, 0);
+		// the game's GUI over the picture as the viewer sees it (the Now Playing toast, the jukebox's line)
+		const overlay = this.options.overlay && this.options.overlay();
+		if (overlay && overlay.width > 1 && overlay.height > 1) g.drawImage(overlay, 0, 0, width, height);
 		const label = this.options.label();
 		// the game's font (style.css) at a whole number of its pixels, with its shadow one pixel down and right
 		const size = Math.max(16, Math.round(height / 36 / 8) * 8);
