@@ -125,7 +125,8 @@ class StreamReader(threading.Thread):
                             self.names.update(e["name"] for e in data["e"] if e.get("nameVisible"))
                             for fx in data.get("fx", []):
                                 # level events by type, entity effects by kind, explosions by particle, fireworks by shape
-                                key = fx[6] if fx[0] == "ex" else fx[4] if fx[0] == "be" else (fx[8] or [[None]])[0][0] if fx[0] == "fw" else fx[1]
+                                key = (fx[6] if fx[0] == "ex" else fx[4] if fx[0] == "be" else (fx[8] or [[None]])[0][0] if fx[0] == "fw"
+                                       else "moving" if fx[0] == "pm" else fx[1])
                                 self.effects.add(fx[0] + ":" + str(key))
                         elif event == "blocks":
                             self.block_updates.extend(data["b"])
@@ -281,6 +282,10 @@ def main():
     # blocks whose client ambience needs block tags (desert sand, creaking heart logs)
     rcon.command("setblock 6 -60 3 minecraft:sand")
     rcon.command("setblock 7 -60 3 minecraft:pale_oak_log")
+    # a piston pushing stone up when powered: the moving block (PistonMovingBlockEntity) is animated
+    rcon.command("setblock 8 -60 -5 minecraft:piston[facing=up]")
+    rcon.command("setblock 8 -59 -5 minecraft:stone")
+    rcon.command("setblock 8 -60 -6 minecraft:redstone_block")
     # a note block played by redstone: a block event (the viewer shows its note)
     rcon.command("setblock 5 -60 -5 minecraft:note_block")
     rcon.command("setblock 5 -60 -6 minecraft:redstone_block")
@@ -388,6 +393,7 @@ def main():
     for effect, what in (("le:2001", "the broken block's level event"), ("ee:poof", "the killed sheep's death poof"),
                          ("ex:minecraft:explosion_emitter", "the TNT explosion"),
                          ("fw:large_ball", "the firework rocket's explosion"),
+                         ("pm:moving", "the block pushed by the piston"),
                          ("be:minecraft:note_block", "the note block's block event"),
                          ("s:minecraft:block.note_block.harp", "the note block's sound"),
                          ("s:minecraft:block.stone.break", "the broken block's sound (level event 2001)"),

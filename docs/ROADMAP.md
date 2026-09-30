@@ -87,7 +87,8 @@ to the milestone it belongs to. The roadmap on the README page is drawn from thi
       dropped and in item frames; items in the left hand mirrored like ItemTransform)
 - [x] **Chests, ender chests and shulker boxes open, bells swing, note blocks show their notes** from the
       server's block events (ChestLidController, ShulkerBoxBlockEntity, BellBlockEntity, NoteBlock)
-- [ ] Pistons moving (PistonMovingBlockEntity, PistonHeadRenderer)
+- [x] **Pistons move** the blocks they push and pull (PistonMovingBlockEntity, PistonHeadRenderer: the
+      head short while it slides through the base, a retracting piston's base in place)
 - [x] **Sounds**: the sounds the server sends players (mobs, steps, blocks, doors, explosions, note
       blocks, jukeboxes) and the ones the client makes from level events, played in 3D like the game's
       SoundEngine (sound files from the game's asset index, downloaded and cached by the server; a button

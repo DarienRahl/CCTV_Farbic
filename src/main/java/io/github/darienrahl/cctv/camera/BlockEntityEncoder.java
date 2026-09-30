@@ -3,12 +3,14 @@ package io.github.darienrahl.cctv.camera;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.IntConsumer;
 
 import org.jspecify.annotations.Nullable;
 
 import com.mojang.authlib.GameProfile;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.core.Holder;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -18,6 +20,8 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.ItemStackTemplate;
 import net.minecraft.world.item.component.ResolvableProfile;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BannerBlockEntity;
 import net.minecraft.world.level.block.entity.BannerPatternLayers;
 import net.minecraft.world.level.block.entity.BeaconBeamOwner;
@@ -33,6 +37,11 @@ import net.minecraft.world.level.block.entity.SignTextSlot;
 import net.minecraft.world.level.block.entity.SkullBlockEntity;
 import net.minecraft.world.level.block.entity.SpawnerBlockEntity;
 import net.minecraft.world.level.block.entity.TrialSpawnerBlockEntity;
+import net.minecraft.world.level.block.piston.PistonBaseBlock;
+import net.minecraft.world.level.block.piston.PistonHeadBlock;
+import net.minecraft.world.level.block.piston.PistonMovingBlockEntity;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.properties.PistonType;
 import net.minecraft.world.level.chunk.LevelChunk;
 
 import io.github.darienrahl.cctv.web.Json;
@@ -93,6 +102,47 @@ final class BlockEntityEncoder {
 	 * The beam of a beacon (BeaconBeamOwner#getBeamSections, empty while the beacon is off):
 	 * {@code {"k":"beacon", "s": [[rgb, height], ...]}}. The session re-reads beacon sections now and then.
 	 */
+	/**
+	 * A block moved by a piston (PistonMovingBlockEntity at its destination) as PistonHeadRenderer draws it:
+	 * ["pm", x, y, z, stepX, stepY, stepZ, extending, progress, block, short block, base, short while above],
+	 * where the block is drawn offset by the direction times (progress - 1) when extending, (1 - progress)
+	 * when retracting, a piston head switches to its short form ("short block", -1 if none) while the progress
+	 * is at most (short while above: false) or at least 0.5, and a retracting piston draws its base in place.
+	 */
+	static String movingPiston(BlockPos pos, PistonMovingBlockEntity piston, IntConsumer states) {
+		Direction direction = piston.getDirection();
+		BlockState moved = piston.getMovedState();
+		int block = Block.getId(moved);
+		int shortBlock = -1;
+		int base = -1;
+		boolean shortAbove = false;
+		if (moved.is(Blocks.PISTON_HEAD)) {
+			block = Block.getId(moved.setValue(PistonHeadBlock.SHORT, false));
+			shortBlock = Block.getId(moved.setValue(PistonHeadBlock.SHORT, true));
+		} else if (piston.isSourcePiston() && !piston.isExtending() && moved.hasProperty(PistonBaseBlock.FACING)) {
+			BlockState head = Blocks.PISTON_HEAD.defaultBlockState()
+					.setValue(PistonHeadBlock.TYPE, moved.is(Blocks.STICKY_PISTON) ? PistonType.STICKY : PistonType.DEFAULT)
+					.setValue(PistonHeadBlock.FACING, moved.getValue(PistonBaseBlock.FACING));
+			block = Block.getId(head.setValue(PistonHeadBlock.SHORT, false));
+			shortBlock = Block.getId(head.setValue(PistonHeadBlock.SHORT, true));
+			shortAbove = true;
+			base = Block.getId(moved.setValue(PistonBaseBlock.EXTENDED, true));
+		}
+		states.accept(block);
+		if (shortBlock >= 0) {
+			states.accept(shortBlock);
+		}
+		if (base >= 0) {
+			states.accept(base);
+		}
+		Json json = new Json(96);
+		json.beginArray().value("pm").value(pos.getX()).value(pos.getY()).value(pos.getZ())
+				.value(direction.getStepX()).value(direction.getStepY()).value(direction.getStepZ())
+				.value(piston.isExtending()).value(piston.getProgress(1.0F), 2)
+				.value(block).value(shortBlock).value(base).value(shortAbove).endArray();
+		return json.toString();
+	}
+
 	private static String beacon(BeaconBlockEntity beacon) {
 		Json json = begin("beacon", beacon).name("s").beginArray();
 		for (BeaconBeamOwner.Section section : beacon.getBeamSections()) {

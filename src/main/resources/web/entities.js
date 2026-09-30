@@ -471,6 +471,8 @@ export class EntityRenderer {
 		this.events = new Map();
 		/** Guardians' beams: entity id -> {target, start (the guardian's age when it got the target)} */
 		this.beams = new Map();
+		/** Blocks moved by pistons: "x,y,z" -> the "pm" effect and when it arrived */
+		this.pistons = new Map();
 		// EnchantingTableBlockEntity animation state by block position
 		this.books = new Map();
 		// glint textures switched to linear filtering (their .mcmeta asks for blur)
@@ -761,7 +763,10 @@ export class EntityRenderer {
 		this.animateMotion(frame.t, map);
 		// blocks being broken: [x, y, z, progress]
 		this.breaking = frame.bp || [];
-		for (const fx of frame.fx || []) if (fx[0] === 'be') this.blockEvent(fx);
+		for (const fx of frame.fx || []) {
+			if (fx[0] === 'be') this.blockEvent(fx);
+			else if (fx[0] === 'pm') this.pistonMove(fx, now);
+		}
 		this.frames.push({ t: frame.t, map });
 		while (this.frames.length > 40) this.frames.shift();
 		this.delayTicks = Math.max(2, entityTicks * 2);
@@ -2154,9 +2159,61 @@ export class EntityRenderer {
 		return 1 - open * open * open;
 	}
 
+	/**
+	 * A block starts moving with a piston (PistonMovingBlockEntity): shown right away, like the block changes
+	 * that come with it, not with the entities' delay.
+	 */
+	pistonMove([, x, y, z, sx, sy, sz, extending, progress, block, shortBlock, base, shortAbove], now) {
+		this.pistons.set(x + ',' + y + ',' + z, { x, y, z, sx, sy, sz, extending, progress, block, shortBlock, base, shortAbove, start: now });
+		if (this.pistons.size > 512) this.pistons.delete(this.pistons.keys().next().value);
+	}
+
+	/**
+	 * PistonHeadRenderer: moving blocks drawn between where they were and where they go (the progress rises by
+	 * 0.5 a tick), a piston head short while it slides through its base, a retracting piston's base in place.
+	 * A moving block is kept until the moving piston at its place turns into the block.
+	 */
+	drawPistons(frame, world) {
+		if (!this.pistons.size) return;
+		const o = frame.origin, cam = frame.camPos;
+		const now = frame.now;
+		for (const [key, p] of this.pistons) {
+			const ticks = (now - p.start) / 50;
+			const progress = Math.min(1, p.progress + 0.5 * ticks);
+			const at = world.entryAt(p.x, p.y, p.z);
+			const moving = at && at.n === 'minecraft:moving_piston';
+			if ((progress >= 1 && !moving) || ticks > 40) {
+				this.pistons.delete(key);
+				continue;
+			}
+			if (!moving && ticks > 2) continue;
+			const bx = p.x - o[0] - cam[0], by = p.y - o[1] - cam[1], bz = p.z - o[2] - cam[2];
+			if (!frame.frustum(bx + 0.5, by + 0.5, bz + 0.5, 2)) continue;
+			const offset = p.extending ? progress - 1 : 1 - progress;
+			const isShort = p.shortBlock >= 0 && (p.shortAbove ? progress >= 0.5 : progress <= 0.5);
+			const [sky, blockLight] = world.lightAt(p.x, p.y, p.z);
+			const style = { color: [1, 1, 1, 1], light: [blockLight * 16, sky * 16], overlay: [0, 0] };
+			const mesh = this.blockStateMesh(isShort ? p.shortBlock : p.block, world);
+			if (mesh) {
+				const m = mat4();
+				translate(m, bx + p.sx * offset, by + p.sy * offset, bz + p.sz * offset);
+				this.emitItem(mesh, m, style);
+			}
+			if (p.base >= 0) {
+				const baseMesh = this.blockStateMesh(p.base, world);
+				if (baseMesh) {
+					const m = mat4();
+					translate(m, bx, by, bz);
+					this.emitItem(baseMesh, m, style);
+				}
+			}
+		}
+	}
+
 	prepareBlockEntities(frame, world, list) {
 		const o = frame.origin, cam = frame.camPos;
 		this.drawBreaking(frame, world);
+		this.drawPistons(frame, world);
 		this.portals.endPortal.length = 0;
 		this.portals.endGateway.length = 0;
 		for (const section of world.sections.values()) {

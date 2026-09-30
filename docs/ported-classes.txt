@@ -271,3 +271,6 @@ net/minecraft/world/entity/monster/Enderman
 net/minecraft/client/model/object/boat/AbstractBoatModel
 net/minecraft/client/renderer/entity/AbstractBoatRenderer
 net/minecraft/world/entity/vehicle/boat/AbstractBoat
+# pistons (entities.js drawPistons; BlockEntityEncoder.movingPiston)
+net/minecraft/world/level/block/piston/PistonMovingBlockEntity
+net/minecraft/client/renderer/blockentity/PistonHeadRenderer

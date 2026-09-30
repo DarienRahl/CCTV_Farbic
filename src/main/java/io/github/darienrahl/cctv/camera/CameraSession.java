@@ -24,6 +24,8 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.LightLayer;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.piston.PistonMovingBlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.levelgen.Heightmap;
@@ -326,6 +328,7 @@ final class CameraSession {
 		rescan(level);
 		syncViewers(tick);
 
+		sendMovingPistons(level);
 		if (tick % config.entityUpdateTicks == 0) {
 			entityBlockStates.clear();
 			String entities = entitiesJson(level, tick);
@@ -432,6 +435,10 @@ final class CameraSession {
 
 		int index = ((y & 15) << 8) | ((z & 15) << 4) | (x & 15);
 		int id = Block.getId(state);
+		if (state.is(Blocks.MOVING_PISTON) && movingPistons.size() < 256) {
+			// its PistonMovingBlockEntity is set after the block: read at the end of the tick
+			movingPistons.add(new BlockPos(x, y, z));
+		}
 		if (entry.inFlight > 0) {
 			if (entry.changesInFlight == null) {
 				entry.changesInFlight = new ArrayList<>(4);
@@ -492,6 +499,7 @@ final class CameraSession {
 		columns.clear();
 		surfaceCache.clear();
 		blockChanges.clear();
+		movingPistons.clear();
 		blockEntityRefresh.clear();
 		lightWatch.clear();
 		results.clear();
@@ -1039,6 +1047,23 @@ final class CameraSession {
 		if (fx != null) {
 			effects.add(fx);
 		}
+	}
+
+	/** Blocks that became moving pistons this tick (their block entities are read at the end of the tick). */
+	private final List<BlockPos> movingPistons = new ArrayList<>();
+
+	/** Blocks pushed and pulled by pistons: effects the viewer animates like PistonHeadRenderer. */
+	private void sendMovingPistons(ServerLevel level) {
+		if (movingPistons.isEmpty()) {
+			return;
+		}
+		for (BlockPos pos : movingPistons) {
+			if (level.getBlockEntity(pos) instanceof PistonMovingBlockEntity piston) {
+				onEffect(level, pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5, 96,
+						states -> BlockEntityEncoder.movingPiston(pos, piston, states));
+			}
+		}
+		movingPistons.clear();
 	}
 
 	/** Blocks being broken (ClientboundBlockDestroyPacket) by breaker id: x, y, z, progress 0..9, last update tick. */
