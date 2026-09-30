@@ -23,6 +23,9 @@ console.log('game ready:', JSON.stringify(info));
 const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
 try {
 	const page = await browser.newPage({ viewport: { width: info.width, height: info.height } });
+	// the game's options the viewer has too (clouds: off / fast / fancy)
+	const settings = { graphics: 'vanilla', clouds: ['off', 'fast', 'fancy'].includes(info.clouds) ? info.clouds : 'fancy' };
+	await page.addInitScript(s => localStorage.setItem('cctv-settings-v2', s), JSON.stringify(settings));
 	page.on('console', m => { if (m.type() === 'error' || m.type() === 'warning') console.log('[browser]', m.type(), m.text()); });
 	page.on('pageerror', e => console.log('[browser] pageerror', e.message));
 	await page.goto(`http://127.0.0.1:8100/cam/${info.camera}?clean`);

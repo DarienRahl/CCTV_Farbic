@@ -102,8 +102,10 @@ public class ReferenceRenders implements FabricClientGameTest {
 			Path game = context.takeScreenshot(TestScreenshotOptions.of("reference-game").withSize(WIDTH, HEIGHT).disableCounterPrefix());
 
 			Files.createDirectories(dir);
+			// the viewer is set up like the game's options (its clouds follow the game's cloud setting)
+			String clouds = context.computeOnClient(client -> client.options.cloudStatus().get().name().toLowerCase(java.util.Locale.ROOT));
 			Files.writeString(dir.resolve("ready.json"), "{\"camera\":\"ref\",\"width\":" + WIDTH + ",\"height\":" + HEIGHT
-					+ ",\"game\":\"" + game.toAbsolutePath().toString().replace('\\', '/') + "\"}");
+					+ ",\"clouds\":\"" + clouds + "\",\"game\":\"" + game.toAbsolutePath().toString().replace('\\', '/') + "\"}");
 			Path done = dir.resolve("done");
 			for (int tick = 0; tick < VIEWER_TICKS && !Files.exists(done); tick++) {
 				context.waitTick();

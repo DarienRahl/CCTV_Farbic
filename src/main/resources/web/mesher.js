@@ -546,7 +546,7 @@ export class Mesher {
 				this.quadShape(info, p, q, false);
 				light = this.lightCoords(info, this.faceCubic ? p + STEP[q.dir] : p);
 			}
-			const shade = q.shade ? this.cardinal[q.dir] : this.cardinal[UP];
+			const shade = this.cardinal[q.shadeDir >= 0 ? q.shadeDir : q.dir];
 			for (let k = 0; k < 4; k++) {
 				colors[k] = shade;
 				// Flat light as smooth coords (x16 per level).
@@ -676,7 +676,7 @@ export class Mesher {
 			lights[remap[0]] = l1; lights[remap[1]] = l2; lights[remap[2]] = l3; lights[remap[3]] = l4;
 		}
 
-		const brightness = q.shade ? this.cardinal[d] : this.cardinal[UP];
+		const brightness = this.cardinal[q.shadeDir >= 0 ? q.shadeDir : d];
 		for (let k = 0; k < 4; k++) {
 			// ARGB.gray(value) quantizes to 8 bits before scaling.
 			colors[k] = Math.round(colors[k] * 255) / 255 * brightness;

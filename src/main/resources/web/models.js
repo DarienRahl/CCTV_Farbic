@@ -285,7 +285,10 @@ export class BlockModels {
 		const from = element.from, to = element.to;
 		if (!from || !to) return;
 		const rotation = element.rotation;
-		const shade = element.shade !== false;
+		// 26.3's "shade_direction_override": the quad is lit like a face of that direction whatever way it faces or
+		// the variant turns it (plants and torches: up); "shade": false of older resource packs meant the same as up
+		const shadeDir = element.shade_direction_override ? DIR_INDEX[element.shade_direction_override] ?? -1
+			: element.shade === false ? DIR_INDEX.up : -1;
 		const emission = element.light_emission || 0;
 		for (const [dirName, face] of Object.entries(element.faces || {})) {
 			const dir = DIR_INDEX[dirName];
@@ -376,7 +379,7 @@ export class BlockModels {
 				dir: facing,
 				aligned,
 				tint: face.tintindex === undefined ? -1 : face.tintindex,
-				shade,
+				shadeDir,
 				emission,
 				material,
 			});
