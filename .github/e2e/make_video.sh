@@ -13,5 +13,5 @@ ffmpeg -hide_banner -loglevel warning -y -i "$RAW" -filter_complex \
   "[0:v]setpts=PTS*$SPEED,fps=30,scale=960:-2:flags=lanczos,format=yuv420p[v];[0:a]asetrate=48000*$FACTOR,aresample=48000[a]" \
   -map "[v]" -map "[a]" -c:v libx264 -preset slow -crf 21 -movflags +faststart -c:a aac -b:a 160k "$OUT/showcase.mp4"
 ffmpeg -hide_banner -loglevel warning -y -i "$OUT/showcase.mp4" -an \
-  -vf "fps=15,scale=880:-2:flags=lanczos" -loop 0 -c:v libwebp_anim -quality 70 -compression_level 6 "$OUT/showcase.webp"
+  -vf "fps=12,scale=800:-2:flags=lanczos" -loop 0 -c:v libwebp_anim -quality 55 -compression_level 4 "$OUT/showcase.webp"
 ls -l "$OUT"

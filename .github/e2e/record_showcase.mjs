@@ -7,7 +7,7 @@
 // lower by as much), and make_video.sh speeds the recording up again, which brings the sounds back to their
 // own pitch.
 //
-//     node record_showcase.mjs <out.webm>      (SPEED=0.25 by default)
+//     SPEED=0.2 node record_showcase.mjs <out.webm>      (the server set to the same pace: showcase.py --speed)
 import { spawn } from 'node:child_process';
 import { chromium } from 'playwright';
 

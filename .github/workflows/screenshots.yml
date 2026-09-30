@@ -71,10 +71,10 @@ jobs:
         working-directory: .github/e2e
         run: |
           python3 showcase.py
-          python3 showcase.py --speed 0.25
-          SPEED=0.25 node record_showcase.mjs showcase.webm
+          python3 showcase.py --speed 0.2
+          SPEED=0.2 node record_showcase.mjs showcase.webm
           python3 showcase.py --speed 1
-          bash make_video.sh showcase.webm 0.25 ../../docs/media
+          bash make_video.sh showcase.webm 0.2 ../../docs/media
           python3 video_preview.py ../../docs/media/showcase.mp4
       - name: stop server
         if: always()
