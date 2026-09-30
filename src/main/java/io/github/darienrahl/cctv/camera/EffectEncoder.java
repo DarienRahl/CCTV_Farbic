@@ -25,7 +25,6 @@ import net.minecraft.util.RandomSource;
 import net.minecraft.util.random.Weighted;
 import net.minecraft.util.random.WeightedList;
 import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
@@ -297,7 +296,7 @@ final class EffectEncoder {
 			kind = switch (event) {
 				case 35 -> "totem";
 				case 46 -> "teleport";
-				case 15 -> entity.getType() == EntityType.WITCH ? "witch" : null;
+				case 15 -> "minecraft:witch".equals(BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType()).toString()) ? "witch" : null;
 				default -> null;
 			};
 		}
