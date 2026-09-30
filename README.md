@@ -10,7 +10,7 @@
   <a href="https://github.com/DarienRahl/CCTV_Farbic/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/DarienRahl/CCTV_Farbic?style=for-the-badge&amp;label=release&amp;color=5d8c3e"></a>
   <img alt="Minecraft 26.3" src="https://img.shields.io/badge/minecraft-26.3-866043?style=for-the-badge">
   <img alt="Fabric, server side only" src="https://img.shields.io/badge/fabric-server%20side%20only-8b8b8b?style=for-the-badge">
-  <a href="#roadmap"><img alt="Roadmap" src="https://img.shields.io/badge/roadmap-70%2F72%20done-80ff20?style=for-the-badge"></a>
+  <a href="#roadmap"><img alt="Roadmap" src="https://img.shields.io/badge/roadmap-71%2F72%20done-80ff20?style=for-the-badge"></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-555555?style=for-the-badge"></a>
 </p>
 <!-- badges:end -->
@@ -180,7 +180,7 @@ at once as a video wall.
 ## Roadmap
 
 <!-- roadmap:start -->
-<p align="center"><img src="docs/images/roadmap/banner.svg" width="100%" alt="CCTV roadmap: 70 of 72 done"></p>
+<p align="center"><img src="docs/images/roadmap/banner.svg" width="100%" alt="CCTV roadmap: 71 of 72 done"></p>
 
 What is done and what comes next, milestone by milestone (the full plan with its principles is in
 [docs/ROADMAP.md](docs/ROADMAP.md)).
@@ -218,12 +218,12 @@ What is done and what comes next, milestone by milestone (the full plan with its
 
 </details>
 
-<img src="docs/images/roadmap/1-3.svg" width="100%" alt="1.3 — 1:1 picture: in progress - 1.3.4 is out, 46 of 47 done">
+<img src="docs/images/roadmap/1-3.svg" width="100%" alt="1.3 — 1:1 picture: in progress - 1.3.4 is out, 47 of 47 done">
 
 <details open>
-<summary><b>1.3 — 1:1 picture</b> · in progress - 1.3.4 is out · 46 of 47 done</summary>
+<summary><b>1.3 — 1:1 picture</b> · in progress - 1.3.4 is out · 47 of 47 done</summary>
 
-- [ ] **Reference renders in CI**: a Fabric client game test builds the CI scene in single player, takes a screenshot from the camera position with the game, and the viewer takes one from the same camera; both are published side by side with a difference score
+- [x] **Reference renders in CI**: a Fabric client game test (`src/gametest`, run under a virtual display with Mesa's software Vulkan) builds a scene in single player and takes the game's own picture from a spectator's eyes, a camera is put at the same eyes and the viewer takes its picture; both are published side by side with a difference score in the job summary and the `reference-renders` artifact
 - [x] **Signs and hanging signs** with their text in the game font (text sent by the server; boards and beds are block models in 26.3 and were already drawn)
 - [x] **Banners with patterns** (and their sway), player heads with their owner's skin, pottery sherds on decorated pots
 - [x] **Beacon beams** (BeaconRenderer: the beam sections the beacon computed, the turning beam and its glow, wider far away; re-read every 40 ticks like the beacon's own checks)
@@ -549,6 +549,12 @@ Stream events:
   camera over RCON. It checks the stream (sections, light, entities 20×/s, instant block changes),
   the assets and entity models, then takes screenshots of the viewer in Chromium, vanilla and
   shaders (artifact `server-test`).
+- **Reference renders** (`reference-renders` job): a Fabric client game test (`src/gametest`) starts the real
+  game under a virtual display, builds a scene in single player and takes the game's picture from a spectator's
+  eyes; a camera at the same eyes is opened in the viewer (`?clean`, without the overlay) and both pictures go
+  side by side with a difference score into the job summary and the `reference-renders` artifact. Run it locally
+  with `./gradlew runClientGameTest` while `node .github/e2e/reference.mjs build/run/clientGameTest/reference`
+  waits for the game.
 
 ## Limitations
 

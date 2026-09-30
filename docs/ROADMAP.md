@@ -70,9 +70,10 @@ to the milestone it belongs to. The roadmap on the README page is drawn from thi
 
 ## 1.3 — 1:1 picture (parts released: 1.3.0, 1.3.1, 1.3.2, 1.3.3, 1.3.4)
 
-- [ ] **Reference renders in CI**: a Fabric client game test builds the CI scene in single
-      player, takes a screenshot from the camera position with the game, and the viewer takes
-      one from the same camera; both are published side by side with a difference score
+- [x] **Reference renders in CI**: a Fabric client game test (`src/gametest`, run under a virtual display
+      with Mesa's software Vulkan) builds a scene in single player and takes the game's own picture from a
+      spectator's eyes, a camera is put at the same eyes and the viewer takes its picture; both are published
+      side by side with a difference score in the job summary and the `reference-renders` artifact
 - [x] **Signs and hanging signs** with their text in the game font (text sent by the server; boards and
       beds are block models in 26.3 and were already drawn)
 - [x] **Banners with patterns** (and their sway), player heads with their owner's skin, pottery
