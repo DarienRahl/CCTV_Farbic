@@ -264,7 +264,8 @@ def main():
     rcon.command("setblock -2 -60 -3 minecraft:lectern[facing=north,has_book=true]")
     # suspicious sand brushed from above, a diamond showing (BrushableBlockRenderer), and a conduit (its shell);
     # the side it is brushed from is set further down, because the block's first tick clears it (nobody brushes)
-    rcon.command("setblock 7 -60 0 minecraft:conduit")
+    # not waterlogged (the default): its water would flood the scene and wash the player head away
+    rcon.command("setblock 7 -60 0 minecraft:conduit[waterlogged=false]")
     rcon.command('setblock 6 -60 0 minecraft:suspicious_sand[dusted=2]{item:{id:"minecraft:diamond",count:1}}')
     # a spawner with a zombie turning inside (no player near, so it spawns nothing)
     rcon.command('setblock -4 -60 -5 minecraft:spawner{SpawnData:{entity:{id:"minecraft:zombie"}}}')
