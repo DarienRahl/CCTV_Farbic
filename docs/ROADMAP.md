@@ -239,7 +239,7 @@ to the milestone it belongs to. The roadmap on the README page is drawn from thi
       sulfur cubes squash when they land and stretch when they jump; TNT swells like the game's; babies cast
       the smaller shadow of their age scale
 
-## 1.6 — players and what they carry
+## 1.6 — players and what they carry (released: 1.6.0)
 
 - [x] **Parrots on players' shoulders** (ParrotOnShoulderLayer), sitting and looking where the player looks
 - [x] **Heads and hats** (CustomHeadLayer): skulls and player heads with their owner's skin, carved pumpkins,

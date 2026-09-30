@@ -68,6 +68,7 @@ own code and read from its `client.jar`.
 ### 🐑 Every mob, animated
 All mob models with their variants, armour and equipment, the game's keyframe animations, entity events,
 shadows and name tags in the game's font — and the holograms, mannequins and shelves servers decorate with.
+Players draw bows, raise shields, wear hats and carry parrots, with their team colours over their heads.
 
 </td>
 <td valign="top">
@@ -323,10 +324,10 @@ What is done and what comes next, milestone by milestone (the full plan with its
 
 </details>
 
-<img src="docs/images/roadmap/1-6.svg" width="100%" alt="1.6 — players and what they carry: started, 8 of 8 done">
+<img src="docs/images/roadmap/1-6.svg" width="100%" alt="1.6 — players and what they carry: released 1.6.0, 8 of 8 done">
 
 <details>
-<summary><b>1.6 — players and what they carry</b> · started · 8 of 8 done</summary>
+<summary><b>1.6 — players and what they carry</b> · released 1.6.0 · 8 of 8 done</summary>
 
 - [x] **Parrots on players' shoulders** (ParrotOnShoulderLayer), sitting and looking where the player looks
 - [x] **Heads and hats** (CustomHeadLayer): skulls and player heads with their owner's skin, carved pumpkins, banners and data packs' hats worn by players, mannequins, armour stands, humanoid mobs, villagers, illagers, piglins, copper golems and sulfur cubes, each at its renderer's place and size
