@@ -53,9 +53,11 @@ to the milestone it belongs to. The roadmap on the README page is drawn from thi
       `AnimationState`s and entity events. Warden, sniffer, frog, camel, armadillo, bat, breeze,
       creaking, rabbit, copper golem, nautilus and baby axolotl move like in the game
 - [x] Entity names from the game's language file, in any game language (`language` setting)
+- [x] **Mobs the viewer does not know yet** (a newer game version's) are drawn with the game's model layer
+      and texture found by its naming (`<name>#main`, `textures/entity/<name>/…`) and a generic walk,
+      instead of a box
 - [ ] **Automatic entity mapping**: read `EntityRenderers` from `client.jar` (bytecode) to map each
-      entity type to its model layers and textures; the hand-written table only overrides. New
-      mobs appear with their real model without code changes
+      entity type to its exact model layers and textures; the hand-written table only overrides
 - [x] Client-side animations from entity events: iron golem, ravager, hoglin and zoglin attacks,
       the ravager's stun and roar, sheep eating grass, wolves shaking off water and begging, goats
       ramming (events are queued, so none is lost when the viewer draws fewer frames than it gets)

@@ -5,7 +5,7 @@
   <a href="https://github.com/DarienRahl/CCTV_Farbic/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/DarienRahl/CCTV_Farbic?style=for-the-badge&amp;label=release&amp;color=5d8c3e"></a>
   <img alt="Minecraft 26.3" src="https://img.shields.io/badge/minecraft-26.3-866043?style=for-the-badge">
   <img alt="Fabric, server side only" src="https://img.shields.io/badge/fabric-server%20side%20only-8b8b8b?style=for-the-badge">
-  <a href="#roadmap"><img alt="Roadmap" src="https://img.shields.io/badge/roadmap-52%2F61%20done-80ff20?style=for-the-badge"></a>
+  <a href="#roadmap"><img alt="Roadmap" src="https://img.shields.io/badge/roadmap-53%2F62%20done-80ff20?style=for-the-badge"></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-555555?style=for-the-badge"></a>
 </p>
 <!-- badges:end -->
@@ -49,7 +49,7 @@ in a web browser: players, mobs, opening doors and placed blocks show up right a
 ## Roadmap
 
 <!-- roadmap:start -->
-<p align="center"><img src="docs/images/roadmap/banner.svg" width="100%" alt="CCTV roadmap: 52 of 61 done"></p>
+<p align="center"><img src="docs/images/roadmap/banner.svg" width="100%" alt="CCTV roadmap: 53 of 62 done"></p>
 
 What is done and what comes next, milestone by milestone (the full plan with its principles is in
 [docs/ROADMAP.md](docs/ROADMAP.md)).
@@ -69,10 +69,10 @@ What is done and what comes next, milestone by milestone (the full plan with its
 
 </details>
 
-<img src="docs/images/roadmap/1-2.svg" width="100%" alt="1.2 — easy updates: released 1.2.0, 7 of 9 done">
+<img src="docs/images/roadmap/1-2.svg" width="100%" alt="1.2 — easy updates: released 1.2.0, 8 of 10 done">
 
 <details>
-<summary><b>1.2 — easy updates</b> · released 1.2.0 · 7 of 9 done</summary>
+<summary><b>1.2 — easy updates</b> · released 1.2.0 · 8 of 10 done</summary>
 
 - [x] `docs/UPDATING.md`: the step-by-step update procedure and the list of game touch points
 - [x] **Update workflow** (`update-minecraft.yml`): for a given game version it resolves Fabric Loader, Fabric API and Loom, bumps `gradle.properties` and `fabric.mod.json`, builds, runs the server test and pushes an `update/<version>` branch with a report
@@ -80,7 +80,8 @@ What is done and what comes next, milestone by milestone (the full plan with its
 - [x] **Soft failures**: every feature that touches the game API catches `LinkageError`, logs once and switches itself off, so a newer game version degrades instead of crashing
 - [x] **Keyframe animations from the game**: every `AnimationDefinition` in `client.jar` is read at run time and played by a port of `KeyframeAnimation`; the server reports running `AnimationState`s and entity events. Warden, sniffer, frog, camel, armadillo, bat, breeze, creaking, rabbit, copper golem, nautilus and baby axolotl move like in the game
 - [x] Entity names from the game's language file, in any game language (`language` setting)
-- [ ] **Automatic entity mapping**: read `EntityRenderers` from `client.jar` (bytecode) to map each entity type to its model layers and textures; the hand-written table only overrides. New mobs appear with their real model without code changes
+- [x] **Mobs the viewer does not know yet** (a newer game version's) are drawn with the game's model layer and texture found by its naming (`<name>#main`, `textures/entity/<name>/…`) and a generic walk, instead of a box
+- [ ] **Automatic entity mapping**: read `EntityRenderers` from `client.jar` (bytecode) to map each entity type to its exact model layers and textures; the hand-written table only overrides
 - [x] Client-side animations from entity events: iron golem, ravager, hoglin and zoglin attacks, the ravager's stun and roar, sheep eating grass, wolves shaking off water and begging, goats ramming (events are queued, so none is lost when the viewer draws fewer frames than it gets)
 - [ ] More of them: evoker fangs and spells, horse rearing and eating, fox and panda poses, the iron golem offering a flower
 

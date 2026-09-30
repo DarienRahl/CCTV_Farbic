@@ -1448,7 +1448,7 @@ const VILLAGER_LEVELS = [null, 'stone', 'iron', 'gold', 'emerald', 'diamond'];
  */
 export function describeMob(e) {
 	const type = strip(e.type);
-	const def = MOBS[type];
+	const def = MOBS[type] || autoMob(type);
 	if (!def || def.special) return def ? { def, special: def.special } : null;
 	const value = (v, fallback) => (typeof v === 'function' ? v(e) : v ?? fallback);
 	const out = [];
@@ -1514,7 +1514,30 @@ export function describeMob(e) {
 }
 
 export function isKnownMob(type) {
-	return !!MOBS[strip(type)];
+	const name = strip(type);
+	return !!(MOBS[name] || autoMob(name));
+}
+
+let autoResolver = null;
+const autoMobs = new Map();
+
+/**
+ * Mobs the table above does not know (a newer game version's): entities.js finds their model layer and texture
+ * by the game's naming ("<name>#main", textures/entity/<name>/<name>.png). The resolver returns undefined while
+ * the models or the texture list are still loading.
+ */
+export function setAutoMobResolver(resolver) {
+	autoResolver = resolver;
+	autoMobs.clear();
+}
+
+function autoMob(type) {
+	if (!autoResolver) return null;
+	if (autoMobs.has(type)) return autoMobs.get(type);
+	const def = autoResolver(type);
+	if (def === undefined) return null;
+	autoMobs.set(type, def);
+	return def;
 }
 
 export { ANIMS };

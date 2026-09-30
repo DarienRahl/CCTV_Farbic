@@ -6,7 +6,7 @@
 import {
 	ModelLibrary, VertexSink, FLOATS, emitModel, emitQuads, partMatrix, mat4, mul, translate, rotate, scale, DEG,
 } from './entity-models.js';
-import { describeMob, isKnownMob, blockEntityModel, dyeRgb, CLIENT, equipmentPose, setEquipment } from './mobs.js';
+import { describeMob, isKnownMob, blockEntityModel, dyeRgb, CLIENT, equipmentPose, setEquipment, setAutoMobResolver } from './mobs.js';
 import { Animator, AnimationStates } from './keyframes.js';
 import { collectParts } from './models.js';
 import { JavaRandom } from './rng.js';
@@ -658,7 +658,10 @@ export class EntityRenderer {
 		const query = tokenSuffix('?');
 		fetch('/assets/entities.json' + query, { credentials: 'same-origin' })
 			.then(r => (r.ok ? r.json() : []))
-			.then(list => { this.entityList = new Set(list); })
+			.then(list => {
+				this.entityList = new Set(list);
+				setAutoMobResolver(type => this.autoMob(type));
+			})
 			.catch(() => { this.entityList = new Set(); });
 		fetch('/assets/names.json' + query, { credentials: 'same-origin' })
 			.then(r => (r.ok ? r.json() : {}))
@@ -1933,6 +1936,21 @@ export class EntityRenderer {
 		}
 		this.itemMeshes.set(itemId, mesh);
 		return mesh;
+	}
+
+	/**
+	 * A mob the viewer's table does not know yet: drawn with the game's model layer "<name>#main" (and
+	 * "<name>_baby#main" for babies) and textures/entity/<name>/<name>.png (or the first texture in that folder),
+	 * walking with the generic animation. Undefined while the models are loading, null when nothing fits.
+	 */
+	autoMob(type) {
+		if (!this.library.layers || !this.entityList || !this.entityList.size) return undefined;
+		if (!/^[a-z0-9_]+$/.test(type) || !this.library.get('minecraft:' + type + '#main')) return null;
+		const texture = [type + '/' + type, type].find(t => this.entityList.has(t))
+			|| [...this.entityList].sort().find(t => t.startsWith(type + '/'));
+		if (!texture) return null;
+		const baby = this.library.get('minecraft:' + type + '_baby#main') ? type + '_baby#main' : null;
+		return { layer: e => (e.baby && baby ? baby : type + '#main'), texture, shadow: 0.5, anim: 'generic', auto: true };
 	}
 
 	/** The item definition's special or composite model (items/*.json of the game), or null. */
