@@ -69,23 +69,25 @@ public class ReferenceRenders implements FabricClientGameTest {
 		// the eyes both pictures are taken from
 		"tp @a 0.5 -58.5 -6.5 -20 18",
 		"execute as @p at @p run cctv create ref ~ ~ ~ ~ ~",
-		"cctv range ref 128",
+		"cctv range ref 96",
 	};
+	/** Chunks render slowly on CI's software renderer: up to five minutes. */
+	private static final int CHUNK_TICKS = 20 * 60 * 5;
 
 	@Override
 	public void runTest(ClientGameTestContext context) {
 		Path dir = FabricLoader.getInstance().getGameDir().resolve("reference");
-		// the viewer's defaults: a 70 degree field of view, 128 blocks (8 chunks) of terrain
+		// the viewer's defaults: a 70 degree field of view, 96 blocks (6 chunks) of terrain
 		context.runOnClient(client -> {
 			client.options.fov().set(70);
-			client.options.renderDistance().set(8);
+			client.options.renderDistance().set(6);
 		});
 		try (TestSingleplayerContext singleplayer = context.worldBuilder().create()) {
 			TestServerContext server = singleplayer.getServer();
 			for (String command : SCENE) {
 				server.runCommand(command);
 			}
-			singleplayer.getConnection().waitForChunksRender();
+			singleplayer.getConnection().waitForChunksRender(CHUNK_TICKS);
 			// F1: no hotbar, crosshair or chat in the picture
 			context.getInput().pressKey(options -> options.keyToggleGui);
 			context.waitTicks(40);

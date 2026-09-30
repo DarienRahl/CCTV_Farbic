@@ -302,6 +302,11 @@ def main():
     rcon.command("cctv create ci -1 -56 -8 10 30")
     # a camera under water, in the pool (the water fog and the underwater overlay, screenshot.mjs)
     rcon.command("cctv create wet -5.5 -60.8 9.5 0 10")
+    # the camera's marker in game (a small observer block_display)
+    markers = rcon.command("execute if entity @e[type=minecraft:block_display,tag=cctv_camera]")
+    print("camera markers:", markers, flush=True)
+    if "passed" not in markers.lower():
+        failures.append(f"no camera marker was placed: {markers}")
     listing = rcon.command("cctv list")
     assert "ci" in listing, "camera not listed"
 
