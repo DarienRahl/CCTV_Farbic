@@ -231,6 +231,11 @@ net/minecraft/client/resources/sounds/SimpleSoundInstance
 net/minecraft/client/resources/sounds/EntityBoundSoundInstance
 com/mojang/blaze3d/audio/Channel
 com/mojang/blaze3d/audio/Listener
+# background music and its Now Playing toast (sound.js musicTick, gui.js)
+net/minecraft/client/sounds/MusicManager
+net/minecraft/client/gui/components/toasts/NowPlayingToast
+net/minecraft/client/gui/components/toasts/ToastManager
+net/minecraft/client/color/ColorLerper
 # client sounds of blocks and lightning (particles.js animateBlock / animateFluid, sound.js)
 net/minecraft/world/entity/LightningBolt
 # ambience (sound.js ambient, particles.js tickWeatherEffects and animateBlock)

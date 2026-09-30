@@ -42,6 +42,14 @@ abstract class PackSource implements Closeable {
 		return Files.isDirectory(path) ? new Folder(path) : new Zip(path);
 	}
 
+	/**
+	 * The resources of a mod, like the client's mod resource packs: its root (a folder, or the root of the mod
+	 * jar's file system as Fabric Loader opened it), with the mod's id as the name.
+	 */
+	static PackSource mod(Path root, String name) {
+		return new Folder(root, name);
+	}
+
 	/** Whether a pack (zip or folder) has client assets at all: data packs usually do not. */
 	static boolean hasAssets(Path path) {
 		if (Files.isDirectory(path)) {
@@ -103,7 +111,11 @@ abstract class PackSource implements Closeable {
 		private @Nullable List<String> files;
 
 		Folder(Path root) {
-			super(root.getFileName() + "/");
+			this(root, root.getFileName() + "/");
+		}
+
+		Folder(Path root, String name) {
+			super(name);
 			this.root = root.toAbsolutePath().normalize();
 		}
 

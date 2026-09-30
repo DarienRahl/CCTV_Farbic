@@ -76,6 +76,11 @@ public final class CctvConfig {
 	 * {@code resource-pack-sha1}) once and use it too, between the world's packs and config/cctv/resourcepacks.
 	 */
 	public boolean serverResourcePack = true;
+	/**
+	 * Use the assets of the server's mods (sounds, textures, texts) like the client's mod resource packs, e.g. the
+	 * songs of The Immersive Music Mod; their music plays in the viewer the way those mods play it.
+	 */
+	public boolean modAssets = true;
 
 	/** Compress the live stream with gzip when the browser supports it. */
 	public boolean gzip = true;
@@ -144,6 +149,8 @@ public final class CctvConfig {
 		 * (a song every 10 to 20 minutes), "frequent" (up to 10 minutes apart) or "constant".
 		 */
 		public String music = "default";
+		/** The Now Playing toast when a song starts, like the game's Music Toast option: "on" or "off". */
+		public String musicToast = "on";
 		/** Visitors cannot change the settings above. */
 		public boolean lockSettings = false;
 	}
@@ -233,6 +240,7 @@ public final class CctvConfig {
 		viewer.fov = viewer.fov == 0 ? 0 : clamp(viewer.fov, 30, 110);
 		viewer.biomeBlend = clamp(viewer.biomeBlend, 0, 7);
 		viewer.music = oneOf(viewer.music, "default", "off", "default", "frequent", "constant");
+		viewer.musicToast = oneOf(viewer.musicToast, "on", "on", "off");
 		if (viewer.postShader == null || !viewer.postShader.matches("(builtin:)?[A-Za-z0-9_-]{0,64}")) {
 			viewer.postShader = "";
 		}

@@ -31,6 +31,7 @@ import org.slf4j.Logger;
 import io.github.darienrahl.cctv.CctvConfig;
 import io.github.darienrahl.cctv.assets.ClientAssets;
 import io.github.darienrahl.cctv.assets.GameSounds;
+import io.github.darienrahl.cctv.assets.ModMusic;
 
 /**
  * Small HTTP server built on the JDK's {@code com.sun.net.httpserver}.
@@ -54,6 +55,8 @@ import io.github.darienrahl.cctv.assets.GameSounds;
  * GET /assets/font/{path}         the game's font (definitions .json, glyph sheets .png)
  * GET /assets/sounds.json         the game's sound events (sounds.json merged with resource packs)
  * GET /assets/sound/{ns}/{path}.ogg one sound file (resource packs, else the game's asset, cached)
+ * GET /assets/music.json         song titles for the Now Playing toast, The Immersive Music Mod's playlists
+ * GET /assets/gui/{path}.png[.mcmeta] one GUI sprite (the Now Playing toast's background and notes)
  * GET /assets/{trims|palettes|map}/{path}.png[.mcmeta] armour trim patterns, trim palettes, map decorations
  * GET /api/status                 state of the live camera sessions (troubleshooting)
  * GET /map/{id}                   the picture of a map in an item frame a camera sees (128 x 128 RGBA)
@@ -77,6 +80,7 @@ public final class WebServer {
 	private final Logger logger;
 	private final SkinProxy skins;
 	private final GameSounds sounds;
+	private final ModMusic music;
 	private final Map<String, byte[]> resourceCache = new ConcurrentHashMap<>();
 	/** Optional directory to serve the web files from instead of the jar (for developing the viewer). */
 	private final Path devWebDir;
@@ -91,6 +95,7 @@ public final class WebServer {
 		this.logger = logger;
 		this.skins = new SkinProxy(logger);
 		this.sounds = new GameSounds(assets, logger);
+		this.music = new ModMusic(assets, dataDir.toAbsolutePath().getParent());
 		String dev = System.getProperty("cctv.webDir");
 		this.devWebDir = dev == null || dev.isBlank() ? null : Path.of(dev);
 	}
@@ -415,6 +420,34 @@ public final class WebServer {
 				return;
 			}
 			sendGzipped(exchange, "application/json", models);
+		} else if (path.equals("music.json")) {
+			byte[] json = config.sounds ? music.json() : null;
+			if (json == null) {
+				headers.add("Cache-Control", "no-store");
+				// 503 while the assets and texts load (the viewer asks again), 404 without sounds or client assets
+				boolean loading = config.sounds && (assets.state() == ClientAssets.State.LOADING
+						|| assets.state() == ClientAssets.State.READY && !assets.textsReady());
+				sendText(exchange, loading ? 503 : 404, "application/json", "{}");
+				return;
+			}
+			headers.add("ETag", music.etag());
+			headers.add("Cache-Control", "no-cache");
+			if (music.etag().equals(exchange.getRequestHeaders().getFirst("If-None-Match"))) {
+				exchange.sendResponseHeaders(304, -1);
+				return;
+			}
+			sendGzipped(exchange, "application/json", json);
+		} else if (path.startsWith("gui/") && (path.endsWith(".png") || path.endsWith(".png.mcmeta"))) {
+			// the game's GUI sprites (the Now Playing toast), resource packs over the client jar
+			boolean meta = path.endsWith(".mcmeta");
+			String sprite = path.substring("gui/".length(), path.length() - (meta ? ".png.mcmeta".length() : ".png".length()));
+			byte[] data = assets.guiSprite(sprite, meta);
+			if (data == null) {
+				sendText(exchange, 404, "text/plain", "Not found");
+				return;
+			}
+			headers.add("Cache-Control", "max-age=3600");
+			sendBytes(exchange, 200, meta ? "application/json" : "image/png", data);
 		} else if (path.equals("sounds.json") || path.startsWith("sound/")) {
 			if (!config.sounds) {
 				sendText(exchange, 404, "text/plain", "Sounds disabled");

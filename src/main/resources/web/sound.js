@@ -116,6 +116,9 @@ export class Sounds {
 			this.ctx = new Context();
 			this.master = this.ctx.createGain();
 			this.master.connect(this.ctx.destination);
+			// the music category's volume (SoundManager.updateCategoryVolume: The Immersive Music Mod fades with it)
+			this.musicVolume = this.ctx.createGain();
+			this.musicVolume.connect(this.master);
 		}
 		await this.ctx.resume();
 		this.enabled = true;
@@ -126,7 +129,35 @@ export class Sounds {
 				.catch(() => {})
 				.finally(() => { this.loading = null; });
 		}
+		this.loadMusicInfo();
 		return true;
+	}
+
+	/**
+	 * /assets/music.json: the titles of the songs (the game's music.* texts, The Immersive Music Mod's song names)
+	 * and that mod's playlists and settings when the server has it. Asked again while the server is still loading.
+	 */
+	loadMusicInfo() {
+		if (this.musicInfo || this.musicInfoLoading) return;
+		this.musicInfoLoading = fetch('/assets/music.json' + this.query, { credentials: 'same-origin' })
+			.then(r => (r.ok ? r.json() : r.status === 503 ? 'retry' : null))
+			.then(json => {
+				if (json === 'retry') setTimeout(() => this.loadMusicInfo(), 5000);
+				else this.musicInfo = json || { names: {} };
+			})
+			.catch(() => {})
+			.finally(() => { this.musicInfoLoading = null; });
+	}
+
+	/** The title NowPlayingToast shows for a song file ("minecraft:music/game/sweden" -> "C418 - Sweden"). */
+	songTitle(file) {
+		if (!file) return null;
+		const [ns, path] = file.includes(':') ? file.split(':') : ['minecraft', file];
+		// Identifier.toShortLanguageKey with '/' as '.'
+		const key = (ns === 'minecraft' ? path : ns + '.' + path).replace(/\//g, '.');
+		const names = this.musicInfo && this.musicInfo.names;
+		// The Immersive Music Mod's Songs.getSongText names its songs by their file when songs.json has no name
+		return (names && names[key]) || (ns === 'timm' ? ns + ':' + path : key);
 	}
 
 	disable() {
@@ -241,18 +272,30 @@ export class Sounds {
 	 * BackgroundMusic, its underwater music when the camera is in water, the boss music during the dragon fight.
 	 * The first song starts 100 ticks after sounds are turned on, the next ones after the song's delays capped by
 	 * the Music Frequency option (Default 20 minutes, Frequent 10, Constant right away).
+	 *
+	 * With The Immersive Music Mod on the server its playlists choose instead (MinecraftMixin: the End's and each
+	 * biome's own list of its songs and the game's), and like its MusicManagerMixin the song fades out a while after
+	 * the camera's biome has none of it, and a structure's song (the server finds the structure) fades the playing
+	 * song out and follows it.
 	 */
 	musicTick(at) {
 		const frequency = this.musicFrequency || 'default';
-		const m = this.music || (this.music = { delay: 100, current: null, random: randomFor(Math.floor(Math.random() * 2 ** 31)) });
+		const m = this.music || (this.music = {
+			delay: 100, current: null, random: randomFor(Math.floor(Math.random() * 2 ** 31)),
+			// TIMM: the event the last biome pick chose (CURRENT_BIOME_EVENT, null = undefined_biome), the one the
+			// playing song was chosen with, the structure song waiting and the one playing
+			volume: 1, switchDelay: 0, biomeEvent: null, lastBiomeEvent: null, structureEvent: null, structurePlaying: null,
+			structureSeen: undefined,
+		});
 		if (frequency === 'off') {
-			if (m.current) this.stop(m.current.sound);
-			m.current = null;
+			if (m.current) this.stopMusic(m);
 			m.delay = 100;
 			return;
 		}
-		const env = at.music || null;
-		const music = env ? (env.boss || (at.inWater && env.u) || env.d || null) : null;
+		const timm = this.musicInfo && this.musicInfo.timm;
+		if (timm) this.timmStructure(at, m, timm);
+		const music = this.situationalMusic(at, m, timm);
+		if (timm && this.timmTick(at, m, timm)) return;
 		if (!music) {
 			m.delay = Math.max(m.delay, 100);
 			return;
@@ -261,14 +304,12 @@ export class Sounds {
 		const nextInt = (lo, hi) => (lo >= hi ? lo : lo + m.random.nextInt(hi - lo + 1));
 		if (m.current) {
 			if (replace && id !== m.current.id) {
-				this.stop(m.current.sound);
-				m.current.stopped = true;
+				this.stopMusic(m);
 				m.delay = nextInt(0, Math.floor(minDelay / 2));
 			}
-			const loading = !m.current.sound && !m.current.stopped && performance.now() - m.current.at < 60000;
-			const active = loading || (m.current.sound && !m.current.sound.ended && !m.current.sound.stopped);
-			if (!active) {
+			if (m.current && !this.musicActive(m.current)) {
 				m.current = null;
+				this.onMusic(null);
 				// MusicFrequency.getNextSongDelay
 				const cap = { default: 24000, frequent: 12000, constant: 0 }[frequency] ?? 24000;
 				const next = frequency === 'constant' ? 100 : nextInt(Math.min(minDelay, cap), Math.min(maxDelay, cap));
@@ -276,16 +317,124 @@ export class Sounds {
 			}
 		}
 		m.delay = Math.min(m.delay, maxDelay);
-		if (!m.current && --m.delay <= 0) {
-			// SimpleSoundInstance.forMusic: the music category, not positioned
-			const current = { id, sound: null, at: performance.now() };
-			m.current = current;
-			this.play(id, 'music', 1, 1, m.random, null, 0, sound => {
-				if (m.current === current && !current.stopped) current.sound = sound;
-				else this.stop(sound);
-			});
-			m.delay = Infinity;
+		if (!m.current && --m.delay <= 0) this.startMusic(m, id);
+	}
+
+	/** Minecraft.getSituationalMusic: [sound event, min delay, max delay, replace current] or null. */
+	situationalMusic(at, m, timm) {
+		const env = at.music || null;
+		if (env && env.boss) return env.boss;
+		if (timm) {
+			// TIMM's MinecraftMixin replaces BackgroundMusic.select: the End's list, else the camera's biome's
+			const end = at.dimension === 'minecraft:the_end';
+			const c = at.camera;
+			const biome = end ? null : at.world && c ? at.world.biomeNameAt(Math.floor(c.x), Math.floor(c.y), Math.floor(c.z)) : null;
+			const list = (timm.biomes || {})[end ? 'end' : biome];
+			const event = list && list.length ? list[m.random.nextInt(list.length)] : null;
+			const known = event && this.events && this.events[event];
+			// BiomePlaylist.getMusicSound remembers its pick (getEndMusic does not)
+			if (!end) m.biomeEvent = known ? event : null;
+			if (known) return [event, timm.minDelay * 20, timm.maxDelay * 20, false];
 		}
+		return env ? ((at.inWater && env.u) || env.d || null) : null;
+	}
+
+	/** SimpleSoundInstance.forMusic (the music category, not positioned); MusicManager.startPlaying. */
+	startMusic(m, id) {
+		const current = { id, sound: null, at: performance.now() };
+		m.current = current;
+		// TIMM's MusicManagerMixin: the biome pick the song started with, and no structure song any more
+		m.lastBiomeEvent = m.biomeEvent;
+		m.structurePlaying = null;
+		this.play(id, 'music', 1, 1, m.random, null, 0, sound => {
+			if (m.current === current && !current.stopped) {
+				current.sound = sound;
+				this.onMusic(sound.name);
+			} else {
+				this.stop(sound);
+			}
+		});
+		m.delay = Infinity;
+	}
+
+	stopMusic(m) {
+		if (m.current) {
+			this.stop(m.current.sound);
+			m.current.stopped = true;
+		}
+		m.current = null;
+		this.setMusicVolume(m, 1);
+		this.onMusic(null);
+	}
+
+	musicActive(current) {
+		const loading = !current.sound && !current.stopped && performance.now() - current.at < 60000;
+		return loading || !!(current.sound && !current.sound.ended && !current.sound.stopped);
+	}
+
+	setMusicVolume(m, volume) {
+		m.volume = volume;
+		if (this.musicVolume) this.musicVolume.gain.value = volume;
+	}
+
+	/** The structure song the server found at the camera (TIMM's PlayPayload): sent once each time it changes. */
+	timmStructure(at, m, timm) {
+		const found = at.timmStructure || null;
+		if (found === m.structureSeen) return;
+		m.structureSeen = found;
+		if (found && timm.structures) m.structureEvent = found;
+	}
+
+	/** TIMM's MusicManagerMixin.onTick, before MusicManager.tick. True when the tick should stop there. */
+	timmTick(at, m, timm) {
+		if (!m.current || !this.musicActive(m.current)) {
+			if (m.structureEvent) this.playStructureMusic(m, timm);
+			return false;
+		}
+		const delta = 1 / (Math.max(1, timm.fadeDuration) * 20);
+		if (this.timmShouldFadeOut(at, m, timm)) {
+			this.setMusicVolume(m, Math.max(0, m.volume - delta));
+			if (m.volume > 0) return true;
+			this.stop(m.current.sound);
+			m.current.stopped = true;
+			m.current = null;
+			this.onMusic(null);
+			this.setMusicVolume(m, 1);
+			// (the mod's reset delay uses its settings in seconds as ticks)
+			m.delay = timm.resetDelay ? timm.minDelay + m.random.nextInt(Math.max(1, timm.maxDelay - timm.minDelay + 1)) : 10;
+			if (m.structureEvent) this.playStructureMusic(m, timm);
+			return true;
+		}
+		if (m.volume < 1) this.setMusicVolume(m, Math.min(1, m.volume + delta));
+		return false;
+	}
+
+	timmShouldFadeOut(at, m, timm) {
+		if (!timm.fading) return false;
+		if (m.structureEvent && m.structureEvent !== m.structurePlaying) return true;
+		if (m.structurePlaying && timm.structureFadeOut === 'never') return false;
+		// biomeSwitch: the camera's biome has no list, or its list does not have the playing song's event
+		if (m.lastBiomeEvent === null) return false;
+		const c = at.camera;
+		const biome = at.world && c ? at.world.biomeNameAt(Math.floor(c.x), Math.floor(c.y), Math.floor(c.z)) : null;
+		const list = biome ? (timm.biomes || {})[biome] : null;
+		const switched = !list || !list.includes(m.lastBiomeEvent);
+		if (switched) return ++m.switchDelay >= timm.fadeDelay * 20;
+		m.switchDelay = 0;
+		return false;
+	}
+
+	playStructureMusic(m, timm) {
+		const event = m.structureEvent;
+		m.structureEvent = null;
+		if (!this.events || !this.events[event]) return;
+		this.startMusic(m, event);
+		m.structurePlaying = event;
+	}
+
+	/** Tells the page which song started (its sound file) or that none is playing (null). */
+	onMusic(file) {
+		if (this.onMusicChange) this.onMusicChange(file ? this.songTitle(file) : null, file);
 	}
 
 	/**
@@ -707,9 +856,9 @@ export class Sounds {
 				node.connect(volumeNode).connect(panner).connect(this.master);
 			} else {
 				// relative sounds at the listener (Attenuation.NONE): the same volume everywhere
-				node.connect(volumeNode).connect(this.master);
+				node.connect(volumeNode).connect(source === 'music' && this.musicVolume ? this.musicVolume : this.master);
 			}
-			const playing = { source: node, panner, entity: at ? at.entity : undefined, record: source === 'record' || source === 'music' };
+			const playing = { source: node, panner, entity: at ? at.entity : undefined, record: source === 'record' || source === 'music', name: sound.name };
 			this.playing.add(playing);
 			node.onended = () => {
 				playing.ended = true;

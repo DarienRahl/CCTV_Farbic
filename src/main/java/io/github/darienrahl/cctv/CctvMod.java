@@ -1,6 +1,10 @@
 package io.github.darienrahl.cctv;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
 
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
@@ -11,6 +15,7 @@ import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.loader.api.FabricLoader;
+import net.fabricmc.loader.api.ModContainer;
 import net.minecraft.world.level.storage.LevelResource;
 
 import io.github.darienrahl.cctv.assets.ClientAssets;
@@ -45,6 +50,9 @@ public final class CctvMod implements ModInitializer {
 					.map(container -> container.getMetadata().getVersion().getFriendlyString())
 					.orElse("unknown");
 			ClientAssets assets = new ClientAssets(dir.resolve("assets"), version, config.downloadClientAssets, config.language, LOGGER);
+			if (config.modAssets) {
+				assets.modPacks(modPacks());
+			}
 			if (config.worldResourcePacks) {
 				assets.worldDirectory(server.getWorldPath(LevelResource.ROOT));
 			}
@@ -70,5 +78,30 @@ public final class CctvMod implements ModInitializer {
 				current.tick();
 			}
 		});
+	}
+
+	/**
+	 * The installed mods with client assets in their files (sounds, textures, texts), like the client's mod
+	 * resource packs; Fabric API's modules and this mod are left out.
+	 */
+	private static List<ClientAssets.ModPack> modPacks() {
+		List<ClientAssets.ModPack> packs = new ArrayList<>();
+		for (ModContainer mod : FabricLoader.getInstance().getAllMods()) {
+			String id = mod.getMetadata().getId();
+			if (id.equals("minecraft") || id.equals("java") || id.equals(MOD_ID) || id.startsWith("fabric")) {
+				continue;
+			}
+			try {
+				for (Path root : mod.getRootPaths()) {
+					if (Files.isDirectory(root.resolve("assets"))) {
+						packs.add(new ClientAssets.ModPack(id, root));
+					}
+				}
+			} catch (RuntimeException e) {
+				LOGGER.debug("CCTV: the files of mod {} are not readable", id, e);
+			}
+		}
+		packs.sort(Comparator.comparing(ClientAssets.ModPack::id));
+		return packs;
 	}
 }

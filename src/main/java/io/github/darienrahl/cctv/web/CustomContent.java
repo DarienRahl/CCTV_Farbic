@@ -50,6 +50,7 @@ final class CustomContent {
 				.field("fov", viewer.fov)
 				.field("biomeBlend", viewer.biomeBlend)
 				.field("music", viewer.music)
+				.field("musicToast", viewer.musicToast)
 				.name("skyboxes").beginObject();
 		for (Map.Entry<String, String> entry : viewer.skyboxes.entrySet()) {
 			json.field(entry.getKey(), entry.getValue());

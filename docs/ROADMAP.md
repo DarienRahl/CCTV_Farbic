@@ -123,6 +123,13 @@ to the milestone it belongs to. The roadmap on the README page is drawn from thi
       hit sounds of the block under its nose (Sniffer.emitDiggingParticles)
 - [x] Background music (MusicManager: the place's BackgroundMusic, underwater and boss music, the game's pauses
       and the Music Frequency option)
+- [x] **Now Playing toast** like the game's NowPlayingToast: the song's title in the game's font on the toast
+      sprite, with the animated music notes changing colour, sliding in from the top left for five seconds; the
+      jukebox's rainbow "Now Playing" line in the game's font above where the hotbar would be
+- [x] **The Immersive Music Mod** (TIMM) on the server: its biome and End playlists, its fading when the
+      camera's biome has none of the playing song, and its structure music (villages, ancient cities,
+      strongholds... found by the server around the camera like the mod does for players), with its song names on
+      the toast
 - [x] **Particles** from `particles/*.json` and their textures: torch, candle and campfire flames
       and smoke, lava pops, drips, portal, falling leaves, spore blossoms, fireflies
 - [x] **Particles from the server**: broken blocks (pieces of the block's texture), explosions and

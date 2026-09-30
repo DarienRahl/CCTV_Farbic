@@ -71,6 +71,8 @@ public final class ClientAssets implements AutoCloseable {
 	private final List<PackSource> sources = new ArrayList<>();
 	private volatile @Nullable Path worldDirectory;
 	private volatile Map<String, String> translations = Map.of();
+	private List<ModPack> modPacks = List.of();
+	private volatile boolean textsReady;
 	private volatile @Nullable String serverPackUrl;
 	private volatile @Nullable String serverPackSha1;
 	private volatile State state = State.LOADING;
@@ -110,6 +112,38 @@ public final class ClientAssets implements AutoCloseable {
 	 */
 	public @Nullable String translation(String key) {
 		return translations.get(key);
+	}
+
+	/**
+	 * The texts of all loaded keys with a prefix (e.g. {@code music.} for the titles of the game's songs, which
+	 * the Now Playing toast shows).
+	 */
+	public Map<String, String> translations(String prefix) {
+		Map<String, String> found = new java.util.TreeMap<>();
+		for (Map.Entry<String, String> entry : translations.entrySet()) {
+			if (entry.getKey().startsWith(prefix)) {
+				found.put(entry.getKey(), entry.getValue());
+			}
+		}
+		return found;
+	}
+
+	/** Whether the language texts are loaded (they follow the block assets). */
+	public boolean textsReady() {
+		return textsReady;
+	}
+
+	/** A mod whose files carry client assets (sounds, textures, texts): its id and the root of its files. */
+	public record ModPack(String id, Path root) {
+	}
+
+	/**
+	 * The installed mods' assets, used like the client's mod resource packs: over the client jar and under the
+	 * world's and the configured packs (so a mod such as The Immersive Music Mod brings its songs to the viewer).
+	 * Call before {@link #start()}.
+	 */
+	public void modPacks(List<ModPack> packs) {
+		this.modPacks = List.copyOf(packs);
 	}
 
 	/** The server resource pack players are sent (server.properties), downloaded when the assets load. */
@@ -235,6 +269,22 @@ public final class ClientAssets implements AutoCloseable {
 		return read("assets/" + namespace + "/textures/" + folder + "/" + path + ".png");
 	}
 
+	/** A file of the packs or the client jar, the highest priority one (null when there is none). */
+	byte @Nullable [] resource(String name) {
+		return read(name);
+	}
+
+	/**
+	 * A GUI sprite of the game ({@code textures/gui/sprites/<path>.png}, or its {@code .png.mcmeta} with the
+	 * nine-slice or animation settings), resource packs over the client jar; null when there is none.
+	 */
+	public byte @Nullable [] guiSprite(String path, boolean meta) {
+		if (!path.matches("[a-z0-9_/.-]{1,128}") || path.contains("..")) {
+			return null;
+		}
+		return read("assets/minecraft/textures/gui/sprites/" + path + (meta ? ".png.mcmeta" : ".png"));
+	}
+
 	private synchronized byte[] read(String name) {
 		// Resource packs first, the client jar last.
 		for (int i = sources.size() - 1; i >= 0; i--) {
@@ -290,6 +340,10 @@ public final class ClientAssets implements AutoCloseable {
 			}
 			synchronized (this) {
 				sources.add(PackSource.open(jar));
+				for (ModPack mod : modPacks) {
+					sources.add(PackSource.mod(mod.root(), "mod:" + mod.id()));
+					logger.info("CCTV: using the assets of the mod {}", mod.id());
+				}
 				for (Path pack : packs) {
 					try {
 						sources.add(PackSource.open(pack));
@@ -312,6 +366,7 @@ public final class ClientAssets implements AutoCloseable {
 			} catch (RuntimeException e) {
 				logger.warn("CCTV: song and painting texts unavailable: {}", e.toString());
 			}
+			textsReady = true;
 			loadEntityModels(jar);
 		} catch (Exception e) {
 			error = e.toString();
@@ -397,8 +452,11 @@ public final class ClientAssets implements AutoCloseable {
 		}
 	}
 
-	/** Prefixes of the language keys the server side needs (song descriptions, painting titles, "Now Playing"). */
-	private static final String[] TRANSLATED = {"jukebox_song.", "painting.", "record."};
+	/**
+	 * Prefixes of the language keys the server side needs (song descriptions, painting titles, "Now Playing") and
+	 * the titles of the game's background music (NowPlayingToast).
+	 */
+	private static final String[] TRANSLATED = {"jukebox_song.", "painting.", "record.", "music."};
 
 	/**
 	 * ClientLanguage.loadFrom: en_us, then the configured language, each from every source that has it (client

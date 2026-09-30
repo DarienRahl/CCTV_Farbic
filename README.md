@@ -10,7 +10,7 @@
   <a href="https://github.com/DarienRahl/CCTV_Farbic/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/DarienRahl/CCTV_Farbic?style=for-the-badge&amp;label=release&amp;color=5d8c3e"></a>
   <img alt="Minecraft 26.3" src="https://img.shields.io/badge/minecraft-26.3-866043?style=for-the-badge">
   <img alt="Fabric, server side only" src="https://img.shields.io/badge/fabric-server%20side%20only-8b8b8b?style=for-the-badge">
-  <a href="#roadmap"><img alt="Roadmap" src="https://img.shields.io/badge/roadmap-71%2F72%20done-80ff20?style=for-the-badge"></a>
+  <a href="#roadmap"><img alt="Roadmap" src="https://img.shields.io/badge/roadmap-73%2F74%20done-80ff20?style=for-the-badge"></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-555555?style=for-the-badge"></a>
 </p>
 <!-- badges:end -->
@@ -72,7 +72,8 @@ shadows and name tags in the game's font.
 
 ### 🔊 Sounds in 3D
 Steps, mobs, doors, explosions, note blocks, **music discs with "Now Playing"**, rain, caves, biome
-ambience and the game's **background music** — fading with distance like the game's sound engine.
+ambience and the game's **background music** with its **Now Playing toast** — even the playlists of
+[The Immersive Music Mod](https://github.com/DarienRahl/timm) when the server has it.
 
 </td>
 <td valign="top">
@@ -180,7 +181,7 @@ at once as a video wall.
 ## Roadmap
 
 <!-- roadmap:start -->
-<p align="center"><img src="docs/images/roadmap/banner.svg" width="100%" alt="CCTV roadmap: 71 of 72 done"></p>
+<p align="center"><img src="docs/images/roadmap/banner.svg" width="100%" alt="CCTV roadmap: 73 of 74 done"></p>
 
 What is done and what comes next, milestone by milestone (the full plan with its principles is in
 [docs/ROADMAP.md](docs/ROADMAP.md)).
@@ -218,10 +219,10 @@ What is done and what comes next, milestone by milestone (the full plan with its
 
 </details>
 
-<img src="docs/images/roadmap/1-3.svg" width="100%" alt="1.3 — 1:1 picture: in progress - 1.3.4 is out, 47 of 47 done">
+<img src="docs/images/roadmap/1-3.svg" width="100%" alt="1.3 — 1:1 picture: in progress - 1.3.4 is out, 49 of 49 done">
 
 <details open>
-<summary><b>1.3 — 1:1 picture</b> · in progress - 1.3.4 is out · 47 of 47 done</summary>
+<summary><b>1.3 — 1:1 picture</b> · in progress - 1.3.4 is out · 49 of 49 done</summary>
 
 - [x] **Reference renders in CI**: a Fabric client game test (`src/gametest`, run under a virtual display with Mesa's software Vulkan) builds a scene in single player and takes the game's own picture from a spectator's eyes, a camera is put at the same eyes and the viewer takes its picture; both are published side by side with a difference score in the job summary and the `reference-renders` artifact
 - [x] **Signs and hanging signs** with their text in the game font (text sent by the server; boards and beds are block models in 26.3 and were already drawn)
@@ -244,6 +245,8 @@ What is done and what comes next, milestone by milestone (the full plan with its
 - [x] Dripstone and honey drips (PointedDripstoneBlock, BeehiveBlock: water or lava from above the stalactite, honey under full hives) with the sound of the drop landing
 - [x] The sniffer searching and digging: its sniffs, the digging sound (SnifferSoundInstance) and the pieces and hit sounds of the block under its nose (Sniffer.emitDiggingParticles)
 - [x] Background music (MusicManager: the place's BackgroundMusic, underwater and boss music, the game's pauses and the Music Frequency option)
+- [x] **Now Playing toast** like the game's NowPlayingToast: the song's title in the game's font on the toast sprite, with the animated music notes changing colour, sliding in from the top left for five seconds; the jukebox's rainbow "Now Playing" line in the game's font above where the hotbar would be
+- [x] **The Immersive Music Mod** (TIMM) on the server: its biome and End playlists, its fading when the camera's biome has none of the playing song, and its structure music (villages, ancient cities, strongholds... found by the server around the camera like the mod does for players), with its song names on the toast
 - [x] **Particles** from `particles/*.json` and their textures: torch, candle and campfire flames and smoke, lava pops, drips, portal, falling leaves, spore blossoms, fireflies
 - [x] **Particles from the server**: broken blocks (pieces of the block's texture), explosions and their smoke, the particles the server sends (`ClientboundLevelParticlesPacket`: crits, sweeps, hearts, dust...), level events (dispenser smoke, bone meal, lava fizz), death and spawn poofs, love hearts, villager moods and potion effect swirls
 - [x] Rain splashes (and smoke where it falls on lava, magma and campfires), bubbles, bubble columns and whirlpools, reverse portal specks, white smoke
@@ -362,7 +365,7 @@ Drag with the mouse to look around, use the wheel to zoom and double-click to go
 camera's view. The view turns only as far as the terrain the server streams around the camera's
 direction (about 20° beyond the picture); aim the camera with `/cctv aim` to look elsewhere. **⚙ Settings** has: graphics (vanilla / shaders) and shader quality, field of view
 (30–110° like the game's option, or the camera's own), distance fog (the game's, smooth, atmospheric or
-minimal), biome blend (off to 15×15 like the game's option), background music, post effect
+minimal), biome blend (off to 15×15 like the game's option), background music and its Now Playing toast, post effect
 (custom shader), sky (sky box), clouds, camera mode (colour / black and white / night vision),
 render resolution (for weak GPUs), name tags, mob labels, particles and the CCTV effect. Each viewer's
 choice is remembered in their browser.
@@ -415,25 +418,32 @@ can really see. "Mob labels" adds tags for every other mob (its custom name or i
 | `language` | `en_us` | Language of mob names in the viewer (`pl_pl`, `de_de`…; downloaded from Mojang once) |
 | `worldResourcePacks` | `true` | Use the world's own packs: assets in `<world>/datapacks` and `<world>/resources.zip` |
 | `serverResourcePack` | `true` | Download the `resource-pack` of `server.properties` (checked against its SHA-1) and use it |
+| `modAssets` | `true` | Use the assets of the server's mods (sounds, textures, texts) like the client's mod resource packs, e.g. the songs of The Immersive Music Mod |
 | `gzip` | `true` | Compress the stream |
 | `skins` | `true` | Player skins (the server fetches them from the Mojang API and caches them) |
 | `sounds` | `true` | The game's sounds in the viewer (files downloaded from Mojang when first played, cached) |
 | `recording` | `true` | The Record and Timelapse buttons (videos are made in the viewer's browser, nothing on the server) |
 | `markers` | `true` | Camera marker block in the world |
 | `maxViewersPerCamera` | `16` | Viewer limit per camera |
-| `viewer` | | Viewer defaults: `graphics` (`vanilla`/`shaders`), `shaderQuality` (`low`…`ultra`), `postShader`, `skyboxes` (dimension → name), `clouds` (`fancy`/`fast`/`off`), `labels`, `mobLabels`, `particles`, `mode` (`color`/`mono`/`night`), `cctvEffect`, `fog` (`vanilla`/`smooth`/`atmospheric`/`minimal`), `fov` (30–110, 0 = each camera's), `biomeBlend` (0–7), `music` (`off`/`default`/`frequent`/`constant`), `lockSettings` |
+| `viewer` | | Viewer defaults: `graphics` (`vanilla`/`shaders`), `shaderQuality` (`low`…`ultra`), `postShader`, `skyboxes` (dimension → name), `clouds` (`fancy`/`fast`/`off`), `labels`, `mobLabels`, `particles`, `mode` (`color`/`mono`/`night`), `cctvEffect`, `fog` (`vanilla`/`smooth`/`atmospheric`/`minimal`), `fov` (30–110, 0 = each camera's), `biomeBlend` (0–7), `music` (`off`/`default`/`frequent`/`constant`), `musicToast` (`on`/`off`), `lockSettings` |
 
 The viewer uses the same packs as the players, lowest priority first:
 
-1. the assets of the world's data packs (`<world>/datapacks/*`, zipped or unpacked),
-2. the world's own `resources.zip`,
-3. the server resource pack from `server.properties` (downloaded once into `config/cctv/assets/server-packs`),
-4. everything in `config/cctv/resourcepacks/` (`*.zip` or unpacked folders), sorted by name.
+1. the assets in the server's mods (`modAssets`), like the client's mod resource packs,
+2. the assets of the world's data packs (`<world>/datapacks/*`, zipped or unpacked),
+3. the world's own `resources.zip`,
+4. the server resource pack from `server.properties` (downloaded once into `config/cctv/assets/server-packs`),
+5. everything in `config/cctv/resourcepacks/` (`*.zip` or unpacked folders), sorted by name.
 
 So custom content looks and sounds like it does in the game: blocks and items, **custom paintings** of
 data packs (their pictures come from the packs' `textures/painting/`), **custom music discs** (the
 data pack's `jukebox_song` with its sound from the pack's `sounds.json`, and its description in the
 "Now Playing" line), items with their own `item_model`, mob textures, sounds and languages. Packs are read when the server starts.
+
+**The Immersive Music Mod** (TIMM) needs nothing more than being installed on the server: its songs are read
+from the mod's jar (they are not copied anywhere), its playlists and settings from `config/timm/` like the mod
+reads them (else the mod's own), and the viewer plays them the way the mod does: each biome's list, fading out a
+few seconds after the camera's biome stops having the song, and the song of a structure the camera is in.
 
 ## How it works
 

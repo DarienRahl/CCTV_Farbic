@@ -16,6 +16,7 @@ import { Sounds } from './sound.js';
 import { SectionCache } from './cache.js';
 import { EFFECTS } from './effects.js';
 import { Recorder } from './recorder.js';
+import { GuiOverlay } from './gui.js';
 import { perspective, lookDir, multiply, direction, lerp, transformPoint } from './math.js';
 
 const params = new URLSearchParams(location.search);
@@ -81,7 +82,7 @@ const world = new World((key, section, message) => {
 
 const DEFAULTS = {
 	graphics: 'vanilla', shaderQuality: 'medium', postShader: '', clouds: 'fancy', labels: true, mobLabels: false,
-	mode: 'color', cctvEffect: false, skybox: 'default', renderScale: 1, particles: true, fog: 'vanilla', fov: '', blend: '2', music: 'default', timelapse: '5',
+	mode: 'color', cctvEffect: false, skybox: 'default', renderScale: 1, particles: true, fog: 'vanilla', fov: '', blend: '2', music: 'default', musicToast: 'on', timelapse: '5',
 };
 const viewerInfo = { defaults: { ...DEFAULTS, skyboxes: {} }, locked: false, skyboxes: {}, shaders: [] };
 let settings = { ...DEFAULTS };
@@ -115,7 +116,7 @@ async function loadViewerInfo() {
 		graphics: d.graphics, shaderQuality: d.shaderQuality, postShader: d.postShader || '', clouds: d.clouds,
 		labels: d.labels, mobLabels: d.mobLabels, particles: d.particles, mode: d.mode, cctvEffect: d.cctvEffect,
 		fog: d.fog, fov: d.fov ? String(d.fov) : undefined, blend: d.biomeBlend !== undefined ? String(d.biomeBlend) : undefined,
-		music: d.music,
+		music: d.music, musicToast: d.musicToast,
 	};
 	for (const key of Object.keys(server)) if (server[key] === undefined) delete server[key];
 	settings = { ...DEFAULTS, ...server, ...(viewerInfo.locked ? {} : loadLocal()) };
@@ -618,36 +619,15 @@ function updateHud(now) {
 	}
 }
 
-// Gui.setNowPlaying: "Now Playing: <song>" for 60 ticks, fading out over the last 20, its colour going round
-// the hue circle (Mth.hsvToArgb(time / 50, 0.7, 0.6)) with the text's shadow a quarter as bright
-const nowPlayingEl = $('now-playing');
-let nowPlaying = null;
+// The game's Now Playing toast for the background music and the jukebox's "Now Playing" line, in the game's
+// sprites and font (gui.js)
+const gui = new GuiOverlay($('gui'), () => (entities.text.ready ? entities.text.font : null), query, document.querySelector('.hud.top-left'));
+sounds.onMusicChange = title => {
+	if (settings.musicToast !== 'off') gui.showNowPlaying(title);
+};
 
 function showNowPlaying(text) {
-	if (!nowPlayingEl) return;
-	nowPlayingEl.textContent = text;
-	nowPlaying = { start: performance.now() };
-}
-
-function hsvToRgb(hue, saturation, value) {
-	const sector = Math.floor(hue * 6) % 6, f = hue * 6 - Math.floor(hue * 6);
-	const p = value * (1 - saturation), q = value * (1 - f * saturation), t = value * (1 - (1 - f) * saturation);
-	return [[value, t, p], [q, value, p], [p, value, t], [p, q, value], [t, p, value], [value, p, q]][sector].map(c => Math.floor(c * 255));
-}
-
-function drawNowPlaying(now) {
-	if (!nowPlaying) return;
-	const time = 60 - (now - nowPlaying.start) / 50;
-	const alpha = Math.min(255, Math.floor(time * 255 / 20));
-	if (alpha <= 8) {
-		nowPlayingEl.hidden = true;
-		if (time <= 0) nowPlaying = null;
-		return;
-	}
-	const [r, g, b] = hsvToRgb(time / 50, 0.7, 0.6);
-	nowPlayingEl.hidden = false;
-	nowPlayingEl.style.color = `rgba(${r}, ${g}, ${b}, ${alpha / 255})`;
-	nowPlayingEl.style.textShadow = `0.125em 0.125em 0 rgba(${r >> 2}, ${g >> 2}, ${b >> 2}, ${alpha / 255})`;
+	gui.showOverlay(text);
 }
 
 function frame(now) {
@@ -661,7 +641,7 @@ function frame(now) {
 
 	const aspect = renderer.resize();
 	updateHud(now);
-	drawNowPlaying(now);
+	gui.draw(now);
 
 	const c = state.camera;
 	if (!c) {
@@ -685,7 +665,8 @@ function frame(now) {
 			const eyeInfo = world.infoAt(Math.floor(c0.x), Math.floor(c0.y), Math.floor(c0.z));
 			for (let i = Math.min(deltaTicks, 4) - 1; i >= 0; i--) {
 				particles.tick(world, c0, environment.current.rain || 0, entities.tick, state.entityList, weather.columns, gameTime - i);
-				sounds.ambient({ world, camera: c0, ambience: environment.current.amb, music: environment.current.music, inWater: !!(eyeInfo && eyeInfo.water), block: eye, flash: environment.flash, entities: state.entityList });
+				sounds.ambient({ world, camera: c0, ambience: environment.current.amb, music: environment.current.music, inWater: !!(eyeInfo && eyeInfo.water), block: eye, flash: environment.flash, entities: state.entityList,
+					dimension: environment.dim && environment.dim.id, timmStructure: environment.current.timm });
 			}
 		}
 		state.gameTick = tick;
@@ -809,4 +790,4 @@ loadViewerInfo().finally(() => {
 });
 
 // Handy for debugging from the browser console.
-window.cctv = { world, renderer, entities, particles, sounds, state, environment, settings: () => settings, sky, clouds, weather, post, recorder };
+window.cctv = { world, renderer, entities, particles, sounds, state, environment, settings: () => settings, sky, clouds, weather, post, recorder, gui };

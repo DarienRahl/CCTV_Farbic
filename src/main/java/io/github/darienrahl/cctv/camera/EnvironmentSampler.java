@@ -2,6 +2,7 @@ package io.github.darienrahl.cctv.camera;
 
 import java.util.Locale;
 
+import org.jspecify.annotations.Nullable;
 import org.joml.Vector3fc;
 import org.joml.Vector4fc;
 
@@ -34,6 +35,10 @@ import io.github.darienrahl.cctv.web.Json;
 final class EnvironmentSampler {
 	/** The values change slowly; the viewer interpolates between samples. */
 	static final int INTERVAL_TICKS = 5;
+
+	/** The structure song TIMM last chose at the camera (like the mod, it is kept after leaving the structure). */
+	private @Nullable String timmStructure;
+	private long timmCheckedAt = Long.MIN_VALUE;
 
 	/** Constant properties of the camera's dimension (sent once, in "init"). */
 	static void writeDimension(Json json, ServerLevel level) {
@@ -113,6 +118,21 @@ final class EnvironmentSampler {
 		BlockPos blockPos = BlockPos.containing(pos);
 		if (level.getChunkSource().getChunkNow(blockPos.getX() >> 4, blockPos.getZ() >> 4) != null) {
 			json.field("precipitation", level.getBiome(blockPos).value().hasPrecipitation());
+		}
+
+		// The Immersive Music Mod's structure music, checked once a second like the mod does for players
+		TimmStructures timm = TimmStructures.get();
+		if (timm != null) {
+			if (tick - timmCheckedAt >= 20) {
+				timmCheckedAt = tick;
+				String found = timm.eventAt(level, blockPos);
+				if (found != null) {
+					timmStructure = found;
+				}
+			}
+			if (timmStructure != null) {
+				json.field("timm", timmStructure);
+			}
 		}
 
 		if (level.dimensionType().hasEndFlashes()) {

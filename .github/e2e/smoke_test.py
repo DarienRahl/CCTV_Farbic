@@ -393,6 +393,29 @@ def main():
     except Exception as e:
         failures.append(f"sounds unavailable: {e}")
 
+    # the Now Playing toast: song titles (the game's music.* texts) and its GUI sprites from the client jar
+    try:
+        music = None
+        for _ in range(60):
+            try:
+                with urllib.request.urlopen(f"{WEB}/assets/music.json", timeout=60) as response:
+                    music = json.load(response)
+                break
+            except urllib.error.HTTPError as e:
+                if e.code != 503:
+                    raise
+                time.sleep(2)
+        names = (music or {}).get("names", {})
+        print("song titles:", len(names), {k: names.get(k) for k in ("music.game.sweden", "music.game.clark")}, flush=True)
+        if not names.get("music.game.sweden"):
+            failures.append("music.json has no title for C418's Sweden")
+        for sprite in ("toast/now_playing.png", "toast/now_playing.png.mcmeta", "icon/music_notes.png"):
+            with urllib.request.urlopen(f"{WEB}/assets/gui/{sprite}", timeout=60) as response:
+                if not response.read():
+                    failures.append(f"GUI sprite {sprite} is empty")
+    except Exception as e:
+        failures.append(f"Now Playing assets unavailable: {e}")
+
     try:
         models = wait_for_models()
         layers = models.get("layers", {})

@@ -96,7 +96,7 @@ export class GameFont {
 			if (provider.type === 'space') {
 				for (const [chars, advance] of Object.entries(provider.advances || {})) {
 					const cp = chars.codePointAt(0);
-					if (!this.glyphs.has(cp)) this.glyphs.set(cp, { advance, texture: null });
+					if (!this.has(cp)) this.glyphs.set(cp, { advance, texture: null });
 				}
 			} else if (provider.type === 'bitmap' && /^(minecraft:)?font\//.test(provider.file)) {
 				const blob = await (await fetchFile(provider.file.replace(/^(minecraft:)?font\//, ''))).blob();
@@ -123,7 +123,7 @@ export class GameFont {
 		const ascent = provider.ascent ?? 7;
 		const texture = this.texture(image);
 		grid.forEach((row, slotY) => row.forEach((cp, slotX) => {
-			if (cp === 0 || this.glyphs.has(cp)) return;
+			if (cp === 0 || this.has(cp)) return;
 			// getActualGlyphWidth: the rightmost column with any visible pixel.
 			let width = cellW - 1;
 			find: for (; width >= 0; width--) {
@@ -139,8 +139,16 @@ export class GameFont {
 				u1: (slotX + 1) * cellW / image.width, v1: (slotY + 1) * cellH / image.height,
 				// SheetGlyphInfo: left 0, up 7 - ascent, size = pixels / oversample (1 / scale)
 				up: 7 - ascent, w: cellW * scale, h: cellH * scale,
+				// the sheet and the cell for 2D drawing (gui.js)
+				image, sx: slotX * cellW, sy: slotY * cellH, sw: cellW, sh: cellH,
 			});
 		}));
+	}
+
+	/** A glyph from the font's sheets (not one the browser drew while they were still loading). */
+	has(cp) {
+		const glyph = this.glyphs.get(cp);
+		return !!glyph && !glyph.fallback;
 	}
 
 	texture(source) {
@@ -178,6 +186,7 @@ export class GameFont {
 		glyph = {
 			texture: null, fallback: true, advance: Math.ceil(width / 2) + 1,
 			u0: x / 512, v0: y / 512, u1: (x + 16) / 512, v1: (y + 16) / 512, up: -1, w: 8, h: 8,
+			image: f.canvas, sx: x, sy: y, sw: 16, sh: 16,
 		};
 		this.glyphs.set(cp, glyph);
 		return glyph;
