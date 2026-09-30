@@ -640,6 +640,29 @@ function normalizeSkin(image) {
 const DEFAULT_SKINS = ['alex', 'ari', 'efe', 'kai', 'makena', 'noor', 'steve', 'sunny', 'zuri'];
 /** Util.NIL_UUID: the id of the empty profile (a mannequin's default), whose default skin is the slim Alex. */
 const NIL_UUID = '00000000-0000-0000-0000-000000000000';
+/** TntRenderer.getSwellAmount: how much a block about to explode swells in its last 10 ticks. */
+function tntSwell(fuse) {
+	const g = Math.min(1, Math.max(0, 1 - fuse / 10)) ** 4;
+	return g * 0.3;
+}
+
+/** TntRenderer.isLit: the white flash, every other 5 ticks of the fuse. */
+function tntLit(fuse) {
+	return fuse >= 0 && Math.floor(fuse / 5) % 2 === 0;
+}
+
+/** SulfurCubeRenderer.extractRenderState: the ticks left on a primed cube's fuse (getFuse() + 1), else 0. */
+function sulfurFuse(e) {
+	const fuse = e.d && e.d.fuse;
+	return typeof fuse === 'number' && fuse >= 0 ? fuse + 1 : 0;
+}
+
+/** SulfurCubeInnerLayer: a primed cube's inner cube or block flashes white like TNT. */
+function sulfurLit(e) {
+	const fuse = sulfurFuse(e);
+	return fuse > 0 && tntLit(fuse);
+}
+
 /** PlayerModel.bodyParts, in the order getRandomBodyPart picks from. */
 const STUCK_BODY_PARTS = ['head', 'body', 'left_arm', 'right_arm', 'left_leg', 'right_leg'];
 
@@ -1759,9 +1782,21 @@ export class EntityRenderer {
 		}
 		if (def.slime) {
 			const size = Number(e.d && e.d.size) || 1;
-			scale(m, 0.999);
-			translate(m, 0, 0.001, 0);
-			scale(m, size);
+			// SlimeRenderer and SulfurCubeRenderer.scale: downscaleSlightly (not the magma cube)
+			if (type !== 'magma_cube') {
+				scale(m, 0.999);
+				translate(m, 0, 0.001, 0);
+			}
+			// AbstractCubeMobRenderer.applySizeAndSquish (a sulfur cube holding a block keeps its shape)
+			const squish = def.sulfur && e.cb !== undefined ? 0 : (Number(e.d && e.d.squish) || 0) / (size * 0.5 + 1);
+			const w = 1 / (squish + 1);
+			scale(m, w * size, size / w, w * size);
+			if (def.sulfur) {
+				const fuse = sulfurFuse(e);
+				if (fuse < 10 && fuse > 0) scale(m, 1 + tntSwell(fuse));
+				scale(m, e.baby ? 1 : 0.5);
+				translate(m, 0, (e.baby ? 1.24 : 0.98) - (e.invisible ? 0 : 1 / 16), 0);
+			}
 		}
 		if (def.phantom) {
 			const size = Number(e.d && e.d.size) || 0;
@@ -1800,17 +1835,31 @@ export class EntityRenderer {
 			// getModelTint (e.g. a wet wolf) tints the entity's own model, not the layers drawn over it.
 			const color = layer.color || (model === base && layer === mob.layers[0] && anim.tint) || [1, 1, 1, 1];
 			let lm = m;
+			let layerStyle = style;
+			// SulfurCubeInnerLayer: white while the fuse is lit
+			if (layer.flash && sulfurLit(e)) layerStyle = { ...style, overlay: [0, 1] };
 			if (layer.offset) {
 				// the layer's own poseStack.translate (a cape over a chestplate, elytra)
 				lm = Float32Array.from(m);
 				translate(lm, layer.offset[0], layer.offset[1], layer.offset[2]);
 			}
-			emitModel(this.sink, model, lm, { ...style, color });
+			emitModel(this.sink, model, lm, { ...layerStyle, color });
 			const mode = MODES[layer.mode] ?? MODE_CUTOUT;
 			const glint = layer.foil && (e.foil & layer.foil) ? GLINT_ARMOR : 0;
 			this.batch(texture, mode, start, mode !== MODE_NOCULL && mode !== MODE_TRANSLUCENT, glint);
 		}
 		if (!base) return this.drawBox(e, pos, style);
+		// SulfurCubeInnerLayer: the block a sulfur cube holds, upside down inside it, white while the fuse is lit
+		if (def.sulfur && e.cb !== undefined && !e.wornHead) {
+			const mesh = this.blockStateMesh(e.cb, world);
+			if (mesh) {
+				const bm = Float32Array.from(m);
+				rotate(bm, 0, Math.PI);
+				if (e.baby) scale(bm, 0.5);
+				translate(bm, -0.5, -0.518, -0.5);
+				this.emitItem(mesh, bm, sulfurLit(e) ? { ...style, overlay: [0, 1] } : style);
+			}
+		}
 		// ArrowLayer, BeeStingerLayer
 		if (def.player && e.arrows) this.drawStuckInBody(e, base, m, style, 'minecraft:arrow#main', 'projectiles/arrow', e.arrows, false);
 		if (def.player && e.stingers) this.drawStuckInBody(e, base, m, style, 'minecraft:bee_stinger#main', 'bee/bee_stinger', e.stingers, true);
@@ -1862,7 +1911,9 @@ export class EntityRenderer {
 		if (def.anim === 'guardian' && e.beam !== undefined) this.drawGuardianBeam(e, type, pos, world);
 
 		// EntityRenderDispatcher: no shadow under invisible entities
-		if (!e.invisible && !e.base) this.shadowFor(e, pos, typeof mob.shadow === 'number' ? mob.shadow * entityScale : 0.5, world);
+		// MobRenderer.getShadowRadius: times the age scale (renderers with their own radius, the functions, do not)
+		const ageScale = typeof def.shadow === 'number' ? e.ageScale ?? 1 : 1;
+		if (!e.invisible && !e.base) this.shadowFor(e, pos, typeof mob.shadow === 'number' ? mob.shadow * entityScale * ageScale : 0.5, world);
 	}
 
 	/**
@@ -3042,9 +3093,10 @@ export class EntityRenderer {
 		const m = mat4();
 		translate(m, pos[0] - 0.5 * size, pos[1], pos[2] - 0.5 * size);
 		scale(m, size);
-		const fuse = Number(e.d && e.d.fuse) || 0;
-		if (fuse > 0 && fuse < 10) scale(m, 1 + (1 - fuse / 10) * 0.3);
-		this.emitBlock(name, m, { ...style, overlay: [0, fuse > 0 && Math.floor(fuse / 5) % 2 === 0 ? 1 : 0] });
+		// TntRenderer: fuseRemainingInTicks = getFuse() + 1 (at the tick)
+		const fuse = typeof (e.d && e.d.fuse) === 'number' ? e.d.fuse + 1 : 80;
+		if (fuse < 10) scale(m, 1 + tntSwell(fuse));
+		this.emitBlock(name, m, { ...style, overlay: [0, tntLit(fuse) ? 1 : 0] });
 	}
 
 	/**

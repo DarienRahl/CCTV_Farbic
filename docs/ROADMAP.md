@@ -234,6 +234,10 @@ to the milestone it belongs to. The roadmap on the README page is drawn from thi
       places as in the game, from the same random seeded with the entity's id
 - [x] Players drawn at the player renderer's scale (0.9375, they were a little too big); items whose model
       changes with the date (the Christmas chest) pick it by the viewer's clock
+- [x] **Sulfur cubes** like SulfurCubeRenderer: their size, the small model of babies, the inner cube, the block
+      they hold drawn inside them, and a primed cube swelling and flashing like TNT; slimes, magma cubes and
+      sulfur cubes squash when they land and stretch when they jump; TNT swells like the game's; babies cast
+      the smaller shadow of their age scale
 
 ## Later
 

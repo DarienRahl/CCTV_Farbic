@@ -111,6 +111,11 @@ function humanoid(p, a, e) {
 	}
 }
 
+/** AbstractCubeMobRenderer.getShadowRadius: a quarter of the cube's size. */
+function cubeShadow(e) {
+	return (Number(e.d && e.d.size) || 1) * 0.25;
+}
+
 /** Players and mannequins: the entities AvatarRenderer draws. */
 export function isAvatar(e) {
 	return e.type === 'minecraft:player' || e.type === 'minecraft:mannequin';
@@ -1897,7 +1902,7 @@ const MOBS = {
 		layer: e => (e.baby ? 'trader_llama_baby#main' : 'trader_llama#main'), texture: e => 'llama/llama_' + variant(e, 'creamy') + baby(e), shadow: 0.7, anim: 'llama',
 		layers: [{ layer: e => (e.baby ? 'llama_baby#decor' : 'llama#decor'), texture: e => (e.baby ? 'equipment/llama_body/trader_llama_baby' : 'equipment/llama_body/trader_llama') }],
 	},
-	magma_cube: { layer: 'magma_cube#main', texture: 'slime/magmacube', shadow: 0.25, anim: 'none', slime: true, fullBright: true },
+	magma_cube: { layer: 'magma_cube#main', texture: 'slime/magmacube', shadow: cubeShadow, anim: 'none', slime: true, fullBright: true },
 	mooshroom: { layer: e => (e.baby ? 'mooshroom_baby#main' : 'mooshroom#main'), texture: e => 'cow/mooshroom_' + variant(e, 'red') + baby(e), shadow: 0.7, anim: 'quadruped' },
 	mule: { layer: e => (e.baby ? 'mule_baby#main' : 'mule#main'), texture: e => 'horse/mule' + baby(e), shadow: 0.75, anim: 'horse', saddle: ['mule#saddle', 'equipment/mule_saddle/saddle'] },
 	nautilus: { layer: e => (e.baby ? 'nautilus_baby#main' : 'nautilus#main'), texture: e => 'nautilus/nautilus' + baby(e), shadow: 0.7, anim: 'nautilus', body: e => (e.baby ? [] : bodyLayers(e, 'nautilus_body', 'nautilus_armor#main')), saddle: ['nautilus#saddle', 'equipment/nautilus_saddle/saddle'] },
@@ -1956,7 +1961,7 @@ const MOBS = {
 	silverfish: { layer: 'silverfish#main', texture: 'silverfish/silverfish', shadow: 0.3, anim: 'crawler' },
 	skeleton: { layer: 'skeleton#main', texture: 'skeleton/skeleton', shadow: 0.5, anim: 'skeleton', armor: 'skeleton' },
 	skeleton_horse: { layer: e => (e.baby ? 'skeleton_horse_baby#main' : 'skeleton_horse#main'), texture: e => 'horse/horse_skeleton' + baby(e), shadow: 0.75, anim: 'horse', body: e => (e.baby ? [] : bodyLayers(e, 'horse_body', 'undead_horse_armor#main')), saddle: ['skeleton_horse#saddle', 'equipment/skeleton_horse_saddle/saddle'] },
-	slime: { layer: 'slime#main', texture: 'slime/slime', shadow: 0.25, anim: 'none', slime: true, layers: [{ layer: 'slime#outer', texture: 'slime/slime', mode: 'translucent' }] },
+	slime: { layer: 'slime#main', texture: 'slime/slime', shadow: cubeShadow, anim: 'none', slime: true, layers: [{ layer: 'slime#outer', texture: 'slime/slime', mode: 'translucent' }] },
 	sniffer: { layer: e => (e.baby ? 'sniffer_baby#main' : 'sniffer#main'), texture: e => (e.baby ? 'sniffer/snifflet' : 'sniffer/sniffer'), shadow: 1.1, anim: 'sniffer' },
 	snow_golem: { layer: 'snow_golem#main', texture: 'snow_golem/snow_golem', shadow: 0.5, anim: 'snowGolem' },
 	spider: { layer: 'spider#main', texture: 'spider/spider', shadow: 0.8, anim: 'spider', layers: [{ layer: 'spider#main', texture: 'spider/spider_eyes', mode: 'eyes' }] },
@@ -1966,7 +1971,9 @@ const MOBS = {
 		layer: e => (e.baby ? 'strider_baby#main' : 'strider#main'), texture: e => 'strider/strider' + (e.d && e.d.cold ? '_cold' : '') + baby(e), shadow: 0.5, anim: 'generic',
 		saddle: ['strider#saddle', 'equipment/strider_saddle/saddle'],
 	},
-	sulfur_cube: { layer: 'sulfur_cube#main', texture: 'sulfur_cube/sulfur_cube_outer', shadow: 0.25, anim: 'none', slime: true, layers: [{ layer: 'sulfur_cube#inner', texture: 'sulfur_cube/sulfur_cube_inner' }] },
+	// SulfurCubeRenderer: the small model for babies; SulfurCubeInnerLayer: the inner cube (drawn first, order -1),
+	// unless the cube holds a block (drawn in its place, entities.js) or wears a head
+	sulfur_cube: { sulfur: true, shadow: cubeShadow, anim: 'none', slime: true },
 	tadpole: { layer: 'tadpole#main', texture: 'tadpole/tadpole', shadow: 0.14, anim: 'fish' },
 	tropical_fish: { tropical: true, shadow: 0.15, anim: 'fish', fish: true },
 	turtle: { layer: e => (e.baby ? 'turtle_baby#main' : 'turtle#main'), texture: e => 'turtle/turtle' + baby(e), shadow: 0.7, anim: 'turtle' },
@@ -2169,6 +2176,13 @@ export function describeMob(e) {
 			const level = VILLAGER_LEVELS[Number(data.level) || 0];
 			if (level && profession !== 'nitwit') add(layer, folder + '/profession_level/' + level);
 		}
+	} else if (def.sulfur) {
+		const small = e.baby ? '_small' : '';
+		if (e.cb === undefined && !e.wornHead && !e.invisible) {
+			// the inner cube flashes white while the cube's fuse burns
+			out.push({ layer: 'minecraft:sulfur_cube' + small + '#inner', texture: 'sulfur_cube/sulfur_cube_inner' + small, mode: 'translucent', color: null, flash: true });
+		}
+		add('sulfur_cube' + small + '#main', 'sulfur_cube/sulfur_cube_outer' + small, { mode: 'translucent' });
 	} else if (def.tropical) {
 		const pattern = strip(e.d && e.d.pattern) || 'kob';
 		const small = TROPICAL_SMALL.indexOf(pattern);

@@ -46,18 +46,21 @@ import net.minecraft.world.entity.decoration.Mannequin;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.animal.sniffer.Sniffer;
 import net.minecraft.world.entity.monster.Guardian;
+import net.minecraft.world.entity.monster.cubemob.SulfurCube;
 import net.minecraft.world.entity.monster.illager.AbstractIllager;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.player.PlayerModelPart;
 import net.minecraft.world.entity.player.PlayerSkin;
 import net.minecraft.world.entity.projectile.FishingHook;
 import net.minecraft.world.entity.vehicle.boat.AbstractBoat;
+import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.CrossbowItem;
 import net.minecraft.world.item.DyeColor;
 import net.minecraft.world.item.FishingRodItem;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.alchemy.PotionContents;
+import net.minecraft.world.item.component.BlockItemStateProperties;
 import net.minecraft.world.item.component.ChargedProjectiles;
 import net.minecraft.world.item.component.CustomModelData;
 import net.minecraft.world.item.component.DyedItemColor;
@@ -65,7 +68,9 @@ import net.minecraft.world.item.component.FireworkExplosion;
 import net.minecraft.world.item.component.ResolvableProfile;
 import net.minecraft.world.item.equipment.Equippable;
 import net.minecraft.world.item.equipment.trim.ArmorTrim;
+import net.minecraft.world.level.block.AbstractSkullBlock;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.RenderShape;
 import net.minecraft.world.level.block.entity.BannerPatternLayers;
 import net.minecraft.world.level.block.state.BlockState;
@@ -244,6 +249,8 @@ final class EntityEncoder {
 			// Chicken.aiStep and Parrot.calculateFlapping: the wings flap while off the ground
 			{"flap", "flap", "minecraft:chicken minecraft:parrot"},
 			{"flapSpeed", "flapSpeed", "minecraft:chicken minecraft:parrot"},
+			// AbstractCubeMob: squashed when landing, stretched when jumping (AbstractCubeMobRenderer.applySizeAndSquish)
+			{"squish", "squish", "minecraft:slime minecraft:magma_cube minecraft:sulfur_cube"},
 	};
 
 	private record Amount(Member member, String key) {
@@ -312,6 +319,11 @@ final class EntityEncoder {
 			}
 			if (living.isBaby()) {
 				json.field("baby", true);
+			}
+			float ageScale = living.getAgeScale();
+			if (ageScale != 1.0F) {
+				// MobRenderer.getShadowRadius: a baby's shadow is smaller by its age scale
+				json.field("ageScale", ageScale, 3);
 			}
 			if (living.hurtTime > 0) {
 				json.field("hurt", true);
@@ -382,6 +394,9 @@ final class EntityEncoder {
 		}
 		if (entity instanceof AbstractBoat boat) {
 			writeBoat(json, boat);
+		}
+		if (entity instanceof SulfurCube cube) {
+			writeContainedBlock(json, cube, blockStates);
 		}
 		if (entity instanceof Guardian guardian && guardian.hasActiveAttackTarget()) {
 			// the beam's target (Guardian.DATA_ID_ATTACK_TARGET); the viewer times the attack like the client
@@ -653,6 +668,31 @@ final class EntityEncoder {
 			Problems.report(null, "mannequin description", e);
 			return null;
 		}
+	}
+
+	/**
+	 * The block a sulfur cube holds in its body slot, drawn inside it (SulfurCubeRenderer.extractRenderState,
+	 * SulfurCubeInnerLayer): {@code "cb"} its block state, or {@code "wornHead": true} for a head, which it wears on
+	 * top instead of showing its inner cube.
+	 */
+	private static void writeContainedBlock(Json json, SulfurCube cube, IntConsumer blockStates) {
+		ItemStack contained = cube.getItemBySlot(EquipmentSlot.BODY);
+		if (contained.isEmpty()) {
+			return;
+		}
+		if (contained.getItem() instanceof BlockItem item && item.getBlock() instanceof AbstractSkullBlock) {
+			json.field("wornHead", true);
+			return;
+		}
+		Block block = Block.byItem(contained.getItem());
+		if (block == Blocks.AIR) {
+			return;
+		}
+		BlockState state = contained.getOrDefault(DataComponents.BLOCK_STATE, BlockItemStateProperties.EMPTY)
+				.apply(block.defaultBlockState());
+		int id = Block.getId(state);
+		blockStates.accept(id);
+		json.field("cb", id);
 	}
 
 	private static int foil(ItemStack stack, int bit) {

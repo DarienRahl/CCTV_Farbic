@@ -76,6 +76,7 @@ class StreamReader(threading.Thread):
         self.entity_types = set()
         self.displays = {}
         self.mannequin = None
+        self.sulfur_cube = None
         self.foil = set()
         self.glowing = set()
         self.leashed = set()
@@ -125,6 +126,8 @@ class StreamReader(threading.Thread):
                             for e in data["e"]:
                                 if e["type"] == "minecraft:mannequin":
                                     self.mannequin = e
+                                if e["type"] == "minecraft:sulfur_cube":
+                                    self.sulfur_cube = e
                                 if e["type"] in ("minecraft:text_display", "minecraft:block_display", "minecraft:item_display"):
                                     self.displays.setdefault(e["type"], []).append(e)
                                     del self.displays[e["type"]][:-3]
@@ -316,6 +319,8 @@ def main():
     rcon.command('setblock -2 -60 6 minecraft:oak_shelf[facing=north]{Items:[{Slot:0b,id:"minecraft:diamond",count:1},'
                  '{Slot:2b,id:"minecraft:apple",count:1}]}')
     rcon.command('summon minecraft:mannequin 1.5 -60 4.5 {profile:"Notch",description:"Shopkeeper",Rotation:[180f,0f]}')
+    # a sulfur cube holding a block of TNT (drawn inside it, SulfurCubeInnerLayer)
+    rcon.command('summon minecraft:sulfur_cube 5 -60 -2 {NoAI:1b,equipment:{body:{id:"minecraft:tnt",count:1}}}')
 
     rcon.command("cctv create ci -1 -56 -8 10 30")
     # a camera under water, in the pool (the water fog and the underwater overlay, screenshot.mjs)
@@ -533,6 +538,9 @@ def main():
     mannequin = stream.mannequin or {}
     if mannequin.get("profile", {}).get("name") != "Notch" or mannequin.get("desc") != "Shopkeeper":
         failures.append(f"the mannequin was not streamed with its profile and description (got {stream.mannequin})")
+    print("sulfur cube:", json.dumps(stream.sulfur_cube), flush=True)
+    if "cb" not in (stream.sulfur_cube or {}):
+        failures.append(f"the block held by the sulfur cube was not streamed (got {stream.sulfur_cube})")
     if not any(b[0] == 0 and b[1] == -60 and b[2] == 0 for b in stream.block_updates):
         failures.append("instant block update (mixin) did not arrive")
     print("animation states:", sorted(stream.animation_states), "entity events:", sorted(stream.entity_events), flush=True)
