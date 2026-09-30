@@ -65,6 +65,8 @@ const clouds = new CloudRenderer(gl);
 const weather = new WeatherRenderer(gl);
 const post = new PostProcessor(gl, renderer);
 const entities = new EntityRenderer(renderer);
+// ?skinning=0 poses entity models on the CPU (GPU skinning off, for comparisons)
+entities.sink.skinning = params.get('skinning') !== '0';
 const particles = new Particles(gl);
 const sounds = new Sounds(query);
 particles.environment = environment;

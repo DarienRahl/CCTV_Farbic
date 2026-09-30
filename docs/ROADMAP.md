@@ -195,8 +195,9 @@ to the milestone it belongs to. The roadmap on the README page is drawn from thi
 - [x] **Per-section culling inside merged far regions**: each section of a merged region is checked against the
       frustum, the render distance and the occlusion graph and only the visible runs of sections are drawn
       (one multi-draw call per region with `WEBGL_multi_draw`)
-- [ ] Entities: skinning on the GPU (bone matrices in a texture) instead of rebuilding vertices on
-      the CPU every frame
+- [x] **Entities skinned on the GPU**: every model's quads stay on the GPU in their parts' own space and a frame
+      only sends one matrix per part (a float texture), so the vertices of mobs, players, armour and block entity
+      models are no longer rebuilt and uploaded every frame (`?skinning=0` turns it off for comparisons)
 - [x] Video wall: frame rate cap (lower for small tiles), one pixel per CSS pixel, no rendering
       for tiles that are off screen or in a hidden tab
 - [x] **Budgets in CI**: server milliseconds per camera tick, bytes per section message, the page's time

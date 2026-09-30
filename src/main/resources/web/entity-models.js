@@ -136,10 +136,22 @@ export class VertexSink {
 	constructor() {
 		this.data = new Float32Array(1 << 16);
 		this.count = 0;
+		// GPU skinning: models are drawn from their own buffers with one matrix per part (bones, 16 floats each)
+		this.skinning = false;
+		this.draws = [];
+		this.bones = new Float32Array(BONES_PER_ROW * 16);
+		this.boneCount = 0;
 	}
 
 	reset() {
 		this.count = 0;
+		this.draws.length = 0;
+		this.boneCount = 0;
+	}
+
+	/** Where the next geometry starts: vertices of this buffer and skinned model draws. */
+	mark() {
+		return { v: this.count, s: this.draws.length };
 	}
 
 	ensure(vertices) {
@@ -151,6 +163,20 @@ export class VertexSink {
 		next.set(this.data.subarray(0, this.count * FLOATS));
 		this.data = next;
 	}
+
+	/** Room for `count` more part matrices; returns the index of the first. Grows by whole texture rows. */
+	allocBones(count) {
+		const first = this.boneCount;
+		const need = (first + count) * 16;
+		if (need > this.bones.length) {
+			const row = BONES_PER_ROW * 16;
+			const next = new Float32Array(Math.max(this.bones.length * 2, Math.ceil(need / row) * row));
+			next.set(this.bones.subarray(0, first * 16));
+			this.bones = next;
+		}
+		this.boneCount += count;
+		return first;
+	}
 }
 
 const tmp = new Float32Array(12);
@@ -160,6 +186,10 @@ const tmp = new Float32Array(12);
  * style: {color [r, g, b, a], light [block, sky], overlay [red, white]}
  */
 export function emitModel(sink, model, matrix, style) {
+	if (sink.skinning) {
+		emitSkinned(sink, model, matrix, style);
+		return;
+	}
 	sink.ensure(model.vertexCount * 1.5);
 	const base = mat4();
 	base.set(matrix);
@@ -178,6 +208,88 @@ function emitPart(sink, part, parent, style, isRoot) {
 	if (part.xScale !== 1 || part.yScale !== 1 || part.zScale !== 1) scale(m, part.xScale, part.yScale, part.zScale);
 	if (part.quads && !part.skipDraw) emitQuads(sink, part.quads, m, style);
 	for (const child of part.children) emitPart(sink, child, m, style, false);
+}
+
+/** Part matrices per row of the bone texture (1024 RGBA float texels, four per matrix). */
+export const BONES_PER_ROW = 256;
+/** Floats per vertex of a model's GPU copy: position in its part's pixels 3, normal 3, uv 2, part index 1. */
+export const SKIN_FLOATS = 9;
+
+/**
+ * GPU skinning: the model's quads stay on the GPU in their parts' own space, so a frame only works out one matrix
+ * per part (the same transforms as emitPart; hidden parts get a zero matrix, which draws nothing) and records the
+ * draw with its colour, light and overlay.
+ */
+function emitSkinned(sink, model, matrix, style) {
+	const geometry = skinnedGeometry(model);
+	const first = sink.allocBones(geometry.parts.length);
+	const bones = sink.bones;
+	const base = mat4();
+	base.set(matrix);
+	scale(base, 1 / 16);
+	let index = first;
+	const walk = (part, parent, hidden) => {
+		const at = index++ * 16;
+		if (hidden || !part.visible) {
+			bones.fill(0, at, at + 16);
+			for (const child of part.children) walk(child, parent, true);
+			return;
+		}
+		const m = new Float32Array(parent);
+		translate(m, part.x, part.y, part.z);
+		if (part.zRot) rotate(m, 2, part.zRot);
+		if (part.yRot) rotate(m, 1, part.yRot);
+		if (part.xRot) rotate(m, 0, part.xRot);
+		if (part.xScale !== 1 || part.yScale !== 1 || part.zScale !== 1) scale(m, part.xScale, part.yScale, part.zScale);
+		if (part.quads && !part.skipDraw) bones.set(m, at);
+		else bones.fill(0, at, at + 16);
+		for (const child of part.children) walk(child, m, false);
+	};
+	walk(model.root, base, false);
+	sink.draws.push({ geometry, bone: first, color: style.color, light: style.light, overlay: style.overlay });
+}
+
+/**
+ * A model's quads for GPU skinning, made once: parts in the order emitSkinned walks them, each quad as two
+ * triangles in its part's pixels with the normal of the quad (the shader turns it with the part's cofactor matrix,
+ * which gives what the cross product of the moved edges gives in emitQuads).
+ */
+function skinnedGeometry(model) {
+	if (model.skinned) return model.skinned;
+	const parts = [];
+	const collect = part => {
+		parts.push(part);
+		part.children.forEach(collect);
+	};
+	collect(model.root);
+	let quads = 0;
+	for (const part of parts) if (part.quads) quads += part.quads.length / 20;
+	const data = new Float32Array(quads * 6 * SKIN_FLOATS);
+	let o = 0;
+	parts.forEach((part, bone) => {
+		const q = part.quads;
+		if (!q) return;
+		for (let i = 0; i < q.length; i += 20) {
+			const e1x = q[i + 5] - q[i], e1y = q[i + 6] - q[i + 1], e1z = q[i + 7] - q[i + 2];
+			const e2x = q[i + 10] - q[i], e2y = q[i + 11] - q[i + 1], e2z = q[i + 12] - q[i + 2];
+			let nx = e1y * e2z - e1z * e2y, ny = e1z * e2x - e1x * e2z, nz = e1x * e2y - e1y * e2x;
+			let len = Math.hypot(nx, ny, nz);
+			if (len < 1e-12) {
+				const e3x = q[i + 15] - q[i], e3y = q[i + 16] - q[i + 1], e3z = q[i + 17] - q[i + 2];
+				nx = e2y * e3z - e2z * e3y; ny = e2z * e3x - e2x * e3z; nz = e2x * e3y - e2y * e3x;
+				len = Math.hypot(nx, ny, nz) || 1;
+			}
+			nx /= len; ny /= len; nz /= len;
+			for (const k of [0, 1, 2, 0, 2, 3]) {
+				data[o++] = q[i + k * 5]; data[o++] = q[i + k * 5 + 1]; data[o++] = q[i + k * 5 + 2];
+				data[o++] = nx; data[o++] = ny; data[o++] = nz;
+				data[o++] = q[i + k * 5 + 3]; data[o++] = q[i + k * 5 + 4];
+				data[o++] = bone;
+			}
+		}
+	});
+	model.skinned = { parts, data, vertices: quads * 6 };
+	return model.skinned;
 }
 
 export function emitQuads(sink, q, m, style) {

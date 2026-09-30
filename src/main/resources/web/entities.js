@@ -4,7 +4,7 @@
 // really visible (not through walls).
 
 import {
-	ModelLibrary, VertexSink, FLOATS, emitModel, emitQuads, partMatrix, mat4, mul, translate, rotate, scale, DEG,
+	ModelLibrary, VertexSink, FLOATS, SKIN_FLOATS, BONES_PER_ROW, emitModel, emitQuads, partMatrix, mat4, mul, translate, rotate, scale, DEG,
 } from './entity-models.js';
 import { describeMob, isKnownMob, blockEntityModel, dyeRgb, CLIENT, equipmentPose, setEquipment, setAutoMobResolver } from './mobs.js';
 import { Animator, AnimationStates } from './keyframes.js';
@@ -118,6 +118,22 @@ const FACING_YROT = { south: 0, west: 90, north: 180, east: 270 };
 
 const MODES = { cutout: MODE_CUTOUT, cutout_nocull: MODE_NOCULL, translucent: MODE_TRANSLUCENT, eyes: MODE_EYES, energy: MODE_ENERGY };
 
+// GPU skinning: models stay on the GPU in their parts' own space (aBone = the part's index) and each part's matrix of
+// this frame is read from a float texture, four texels per matrix; vertices made on the CPU have aBone -1.
+const SKIN_GLSL = `
+layout(location = 6) in float aBone;
+uniform highp sampler2D uBones;
+uniform int uBoneBase;
+mat4 boneMatrix() {
+	int t = (uBoneBase + int(aBone + 0.5)) * 4;
+	ivec2 at = ivec2(t % ${BONES_PER_ROW * 4}, t / ${BONES_PER_ROW * 4});
+	return mat4(texelFetch(uBones, at, 0), texelFetch(uBones, at + ivec2(1, 0), 0),
+		texelFetch(uBones, at + ivec2(2, 0), 0), texelFetch(uBones, at + ivec2(3, 0), 0));
+}
+vec3 skinnedPos() {
+	return aBone >= 0.0 ? (boneMatrix() * vec4(aPos, 1.0)).xyz : aPos;
+}`;
+
 const ENTITY_VS = `
 layout(location = 0) in vec3 aPos;
 layout(location = 1) in vec3 aNormal;
@@ -125,6 +141,7 @@ layout(location = 2) in vec2 aUv;
 layout(location = 3) in vec4 aColor;
 layout(location = 4) in vec2 aLight;
 layout(location = 5) in vec2 aOverlay;
+${SKIN_GLSL}
 uniform mat4 uViewProj;
 uniform sampler2D uLightmap;
 uniform int uMode;
@@ -145,10 +162,18 @@ out vec3 vNormal;
 out float vSky;
 #endif
 void main() {
-	gl_Position = uViewProj * vec4(aPos, 1.0);
-	vSph = length(aPos);
-	vCyl = max(length(aPos.xz), abs(aPos.y));
-	vec3 n = normalize(aNormal);
+	vec3 pos = aPos;
+	vec3 normal = aNormal;
+	if (aBone >= 0.0) {
+		mat4 m = boneMatrix();
+		pos = (m * vec4(aPos, 1.0)).xyz;
+		// the cofactor matrix turns the normal like the cross product of the quad's moved edges
+		normal = aNormal.x * cross(m[1].xyz, m[2].xyz) + aNormal.y * cross(m[2].xyz, m[0].xyz) + aNormal.z * cross(m[0].xyz, m[1].xyz);
+	}
+	gl_Position = uViewProj * vec4(pos, 1.0);
+	vSph = length(pos);
+	vCyl = max(length(pos.xz), abs(pos.y));
+	vec3 n = normalize(normal);
 	float light = min(1.0, (max(0.0, dot(uLight0, n)) + max(0.0, dot(uLight1, n))) * 0.6 + 0.4);
 	vColor = uMode >= 3 ? aColor : vec4(aColor.rgb * light, aColor.a);
 	vLightColor = uMode == 3 || uMode == 5 ? vec4(1.0) : texture(uLightmap, clamp(aLight / 256.0 + 0.5 / 16.0, vec2(0.5 / 16.0), vec2(15.5 / 16.0)));
@@ -158,7 +183,7 @@ void main() {
 	// OverlayTexture: hurt = red at 0.7 alpha, white flash fades the picture to white.
 	vOverlay = aOverlay.x > 0.5 ? vec4(1.0, 0.0, 0.0, 0.7) : vec4(1.0, 1.0, 1.0, 1.0 - aOverlay.y * 0.75);
 #ifdef SHADERS
-	vPos = aPos;
+	vPos = pos;
 	vNormal = n;
 	vSky = aLight.y / 240.0;
 #endif
@@ -294,11 +319,12 @@ void main() {
 const DEPTH_VS = `
 layout(location = 0) in vec3 aPos;
 layout(location = 2) in vec2 aUv;
+${SKIN_GLSL}
 uniform mat4 uMatrix;
 out vec2 vUv;
 void main() {
 	vUv = aUv;
-	gl_Position = uMatrix * vec4(aPos, 1.0);
+	gl_Position = uMatrix * vec4(skinnedPos(), 1.0);
 }`;
 
 const DEPTH_FS = `
@@ -312,11 +338,12 @@ void main() {
 const OUTLINE_VS = `
 layout(location = 0) in vec3 aPos;
 layout(location = 2) in vec2 aUv;
+${SKIN_GLSL}
 uniform mat4 uViewProj;
 out vec2 vUv;
 void main() {
 	vUv = aUv;
-	gl_Position = uViewProj * vec4(aPos, 1.0);
+	gl_Position = uViewProj * vec4(skinnedPos(), 1.0);
 }`;
 
 const OUTLINE_FS = `
@@ -641,6 +668,11 @@ export class EntityRenderer {
 		this.library = new ModelLibrary();
 		this.animator = new Animator(this.library);
 		this.sink = new VertexSink();
+		this.sink.skinning = true;
+		// GPU copies of the models (GPU skinning) and the texture with this frame's part matrices
+		this.skinnedMeshes = new Map();
+		this.boneTexture = null;
+		this.boneRows = 0;
 		this.batches = [];
 		this.textures = new Map();
 		this.skins = new Map();
@@ -1124,16 +1156,75 @@ export class EntityRenderer {
 	 * drawn, its outline colour).
 	 */
 	batch(texture, mode, start, cull = true, glint = 0) {
-		const count = this.sink.count - start;
-		if (count <= 0) return;
+		const count = this.sink.count - start.v;
+		const skinCount = this.sink.draws.length - start.s;
+		if (count <= 0 && skinCount <= 0) return;
 		const outline = this.outline;
 		const last = this.batches[this.batches.length - 1];
 		if (last && last.texture === texture && last.mode === mode && last.cull === cull && last.glint === glint && last.outline === outline
-			&& last.start + last.count === start) {
+			&& last.start + last.count === start.v && last.skinStart + last.skinCount === start.s) {
 			last.count += count;
+			last.skinCount += skinCount;
 			return;
 		}
-		this.batches.push({ texture, mode, start, count, cull, glint, outline });
+		this.batches.push({ texture, mode, start: start.v, count, skinStart: start.s, skinCount, cull, glint, outline });
+	}
+
+	/** The GPU copy of a model's quads (GPU skinning), made the first time the model is drawn. */
+	skinnedMesh(geometry) {
+		let mesh = this.skinnedMeshes.get(geometry);
+		if (!mesh) {
+			const gl = this.gl;
+			const vao = gl.createVertexArray(), vbo = gl.createBuffer();
+			gl.bindVertexArray(vao);
+			gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+			gl.bufferData(gl.ARRAY_BUFFER, geometry.data, gl.STATIC_DRAW);
+			const stride = SKIN_FLOATS * 4;
+			const attrib = (index, size, offset) => {
+				gl.enableVertexAttribArray(index);
+				gl.vertexAttribPointer(index, size, gl.FLOAT, false, stride, offset * 4);
+			};
+			// colour, light and overlay (3, 4, 5) are the same for the whole draw: constant attributes
+			attrib(0, 3, 0); attrib(1, 3, 3); attrib(2, 2, 6); attrib(6, 1, 8);
+			gl.bindVertexArray(null);
+			mesh = { vao, vbo, vertices: geometry.vertices };
+			this.skinnedMeshes.set(geometry, mesh);
+		}
+		return mesh;
+	}
+
+	/** Binds this frame's part matrices for a program with SKIN_GLSL; CPU made vertices get part index -1. */
+	bindBones(u) {
+		const gl = this.gl;
+		gl.activeTexture(gl.TEXTURE6);
+		gl.bindTexture(gl.TEXTURE_2D, this.boneTexture || this.white);
+		gl.activeTexture(gl.TEXTURE0);
+		gl.uniform1i(u.uBones, 6);
+		gl.vertexAttrib1f(6, -1);
+	}
+
+	/**
+	 * Draws a batch: its vertices in this frame's buffer, then its skinned models (with their colour, light and
+	 * overlay as constant attributes when `style` is set). Leaves a model's vertex array bound.
+	 */
+	drawBatch(b, u, style) {
+		const gl = this.gl;
+		if (b.count > 0) {
+			gl.bindVertexArray(this.vao);
+			gl.drawArrays(gl.TRIANGLES, b.start, b.count);
+		}
+		for (let i = b.skinStart; i < b.skinStart + b.skinCount; i++) {
+			const draw = this.sink.draws[i];
+			const mesh = this.skinnedMesh(draw.geometry);
+			gl.bindVertexArray(mesh.vao);
+			gl.uniform1i(u.uBoneBase, draw.bone);
+			if (style) {
+				gl.vertexAttrib4f(3, draw.color[0], draw.color[1], draw.color[2], draw.color[3]);
+				gl.vertexAttrib2f(4, draw.light[0], draw.light[1]);
+				gl.vertexAttrib2f(5, draw.overlay[0], draw.overlay[1]);
+			}
+			gl.drawArrays(gl.TRIANGLES, 0, mesh.vertices);
+		}
 	}
 
 	/**
@@ -1203,14 +1294,14 @@ export class EntityRenderer {
 		gl.useProgram(P.entity.program);
 		gl.uniformMatrix4fv(P.entity.u.uViewProj, false, frame.viewProj);
 		gl.uniform1i(P.entity.u.uTexture, 0);
+		this.bindBones(P.entity.u);
 		gl.activeTexture(gl.TEXTURE0);
-		gl.bindVertexArray(this.vao);
 		for (const b of this.batches) {
 			if (!b.outline || b.mode > MODE_TRANSLUCENT) continue;
 			if (b.cull) gl.enable(gl.CULL_FACE); else gl.disable(gl.CULL_FACE);
 			gl.uniform3fv(P.entity.u.uColor, b.outline);
 			gl.bindTexture(gl.TEXTURE_2D, b.texture);
-			gl.drawArrays(gl.TRIANGLES, b.start, b.count);
+			this.drawBatch(b, P.entity.u, false);
 		}
 		gl.disable(gl.CULL_FACE);
 		gl.disable(gl.DEPTH_TEST);
@@ -1354,7 +1445,7 @@ export class EntityRenderer {
 		};
 		for (let k = 0; k <= 24; k++) pair(k, 0.05, false);
 		for (let k = 24; k >= 0; k--) pair(k, 0, true);
-		const sink = this.sink, startCount = sink.count;
+		const sink = this.sink, startCount = sink.mark();
 		sink.ensure((strip.length - 2) * 3);
 		const out = sink.data;
 		for (let i = 0; i + 2 < strip.length; i++) {
@@ -1397,13 +1488,13 @@ export class EntityRenderer {
 			quads.push(-r, -yo, zo, u1, v1, r, -yo, zo, u0, v1, r, 1.4 - yo, zo, u0, v0, -r, 1.4 - yo, zo, u1, v0);
 			h -= 0.45; yo -= 0.45; r *= 0.9; zo -= 0.03;
 		}
-		const start = this.sink.count;
+		const start = this.sink.mark();
 		this.sink.ensure(quads.length / 20 * 6);
 		// LightCoordsUtil.withBlock(light, 15)
 		emitQuads(this.sink, quads, m, { color: [1, 1, 1, 1], light: [240, light[1]], overlay: [0, 0] });
 		// fireVertex: setNormal(pose, 0, 1, 0), the camera's up
 		const out = this.sink.data;
-		for (let v = start; v < this.sink.count; v++) {
+		for (let v = start.v; v < this.sink.count; v++) {
 			const o = v * FLOATS;
 			out[o + 3] = up[0]; out[o + 4] = up[1]; out[o + 5] = up[2];
 		}
@@ -1421,6 +1512,23 @@ export class EntityRenderer {
 		const gl = this.gl;
 		gl.bindBuffer(gl.ARRAY_BUFFER, this.vbo);
 		gl.bufferData(gl.ARRAY_BUFFER, this.sink.data.subarray(0, this.sink.count * FLOATS), gl.STREAM_DRAW);
+		const sink = this.sink;
+		if (!sink.boneCount) return;
+		const rows = Math.ceil(sink.boneCount / BONES_PER_ROW);
+		gl.activeTexture(gl.TEXTURE6);
+		if (!this.boneTexture || rows > this.boneRows) {
+			if (this.boneTexture) gl.deleteTexture(this.boneTexture);
+			this.boneRows = Math.max(rows, this.boneRows * 2, 4);
+			this.boneTexture = gl.createTexture();
+			gl.bindTexture(gl.TEXTURE_2D, this.boneTexture);
+			gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA32F, BONES_PER_ROW * 4, this.boneRows);
+			gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+			gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+		} else {
+			gl.bindTexture(gl.TEXTURE_2D, this.boneTexture);
+		}
+		gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, BONES_PER_ROW * 4, rows, gl.RGBA, gl.FLOAT, sink.bones, 0);
+		gl.activeTexture(gl.TEXTURE0);
 	}
 
 	drawEntity(e, type, pos, light, now, world) {
@@ -1575,7 +1683,7 @@ export class EntityRenderer {
 			if (!base) base = model;
 			// LivingEntityRenderer: an invisible mob's body is not drawn, its equipment layers are.
 			if (e.invisible && !layer.equipment) continue;
-			const start = this.sink.count;
+			const start = this.sink.mark();
 			// getModelTint (e.g. a wet wolf) tints the entity's own model, not the layers drawn over it.
 			const color = layer.color || (model === base && layer === mob.layers[0] && anim.tint) || [1, 1, 1, 1];
 			let lm = m;
@@ -1672,7 +1780,7 @@ export class EntityRenderer {
 		rotate(m, 1, (90 - (e.yaw || 0)) * DEG);
 		scale(m, -1, -1, 1);
 		translate(m, 0, -1.501, 0);
-		const start = this.sink.count;
+		const start = this.sink.mark();
 		emitModel(this.sink, model, m, style);
 		this.batch(texture, MODE_CUTOUT, start);
 	}
@@ -1713,12 +1821,12 @@ export class EntityRenderer {
 			nnx, length, nnz, 0.4999, maxV, nnx, 0, nnz, 0.4999, minV, sx, 0, sz, 0, minV, sx, length, sz, 0, maxV,
 			wnx, length, wnz, 0.5, vBase + 0.5, enx, length, enz, 1, vBase + 0.5, esx, length, esz, 1, vBase, wsx, length, wsz, 0.5, vBase,
 		]);
-		const start = this.sink.count;
+		const start = this.sink.mark();
 		this.sink.ensure(18);
 		emitQuads(this.sink, quads, m, { color, light: [240, 240], overlay: [0, 0] });
 		// setNormal(0, 1, 0): lit like the top of a block
 		const out = this.sink.data;
-		for (let i = start; i < this.sink.count; i++) {
+		for (let i = start.v; i < this.sink.count; i++) {
 			out[i * FLOATS + 3] = 0; out[i * FLOATS + 4] = 1; out[i * FLOATS + 5] = 0;
 		}
 		this.batch(texture, MODE_CUTOUT, start, false);
@@ -1740,12 +1848,12 @@ export class EntityRenderer {
 			for (let i = 0; i < 3; i++) {
 				m[i] = right[i] * 0.5; m[4 + i] = up[i] * 0.5; m[8 + i] = back[i] * 0.5; m[12 + i] = pos[i];
 			}
-			const start = this.sink.count;
+			const start = this.sink.mark();
 			this.sink.ensure(6);
 			emitQuads(this.sink, [-0.5, -0.5, 0, 0, 1, 0.5, -0.5, 0, 1, 1, 0.5, 0.5, 0, 1, 0, -0.5, 0.5, 0, 0, 0], m, style);
 			// setNormal(pose, 0, 1, 0): the camera's up
 			const out = this.sink.data;
-			for (let v = start; v < this.sink.count; v++) {
+			for (let v = start.v; v < this.sink.count; v++) {
 				out[v * FLOATS + 3] = up[0]; out[v * FLOATS + 4] = up[1]; out[v * FLOATS + 5] = up[2];
 			}
 			this.batch(texture, MODE_CUTOUT, start, false);
@@ -1789,7 +1897,7 @@ export class EntityRenderer {
 			const [a0, a1] = edges[i], [b0, b1] = edges[i + 1];
 			quads.push(...a0, 0.5, 0.5, ...b0, 0.5, 0.5, ...b1, 0.5, 0.5, ...a1, 0.5, 0.5);
 		}
-		const start = this.sink.count;
+		const start = this.sink.mark();
 		this.sink.ensure(16 * 6);
 		emitQuads(this.sink, quads, mat4(), { color: [0, 0, 0, 1], light: [240, 240], overlay: [0, 0] });
 		this.batch(this.white, MODE_NOCULL, start, false);
@@ -1882,7 +1990,7 @@ export class EntityRenderer {
 		for (const f of faces) for (const i of f) q.push(...corners[i], 0.5, 0.5);
 		const m = mat4();
 		translate(m, pos[0], pos[1], pos[2]);
-		const start = this.sink.count;
+		const start = this.sink.mark();
 		this.sink.ensure(36);
 		emitQuads(this.sink, new Float32Array(q), m, { ...style, color: hashColor(e.type) });
 		this.batch(this.white, MODE_CUTOUT, start);
@@ -1897,7 +2005,7 @@ export class EntityRenderer {
 		translate(m, pos[0], pos[1], pos[2]);
 		rotate(m, 1, -(yaw || 0) * DEG);
 		scale(m, -1, -1, 1);
-		const start = this.sink.count;
+		const start = this.sink.mark();
 		emitModel(this.sink, model, m, style);
 		this.batch(texture, MODE_CUTOUT, start);
 	}
@@ -1911,7 +2019,7 @@ export class EntityRenderer {
 		translate(m, pos[0], pos[1], pos[2]);
 		rotate(m, 1, ((e.yaw || 0) + yawOffset) * DEG);
 		rotate(m, 2, ((e.pitch || 0) + pitchOffset) * DEG);
-		const start = this.sink.count;
+		const start = this.sink.mark();
 		emitModel(this.sink, model, m, style);
 		this.batch(texture, MODE_NOCULL, start, false);
 	}
@@ -1949,7 +2057,7 @@ export class EntityRenderer {
 		}
 		scale(m, -1, -1, 1);
 		rotate(m, 1, 90 * DEG);
-		const start = this.sink.count;
+		const start = this.sink.mark();
 		emitModel(this.sink, model, m, style);
 		this.batch(texture, MODE_CUTOUT, start);
 		this.shadowFor(e, pos, 0.8, this.world);
@@ -1974,7 +2082,7 @@ export class EntityRenderer {
 			this.emitBlock(inside === 'minecraft:chest' ? null : inside, b, style, inside === 'minecraft:chest');
 		}
 		scale(m, -1, -1, 1);
-		const start = this.sink.count;
+		const start = this.sink.mark();
 		emitModel(this.sink, model, m, style);
 		this.batch(texture, MODE_CUTOUT, start);
 	}
@@ -1997,7 +2105,7 @@ export class EntityRenderer {
 		scale(m, 2);
 		translate(m, 0, -0.5, 0);
 		scale(m, -1, -1, 1);
-		const start = this.sink.count;
+		const start = this.sink.mark();
 		emitModel(this.sink, model, m, { ...style, light: [240, 240] });
 		this.batch(texture, MODE_NOCULL, start, false);
 	}
@@ -2051,7 +2159,7 @@ export class EntityRenderer {
 			return q;
 		};
 		for (const [texture, frontSide] of [[front, true], [back, false]]) {
-			const start = this.sink.count;
+			const start = this.sink.mark();
 			for (let x = 0; x < width; x++) {
 				for (let y = 0; y < height; y++) {
 					const quads = new Float32Array(cell(x, y, frontSide));
@@ -2310,7 +2418,7 @@ export class EntityRenderer {
 			if (!entityModel || !texture) return false;
 			entityModel.reset();
 			if (pose) pose(entityModel.parts);
-			const start = this.sink.count;
+			const start = this.sink.mark();
 			emitModel(this.sink, entityModel, lm, color ? { ...style, color } : style);
 			this.batch(texture, mode, start, false, style.glint || 0);
 			return true;
@@ -2430,7 +2538,7 @@ export class EntityRenderer {
 	/** Emits an item mesh with the given transform (model space 0..1). */
 	emitItem(mesh, m, style, patterns = null) {
 		if (mesh.special) return this.drawSpecialItem(mesh.special, m, style, patterns);
-		const start = this.sink.count;
+		const start = this.sink.mark();
 		const data = mesh.quads.data;
 		this.sink.ensure(data.length / 20 * 6);
 		if (mesh.quads.tints) {
@@ -2522,7 +2630,7 @@ export class EntityRenderer {
 		rotate(m, 1, Math.atan2(-pos[0], -pos[2]));
 		scale(m, 0.3);
 		const q = new Float32Array([-0.5, -0.25, 0, u0, v1, 0.5, -0.25, 0, u1, v1, 0.5, 0.75, 0, u1, v0, -0.5, 0.75, 0, u0, v0]);
-		const start = this.sink.count;
+		const start = this.sink.mark();
 		this.sink.ensure(6);
 		emitQuads(this.sink, q, m, { ...style, light: [240, style.light[1]], color: [r, 1, b, 0.5] });
 		this.batch(texture, MODE_NOCULL, start, false);
@@ -2596,7 +2704,7 @@ export class EntityRenderer {
 		const base = this.texture(hasPatterns ? 'shield/base' : 'shield/base_nopattern');
 		if (!base) return;
 		model.reset();
-		let start = this.sink.count;
+		let start = this.sink.mark();
 		emitModel(this.sink, model, m, style);
 		this.batch(base, MODE_CUTOUT, start, true, style.glint || 0);
 		if (!hasPatterns) return;
@@ -2604,7 +2712,7 @@ export class EntityRenderer {
 		if (handle) handle.visible = false;
 		const layer = (texture, color) => {
 			if (!texture) return;
-			start = this.sink.count;
+			start = this.sink.mark();
 			emitModel(this.sink, model, m, { ...style, color, glint: 0 });
 			this.batch(texture, MODE_TRANSLUCENT, start, false);
 		};
@@ -2715,12 +2823,12 @@ export class EntityRenderer {
 
 	/** A flat textured quad lit without the shading of entity faces (text render type). */
 	emitFlat(quad, m, style, texture) {
-		const start = this.sink.count;
+		const start = this.sink.mark();
 		this.sink.ensure(6);
 		emitQuads(this.sink, quad, m, { ...style, color: [1, 1, 1, 1] });
 		// upward normals: full brightness in the entity shader, like the text pipeline
 		const out = this.sink.data;
-		for (let i = start; i < this.sink.count; i++) {
+		for (let i = start.v; i < this.sink.count; i++) {
 			out[i * FLOATS + 3] = 0; out[i * FLOATS + 4] = 1; out[i * FLOATS + 5] = 0;
 		}
 		this.batch(texture, MODE_NOCULL, start, false);
@@ -2735,7 +2843,7 @@ export class EntityRenderer {
 				const texture = this.texture('chest/normal');
 				if (model && texture) {
 					model.reset();
-					const start = this.sink.count;
+					const start = this.sink.mark();
 					emitModel(this.sink, model, m, style);
 					this.batch(texture, MODE_CUTOUT, start);
 				}
@@ -2867,7 +2975,7 @@ export class EntityRenderer {
 			if (!data.length) continue;
 			const m = mat4();
 			translate(m, bx, by, bz);
-			const start = this.sink.count;
+			const start = this.sink.mark();
 			this.sink.ensure(data.length / 20 * 6);
 			emitQuads(this.sink, new Float32Array(data), m, { color: [1, 1, 1, 1], light: [240, 240], overlay: [0, 0] });
 			this.batch(texture, MODE_CRUMBLING, start, false);
@@ -3051,7 +3159,7 @@ export class EntityRenderer {
 			const model = this.library.get('minecraft:conduit#' + layer);
 			if (!model || !texture) return;
 			model.reset();
-			const start = this.sink.count;
+			const start = this.sink.mark();
 			emitModel(this.sink, model, m, style);
 			this.batch(texture, mode, start, cull);
 		};
@@ -3435,7 +3543,7 @@ export class EntityRenderer {
 		parts.flip_page2.yRot = o - o * 2 * state.pageFlip2;
 		for (const name of ['left_pages', 'right_pages', 'flip_page1', 'flip_page2']) parts[name].x = Math.sin(o);
 		const [sky, block] = world.lightAt(be.x, be.y, be.z);
-		const start = this.sink.count;
+		const start = this.sink.mark();
 		emitModel(this.sink, model, m, { color: [1, 1, 1, 1], light: [block * 16, sky * 16], overlay: [0, 0] });
 		this.batch(texture, MODE_CUTOUT, start);
 	}
@@ -3459,11 +3567,11 @@ export class EntityRenderer {
 			return quads;
 		};
 		const emit = (quads, m, alpha, mode) => {
-			const start = this.sink.count;
+			const start = this.sink.mark();
 			this.sink.ensure(quads.length / 20 * 6);
 			emitQuads(this.sink, quads, m, { color: [rgb[0], rgb[1], rgb[2], alpha], light: [240, 240], overlay: [0, 0] });
 			const out = this.sink.data;
-			for (let i = start; i < this.sink.count; i++) { out[i * FLOATS + 3] = 0; out[i * FLOATS + 4] = 1; out[i * FLOATS + 5] = 0; }
+			for (let i = start.v; i < this.sink.count; i++) { out[i * FLOATS + 3] = 0; out[i * FLOATS + 4] = 1; out[i * FLOATS + 5] = 0; }
 			this.batch(texture, mode, start, false);
 		};
 		// the solid beam turns (2.25 degrees a tick)
@@ -3492,7 +3600,7 @@ export class EntityRenderer {
 			if (!model || !texture) return null;
 			model.reset();
 			if (pose) pose(model.parts);
-			const start = this.sink.count;
+			const start = this.sink.mark();
 			emitModel(this.sink, model, matrix, color ? { ...style, color } : style);
 			this.batch(texture, mode, start, mode !== MODE_TRANSLUCENT);
 			return model;
@@ -3543,7 +3651,7 @@ export class EntityRenderer {
 				if (model && texture) {
 					model.reset();
 					if (model.parts.head) model.parts.head.yRot = yaw * DEG;
-					const start = this.sink.count;
+					const start = this.sink.mark();
 					emitModel(this.sink, model, m, style);
 					this.batch(texture, MODE_NOCULL, start, false);
 				}
@@ -3623,11 +3731,12 @@ export class EntityRenderer {
 			gl.useProgram(p.program);
 			gl.uniformMatrix4fv(p.u.uMatrix, false, shadow.matrix);
 			gl.uniform1i(p.u.uTexture, 0);
+			this.bindBones(p.u);
 			gl.activeTexture(gl.TEXTURE0);
 			for (const b of this.batches) {
 				if (b.mode >= MODE_EYES || b.mode === MODE_TRANSLUCENT) continue;
 				gl.bindTexture(gl.TEXTURE_2D, b.texture);
-				gl.drawArrays(gl.TRIANGLES, b.start, b.count);
+				this.drawBatch(b, p.u, false);
 			}
 			gl.bindVertexArray(null);
 			return;
@@ -3648,6 +3757,7 @@ export class EntityRenderer {
 		gl.activeTexture(gl.TEXTURE0);
 		gl.uniform1i(u.uTexture, 0);
 		if (shaders) this.renderer.bindShaderUniforms(u, frame, shadow);
+		this.bindBones(u);
 		gl.enable(gl.DEPTH_TEST);
 
 		// TextureTransform glint matrices of this frame and their textures (blurred, repeating)
@@ -3683,7 +3793,7 @@ export class EntityRenderer {
 				gl.uniform1i(u.uMode, b.mode);
 				if (b.cull) gl.enable(gl.CULL_FACE); else gl.disable(gl.CULL_FACE);
 				gl.bindTexture(gl.TEXTURE_2D, b.texture);
-				gl.drawArrays(gl.TRIANGLES, b.start, b.count);
+				this.drawBatch(b, u, true);
 			}
 		};
 		gl.disable(gl.BLEND);

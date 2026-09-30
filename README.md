@@ -10,7 +10,7 @@
   <a href="https://github.com/DarienRahl/CCTV_Farbic/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/DarienRahl/CCTV_Farbic?style=for-the-badge&amp;label=release&amp;color=5d8c3e"></a>
   <img alt="Minecraft 26.3" src="https://img.shields.io/badge/minecraft-26.3-866043?style=for-the-badge">
   <img alt="Fabric, server side only" src="https://img.shields.io/badge/fabric-server%20side%20only-8b8b8b?style=for-the-badge">
-  <a href="#roadmap"><img alt="Roadmap" src="https://img.shields.io/badge/roadmap-68%2F71%20done-80ff20?style=for-the-badge"></a>
+  <a href="#roadmap"><img alt="Roadmap" src="https://img.shields.io/badge/roadmap-69%2F71%20done-80ff20?style=for-the-badge"></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-555555?style=for-the-badge"></a>
 </p>
 <!-- badges:end -->
@@ -180,7 +180,7 @@ at once as a video wall.
 ## Roadmap
 
 <!-- roadmap:start -->
-<p align="center"><img src="docs/images/roadmap/banner.svg" width="100%" alt="CCTV roadmap: 68 of 71 done"></p>
+<p align="center"><img src="docs/images/roadmap/banner.svg" width="100%" alt="CCTV roadmap: 69 of 71 done"></p>
 
 What is done and what comes next, milestone by milestone (the full plan with its principles is in
 [docs/ROADMAP.md](docs/ROADMAP.md)).
@@ -273,16 +273,16 @@ What is done and what comes next, milestone by milestone (the full plan with its
 
 </details>
 
-<img src="docs/images/roadmap/1-4.svg" width="100%" alt="1.4 — performance: in progress - 1.4.0 is out, 5 of 7 done">
+<img src="docs/images/roadmap/1-4.svg" width="100%" alt="1.4 — performance: in progress - 1.4.0 is out, 6 of 7 done">
 
 <details>
-<summary><b>1.4 — performance</b> · in progress - 1.4.0 is out · 5 of 7 done</summary>
+<summary><b>1.4 — performance</b> · in progress - 1.4.0 is out · 6 of 7 done</summary>
 
 - [ ] Binary section messages instead of JSON with base64 (sections are already palette + run-length encoded and gzipped, so this saves roughly a quarter; lower priority)
 - [x] **Section cache in the browser** (IndexedDB): the viewer keeps the sections it got; after "init" it tells the server which ones it has (position and a hash of the message) and the server answers "keep" for the unchanged ones, so reopening a camera downloads only what changed (`?cache=0` turns it off)
 - [x] **Server memory**: far sections kept only as their message (a few KB instead of about 25), read back from it when a block or the light in them changes
 - [x] **Per-section culling inside merged far regions**: each section of a merged region is checked against the frustum, the render distance and the occlusion graph and only the visible runs of sections are drawn (one multi-draw call per region with `WEBGL_multi_draw`)
-- [ ] Entities: skinning on the GPU (bone matrices in a texture) instead of rebuilding vertices on the CPU every frame
+- [x] **Entities skinned on the GPU**: every model's quads stay on the GPU in their parts' own space and a frame only sends one matrix per part (a float texture), so the vertices of mobs, players, armour and block entity models are no longer rebuilt and uploaded every frame (`?skinning=0` turns it off for comparisons)
 - [x] Video wall: frame rate cap (lower for small tiles), one pixel per CSS pixel, no rendering for tiles that are off screen or in a hidden tab
 - [x] **Budgets in CI**: server milliseconds per camera tick, bytes per section message, the page's time per frame (also in `/api/status`: tick time, sections sent, kept and compacted)
 
