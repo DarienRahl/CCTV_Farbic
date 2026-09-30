@@ -331,3 +331,6 @@ net/minecraft/world/entity/animal/fox/Fox
 # automatic entity mapping (assets/EntityRendererMap: bytecode of the registrations and the renderers)
 net/minecraft/client/renderer/entity/EntityRenderers
 net/minecraft/client/model/geom/ModelLayers
+# sniffer digging and searching (particles.js entityParticles, sound.js entitySounds; EntityEncoder "dig")
+net/minecraft/world/entity/animal/sniffer/Sniffer
+net/minecraft/client/resources/sounds/SnifferSoundInstance

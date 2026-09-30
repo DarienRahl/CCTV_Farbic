@@ -16,6 +16,7 @@ import java.util.function.IntConsumer;
 
 import org.jspecify.annotations.Nullable;
 
+import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
 import net.minecraft.core.component.DataComponentType;
 import net.minecraft.core.component.DataComponents;
@@ -36,6 +37,7 @@ import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Pose;
 import net.minecraft.world.entity.decoration.ItemFrame;
 import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.entity.animal.sniffer.Sniffer;
 import net.minecraft.world.entity.monster.Guardian;
 import net.minecraft.world.entity.monster.illager.AbstractIllager;
 import net.minecraft.world.entity.player.Player;
@@ -50,6 +52,7 @@ import net.minecraft.world.item.component.DyedItemColor;
 import net.minecraft.world.item.equipment.Equippable;
 import net.minecraft.world.item.equipment.trim.ArmorTrim;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.RenderShape;
 import net.minecraft.world.level.block.entity.BannerPatternLayers;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.saveddata.maps.MapDecoration;
@@ -363,6 +366,9 @@ final class EntityEncoder {
 			}
 		}
 
+		if (entity instanceof Sniffer sniffer && sniffer.getState() == Sniffer.State.DIGGING) {
+			writeDigging(json, sniffer, blockStates);
+		}
 		if (entity instanceof FishingHook hook && hook.getPlayerOwner() != null) {
 			// FishingHookRenderer: the line runs to the hand holding the rod (getHoldingArm) below the owner's eyes
 			Player owner = hook.getPlayerOwner();
@@ -711,6 +717,22 @@ final class EntityEncoder {
 		} catch (ReflectiveOperationException | RuntimeException e) {
 			return null;
 		}
+	}
+
+	/**
+	 * Sniffer.emitDiggingParticles (client): the block under its nose and that block's hit sound, as
+	 * {@code "dig": [block state, sound]}; the viewer makes the pieces and plays the sound while the digging
+	 * animation is at the part where the nose is in the ground.
+	 */
+	private static void writeDigging(Json json, Sniffer sniffer, IntConsumer blockStates) {
+		Vec3 head = sniffer.position().add(sniffer.getForward().scale(2.25));
+		BlockState below = sniffer.level().getBlockState(BlockPos.containing(head.x(), sniffer.getY() + 0.2F, head.z()).below());
+		if (below.getRenderShape() == RenderShape.INVISIBLE) {
+			return;
+		}
+		int id = Block.getId(below);
+		blockStates.accept(id);
+		json.name("dig").beginArray().value(id).value(SoundEncoder.id(below.getSoundType().getHitSound())).endArray();
 	}
 
 	/** Variants and render state in a {@code "d"} object; only non-default values. */

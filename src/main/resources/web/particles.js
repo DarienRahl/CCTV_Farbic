@@ -2143,6 +2143,18 @@ export class Particles {
 				case 'minecraft:panda':
 					this.pandaParticles(level, e, seen);
 					break;
+				case 'minecraft:sniffer': {
+					// Sniffer.emitDiggingParticles: while the nose is in the ground, pieces of the block under it
+					// and now and then the block's hit sound
+					const time = e.anim && e.anim.diggingAnimationState;
+					if (!e.dig || time === undefined || !(time > 1700 && time < 6000)) break;
+					const yaw = (e.yaw || 0) * Math.PI / 180, pitch = (e.pitch || 0) * Math.PI / 180;
+					const hx = e.x - Math.sin(yaw) * Math.cos(pitch) * 2.25, hz = e.z + Math.cos(yaw) * Math.cos(pitch) * 2.25;
+					const bx = Math.floor(hx) + 0.5, by = Math.floor(e.y + 0.2) + 0.5 - 0.65, bz = Math.floor(hz) + 0.5;
+					for (let i = 0; i < 30; i++) this.add(level, 'minecraft:block', bx, by, bz, 0, 0, 0, { b: e.dig[0] });
+					if (Math.floor(e.age || 0) % 10 === 0) level.sound(e.dig[1], e.x, e.y, e.z, 'neutral', 0.5, 0.5);
+					break;
+				}
 				default:
 					break;
 			}

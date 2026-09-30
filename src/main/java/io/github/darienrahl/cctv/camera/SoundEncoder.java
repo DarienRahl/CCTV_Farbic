@@ -37,7 +37,7 @@ final class SoundEncoder {
 	private SoundEncoder() {
 	}
 
-	private static String id(SoundEvent sound) {
+	static String id(SoundEvent sound) {
 		return sound.location().toString();
 	}
 

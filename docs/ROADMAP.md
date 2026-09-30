@@ -118,7 +118,9 @@ to the milestone it belongs to. The roadmap on the README page is drawn from thi
       the warden's heartbeat speeds up with its anger; portal specks around endermen, smoke around blazes
 - [x] Dripstone and honey drips (PointedDripstoneBlock, BeehiveBlock: water or lava from above the
       stalactite, honey under full hives) with the sound of the drop landing
-- [ ] The rest of the client-only sounds: sniffer searching and digging, background music (optional)
+- [x] The sniffer searching and digging: its sniffs, the digging sound (SnifferSoundInstance) and the pieces and
+      hit sounds of the block under its nose (Sniffer.emitDiggingParticles)
+- [ ] Background music (optional)
 - [x] **Particles** from `particles/*.json` and their textures: torch, candle and campfire flames
       and smoke, lava pops, drips, portal, falling leaves, spore blossoms, fireflies
 - [x] **Particles from the server**: broken blocks (pieces of the block's texture), explosions and

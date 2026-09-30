@@ -54,6 +54,8 @@ const EVENT_SOUNDS = {
 		? ['minecraft:entity.zombie_villager.cure', e.x, e.y + (e.baby ? 0.93 : 1.74), e.z, 'hostile', 1 + Math.random(), Math.random() * 0.7 + 0.3] : null),
 	// EvokerFangs: the bite starts
 	'minecraft:evoker_fangs': (id, e) => (id === 4 ? ['minecraft:entity.evoker_fangs.attack', e.x, e.y, e.z, 'hostile', 1, Math.random() * 0.2 + 0.85] : null),
+	// Sniffer starts digging: ClientPacketListener plays SnifferSoundInstance
+	'minecraft:sniffer': (id, e) => (id === 63 ? ['minecraft:entity.sniffer.digging', e.x, e.y, e.z, 'neutral', 1, 1] : null),
 };
 
 export class Sounds {
@@ -223,7 +225,8 @@ export class Sounds {
 
 	/**
 	 * The sounds entities make in their client tick: blazes burning (Blaze.aiStep), phantoms flapping when their
-	 * wings go down (Phantom.tick) and the warden's heartbeat (Warden.tick, faster the angrier it is).
+	 * wings go down (Phantom.tick), the warden's heartbeat (Warden.tick, faster the angrier it is) and a searching
+	 * sniffer's sniffs (Sniffer.playSearchingSound).
 	 */
 	entitySounds(entities) {
 		const ages = this.entityAges || (this.entityAges = new Map());
@@ -235,7 +238,7 @@ export class Sounds {
 				this.endermanStare(e);
 				continue;
 			}
-			if (type !== 'minecraft:blaze' && type !== 'minecraft:phantom' && type !== 'minecraft:warden') continue;
+			if (type !== 'minecraft:blaze' && type !== 'minecraft:phantom' && type !== 'minecraft:warden' && type !== 'minecraft:sniffer') continue;
 			seen.add(e.id);
 			const age = Math.floor(e.age || 0);
 			const last = ages.get(e.id);
@@ -249,7 +252,9 @@ export class Sounds {
 			}
 			if (last === undefined || age <= last) continue;
 			for (let t = Math.max(last + 1, age - 4); t <= age; t++) {
-				if (type === 'minecraft:phantom') {
+				if (type === 'minecraft:sniffer') {
+					if (t % 20 === 0 && e.d && e.d.state === 'searching') this.entityLocal('minecraft:entity.sniffer.searching', e, 'neutral', 1, 1);
+				} else if (type === 'minecraft:phantom') {
 					const flap = tick => Math.cos((e.id * 3 + tick) * 7.448451 * Math.PI / 180 + Math.PI);
 					if (flap(t) > 0 && flap(t + 1) <= 0) {
 						this.entityLocal('minecraft:entity.phantom.flap', e, 'hostile', 0.95 + Math.random() * 0.05, 0.95 + Math.random() * 0.05);
