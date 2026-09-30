@@ -72,7 +72,7 @@ const world = new World((key, section, message) => {
 
 const DEFAULTS = {
 	graphics: 'vanilla', shaderQuality: 'medium', postShader: '', clouds: 'fancy', labels: true, mobLabels: false,
-	mode: 'color', cctvEffect: false, skybox: 'default', renderScale: 1, particles: true, fog: 'vanilla', fov: '',
+	mode: 'color', cctvEffect: false, skybox: 'default', renderScale: 1, particles: true, fog: 'vanilla', fov: '', blend: '2', music: 'default',
 };
 const viewerInfo = { defaults: { ...DEFAULTS, skyboxes: {} }, locked: false, skyboxes: {}, shaders: [] };
 let settings = { ...DEFAULTS };
@@ -105,7 +105,8 @@ async function loadViewerInfo() {
 	const server = {
 		graphics: d.graphics, shaderQuality: d.shaderQuality, postShader: d.postShader || '', clouds: d.clouds,
 		labels: d.labels, mobLabels: d.mobLabels, particles: d.particles, mode: d.mode, cctvEffect: d.cctvEffect,
-		fog: d.fog, fov: d.fov ? String(d.fov) : undefined,
+		fog: d.fog, fov: d.fov ? String(d.fov) : undefined, blend: d.biomeBlend !== undefined ? String(d.biomeBlend) : undefined,
+		music: d.music,
 	};
 	for (const key of Object.keys(server)) if (server[key] === undefined) delete server[key];
 	settings = { ...DEFAULTS, ...server, ...(viewerInfo.locked ? {} : loadLocal()) };
@@ -124,6 +125,9 @@ function applySettings() {
 	particles.enabled = settings.particles !== false;
 	if (!particles.enabled) particles.clear();
 	environment.fogMode = settings.fog || 'vanilla';
+	sounds.musicFrequency = settings.music || 'default';
+	const blend = Math.min(7, Math.max(0, Math.round(Number(settings.blend ?? 2)) || 0));
+	if (world.config.blend !== blend) world.setBiomeBlend(blend);
 	// A wider field of view than the stream was opened with needs the server to send a wider cone of sections.
 	if (source && viewFovSetting() > streamFov) connect();
 	const name = settings.postShader || '';
@@ -643,7 +647,7 @@ function frame(now) {
 			const eyeInfo = world.infoAt(Math.floor(c0.x), Math.floor(c0.y), Math.floor(c0.z));
 			for (let i = Math.min(deltaTicks, 4) - 1; i >= 0; i--) {
 				particles.tick(world, c0, environment.current.rain || 0, entities.tick, state.entityList, weather.columns, gameTime - i);
-				sounds.ambient({ world, camera: c0, ambience: environment.current.amb, inWater: !!(eyeInfo && eyeInfo.water), block: eye, flash: environment.flash, entities: state.entityList });
+				sounds.ambient({ world, camera: c0, ambience: environment.current.amb, music: environment.current.music, inWater: !!(eyeInfo && eyeInfo.water), block: eye, flash: environment.flash, entities: state.entityList });
 			}
 		}
 		state.gameTick = tick;

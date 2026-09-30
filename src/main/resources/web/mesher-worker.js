@@ -33,6 +33,7 @@ self.onmessage = event => {
 			if (message.cardinal) mesher.cardinal = CARDINAL[message.cardinal] || CARDINAL.default;
 			if (message.zoomSeed !== undefined) mesher.zoomSeed = BigInt(message.zoomSeed);
 			if (message.smooth !== undefined) mesher.smooth = message.smooth;
+			if (message.blend !== undefined) mesher.blend = message.blend;
 			if (message.blockEntities) mesher.handledBlockEntities = new Set(message.blockEntities);
 			mesher.fiddles = null;
 			break;

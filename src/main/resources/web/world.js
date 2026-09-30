@@ -3,7 +3,7 @@
 // itself only stores data and uploads finished vertex buffers, so block updates
 // never make the picture stutter.
 
-import { describeState, PAD, UNKNOWN } from './mesher.js';
+import { describeState, PAD, UNKNOWN, BIOME_GRID_W } from './mesher.js';
 import { parseProps } from './models.js';
 import { blockFaceColors } from './blocks.js';
 import { BLOCK_ENTITY_NAMES } from './mobs.js';
@@ -88,6 +88,7 @@ export class World {
 			cardinal: this.config.cardinal,
 			zoomSeed: this.config.zoomSeed,
 			smooth: this.config.smooth,
+			blend: this.config.blend ?? 2,
 			blockEntities: BLOCK_ENTITY_BLOCKS,
 		};
 	}
@@ -120,6 +121,13 @@ export class World {
 		this.biomeDefs = defs || {};
 		for (const name of Object.keys(this.biomeDefs)) this.biomeId(name);
 		this.broadcast({ type: 'config', biomeNames: this.biomeNames, biomeDefs: this.biomeDefs });
+	}
+
+	/** Options > Biome Blend: 0 (off) to 7 blocks (15x15), 2 by default. */
+	setBiomeBlend(radius) {
+		this.config.blend = radius;
+		this.broadcast({ type: 'config', blend: radius });
+		this.markAllDirty();
 	}
 
 	setSmoothLighting(smooth) {
@@ -463,14 +471,15 @@ export class World {
 			}
 		}
 
-		const biomes = new Uint16Array(216).fill(UNKNOWN);
-		const cx0 = section.x * 4 - 1, cy0 = section.y * 4 - 1, cz0 = section.z * 4 - 1;
+		// quart cells of the section and around it: 3 across (the widest biome blend reaches 7 blocks out), 1 up and down
+		const biomes = new Uint16Array(BIOME_GRID_W * BIOME_GRID_W * 6).fill(UNKNOWN);
+		const cx0 = section.x * 4 - 3, cy0 = section.y * 4 - 1, cz0 = section.z * 4 - 3;
 		for (let gy = 0; gy < 6; gy++) {
-			for (let gz = 0; gz < 6; gz++) {
-				for (let gx = 0; gx < 6; gx++) {
+			for (let gz = 0; gz < BIOME_GRID_W; gz++) {
+				for (let gx = 0; gx < BIOME_GRID_W; gx++) {
 					const cx = cx0 + gx, cy = cy0 + gy, cz = cz0 + gz;
 					const other = this.sections.get(World.key(cx >> 2, cy >> 2, cz >> 2));
-					if (other) biomes[(gy * 6 + gz) * 6 + gx] = other.biomes[((cy & 3) << 4) | ((cz & 3) << 2) | (cx & 3)];
+					if (other) biomes[(gy * BIOME_GRID_W + gz) * BIOME_GRID_W + gx] = other.biomes[((cy & 3) << 4) | ((cz & 3) << 2) | (cx & 3)];
 				}
 			}
 		}

@@ -10,7 +10,7 @@
   <a href="https://github.com/DarienRahl/CCTV_Farbic/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/DarienRahl/CCTV_Farbic?style=for-the-badge&amp;label=release&amp;color=5d8c3e"></a>
   <img alt="Minecraft 26.3" src="https://img.shields.io/badge/minecraft-26.3-866043?style=for-the-badge">
   <img alt="Fabric, server side only" src="https://img.shields.io/badge/fabric-server%20side%20only-8b8b8b?style=for-the-badge">
-  <a href="#roadmap"><img alt="Roadmap" src="https://img.shields.io/badge/roadmap-62%2F68%20done-80ff20?style=for-the-badge"></a>
+  <a href="#roadmap"><img alt="Roadmap" src="https://img.shields.io/badge/roadmap-64%2F69%20done-80ff20?style=for-the-badge"></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-555555?style=for-the-badge"></a>
 </p>
 <!-- badges:end -->
@@ -71,8 +71,8 @@ shadows and name tags in the game's font.
 <td valign="top">
 
 ### 🔊 Sounds in 3D
-Steps, mobs, doors, explosions, note blocks, **music discs with "Now Playing"**, rain, caves and biome
-ambience — fading with distance like the game's sound engine.
+Steps, mobs, doors, explosions, note blocks, **music discs with "Now Playing"**, rain, caves, biome
+ambience and the game's **background music** — fading with distance like the game's sound engine.
 
 </td>
 <td valign="top">
@@ -180,7 +180,7 @@ at once as a video wall.
 ## Roadmap
 
 <!-- roadmap:start -->
-<p align="center"><img src="docs/images/roadmap/banner.svg" width="100%" alt="CCTV roadmap: 62 of 68 done"></p>
+<p align="center"><img src="docs/images/roadmap/banner.svg" width="100%" alt="CCTV roadmap: 64 of 69 done"></p>
 
 What is done and what comes next, milestone by milestone (the full plan with its principles is in
 [docs/ROADMAP.md](docs/ROADMAP.md)).
@@ -218,10 +218,10 @@ What is done and what comes next, milestone by milestone (the full plan with its
 
 </details>
 
-<img src="docs/images/roadmap/1-3.svg" width="100%" alt="1.3 — 1:1 picture: in progress - 1.3.4 is out, 41 of 44 done">
+<img src="docs/images/roadmap/1-3.svg" width="100%" alt="1.3 — 1:1 picture: in progress - 1.3.4 is out, 43 of 45 done">
 
 <details open>
-<summary><b>1.3 — 1:1 picture</b> · in progress - 1.3.4 is out · 41 of 44 done</summary>
+<summary><b>1.3 — 1:1 picture</b> · in progress - 1.3.4 is out · 43 of 45 done</summary>
 
 - [ ] **Reference renders in CI**: a Fabric client game test builds the CI scene in single player, takes a screenshot from the camera position with the game, and the viewer takes one from the same camera; both are published side by side with a difference score
 - [x] **Signs and hanging signs** with their text in the game font (text sent by the server; boards and beds are block models in 26.3 and were already drawn)
@@ -243,7 +243,7 @@ What is done and what comes next, milestone by milestone (the full plan with its
 - [x] **Guardians fire their beams** (GuardianRenderer.renderBeam, charging from purple to yellow, with the bubbles along it and GuardianAttackSoundInstance), their spikes and tail move like GuardianModel; **endermen scream** (the jaw drops, they shake, EndermanModel) with the stare sound and hold their carried block (CarriedBlockLayer); **boats row** (AbstractBoatModel paddles) and rock when hit; the warden's heartbeat speeds up with its anger; portal specks around endermen, smoke around blazes
 - [x] Dripstone and honey drips (PointedDripstoneBlock, BeehiveBlock: water or lava from above the stalactite, honey under full hives) with the sound of the drop landing
 - [x] The sniffer searching and digging: its sniffs, the digging sound (SnifferSoundInstance) and the pieces and hit sounds of the block under its nose (Sniffer.emitDiggingParticles)
-- [ ] Background music (optional)
+- [x] Background music (MusicManager: the place's BackgroundMusic, underwater and boss music, the game's pauses and the Music Frequency option)
 - [x] **Particles** from `particles/*.json` and their textures: torch, candle and campfire flames and smoke, lava pops, drips, portal, falling leaves, spore blossoms, fireflies
 - [x] **Particles from the server**: broken blocks (pieces of the block's texture), explosions and their smoke, the particles the server sends (`ClientboundLevelParticlesPacket`: crits, sweeps, hearts, dust...), level events (dispenser smoke, bone meal, lava fizz), death and spawn poofs, love hearts, villager moods and potion effect swirls
 - [x] Rain splashes (and smoke where it falls on lava, magma and campfires), bubbles, bubble columns and whirlpools, reverse portal specks, white smoke
@@ -265,7 +265,8 @@ What is done and what comes next, milestone by milestone (the full plan with its
 - [x] **The world's own packs**: data packs with assets, the world's `resources.zip` and the server resource pack are used like the game does, so custom paintings, discs, blocks, items and sounds show up
 - [x] Mob animations checked against the 26.3 models (felines, bees, chickens, polar bears, turtles, fish, dolphins, endermites, silverfish, vexes, allays, striders)
 - [x] Your own field of view (30–110°), distance fog modes and 11 built-in post effects
-- [ ] Terrain: the game's chunk occlusion culling (visibility graph), remaining fluid edge cases, the biome blend setting
+- [x] The Biome Blend option (off to 15x15)
+- [ ] Terrain: the game's chunk occlusion culling (visibility graph), remaining fluid edge cases
 - [x] **Camera in water, lava and powder snow**: the underwater overlay (ScreenEffectRenderer, as bright as the light at the camera) and the fog of each (LavaFogEnvironment, PowderedSnowFogEnvironment)
 
 </details>
@@ -360,7 +361,7 @@ Drag with the mouse to look around, use the wheel to zoom and double-click to go
 camera's view. The view turns only as far as the terrain the server streams around the camera's
 direction (about 20° beyond the picture); aim the camera with `/cctv aim` to look elsewhere. **⚙ Settings** has: graphics (vanilla / shaders) and shader quality, field of view
 (30–110° like the game's option, or the camera's own), distance fog (the game's, smooth, atmospheric or
-minimal), post effect
+minimal), biome blend (off to 15×15 like the game's option), background music, post effect
 (custom shader), sky (sky box), clouds, camera mode (colour / black and white / night vision),
 render resolution (for weak GPUs), name tags, mob labels, particles and the CCTV effect. Each viewer's
 choice is remembered in their browser.
@@ -412,7 +413,7 @@ can really see. "Mob labels" adds tags for every other mob (its custom name or i
 | `sounds` | `true` | The game's sounds in the viewer (files downloaded from Mojang when first played, cached) |
 | `markers` | `true` | Camera marker block in the world |
 | `maxViewersPerCamera` | `16` | Viewer limit per camera |
-| `viewer` | | Viewer defaults: `graphics` (`vanilla`/`shaders`), `shaderQuality` (`low`…`ultra`), `postShader`, `skyboxes` (dimension → name), `clouds` (`fancy`/`fast`/`off`), `labels`, `mobLabels`, `particles`, `mode` (`color`/`mono`/`night`), `cctvEffect`, `fog` (`vanilla`/`smooth`/`atmospheric`/`minimal`), `fov` (30–110, 0 = each camera's), `lockSettings` |
+| `viewer` | | Viewer defaults: `graphics` (`vanilla`/`shaders`), `shaderQuality` (`low`…`ultra`), `postShader`, `skyboxes` (dimension → name), `clouds` (`fancy`/`fast`/`off`), `labels`, `mobLabels`, `particles`, `mode` (`color`/`mono`/`night`), `cctvEffect`, `fog` (`vanilla`/`smooth`/`atmospheric`/`minimal`), `fov` (30–110, 0 = each camera's), `biomeBlend` (0–7), `music` (`off`/`default`/`frequent`/`constant`), `lockSettings` |
 
 The viewer uses the same packs as the players, lowest priority first:
 
@@ -543,7 +544,6 @@ Stream events:
 
 ## Limitations
 
-- The background music is not played (jukeboxes are).
 - Terrain in unloaded chunks shows the state of the last world save.
 - Textures and models from `client.jar` are not part of this repository. The mod downloads them
   from Mojang's servers on a server that runs the game.

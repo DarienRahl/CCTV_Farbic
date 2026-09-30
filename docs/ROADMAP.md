@@ -120,7 +120,8 @@ to the milestone it belongs to. The roadmap on the README page is drawn from thi
       stalactite, honey under full hives) with the sound of the drop landing
 - [x] The sniffer searching and digging: its sniffs, the digging sound (SnifferSoundInstance) and the pieces and
       hit sounds of the block under its nose (Sniffer.emitDiggingParticles)
-- [ ] Background music (optional)
+- [x] Background music (MusicManager: the place's BackgroundMusic, underwater and boss music, the game's pauses
+      and the Music Frequency option)
 - [x] **Particles** from `particles/*.json` and their textures: torch, candle and campfire flames
       and smoke, lava pops, drips, portal, falling leaves, spore blossoms, fireflies
 - [x] **Particles from the server**: broken blocks (pieces of the block's texture), explosions and
@@ -168,8 +169,8 @@ to the milestone it belongs to. The roadmap on the README page is drawn from thi
 - [x] Mob animations checked against the 26.3 models (felines, bees, chickens, polar bears, turtles, fish,
       dolphins, endermites, silverfish, vexes, allays, striders)
 - [x] Your own field of view (30–110°), distance fog modes and 11 built-in post effects
-- [ ] Terrain: the game's chunk occlusion culling (visibility graph), remaining fluid edge cases, the
-      biome blend setting
+- [x] The Biome Blend option (off to 15x15)
+- [ ] Terrain: the game's chunk occlusion culling (visibility graph), remaining fluid edge cases
 - [x] **Camera in water, lava and powder snow**: the underwater overlay (ScreenEffectRenderer, as bright as the
       light at the camera) and the fog of each (LavaFogEnvironment, PowderedSnowFogEnvironment)
 

@@ -48,6 +48,8 @@ final class CustomContent {
 				.field("cctvEffect", viewer.cctvEffect)
 				.field("fog", viewer.fog)
 				.field("fov", viewer.fov)
+				.field("biomeBlend", viewer.biomeBlend)
+				.field("music", viewer.music)
 				.name("skyboxes").beginObject();
 		for (Map.Entry<String, String> entry : viewer.skyboxes.entrySet()) {
 			json.field(entry.getKey(), entry.getValue());

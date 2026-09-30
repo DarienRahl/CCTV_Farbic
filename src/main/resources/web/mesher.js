@@ -17,6 +17,8 @@ const DRAWN_OVER = new Set(['minecraft:beacon', 'minecraft:campfire', 'minecraft
 export const STRIDE = 24; // f32 x3 position | u16 x2 uv (1/65536) | u8 rgb + face | u8 sky, block, material, flags
 export const PAD = 18;
 export const UNKNOWN = 0xffff;
+/** Width of the quart-cell biome grid a mesh job gets (the section's 4 cells and 3 on each side). */
+export const BIOME_GRID_W = 10;
 
 // Vertex flags (last byte) for the shader pipeline.
 export const VF_WAVING_LEAVES = 1;
@@ -338,7 +340,7 @@ export class Mesher {
 
 	/**
 	 * job: {sx, sy, sz, base: [x, y, z] vertex offset of the section, eye: [x, y, z] in the same space,
-	 * pad: Uint16Array(18^3), light: Uint8Array(18^3) (sky << 4 | block), biomes: Uint16Array(6^3) cells from (sx*4-1, sy*4-1, sz*4-1)}
+	 * pad: Uint16Array(18^3), light: Uint8Array(18^3) (sky << 4 | block), biomes: Uint16Array(10 x 6 x 10) cells from (sx*4-3, sy*4-1, sz*4-3)}
 	 */
 	mesh(job) {
 		this.pad = job.pad;
@@ -646,21 +648,28 @@ export class Mesher {
 		}
 	}
 
-	/** BlockTintCache.calculateBlockTint with the default blend radius 2 (integer averages). */
+	/** BlockTintCache.calculateBlockTint with the Biome Blend option's radius (integer averages; 0 = no blending). */
 	biomeColor(kind, wx, wy, wz) {
 		const key = ((kind * 64 + (wy - this.job.sy * 16 + 16)) * 32 + (wz - this.job.sz * 16 + 4)) * 32 + (wx - this.job.sx * 16 + 4);
 		let color = this.tintCache.get(key);
 		if (color !== undefined) return color;
+		const radius = this.blend ?? 2;
+		if (radius === 0) {
+			color = this.resolveColor(kind, this.biomeAt(wx, wy, wz), wx, wz) & 0xffffff;
+			this.tintCache.set(key, color);
+			return color;
+		}
+		const count = (radius * 2 + 1) * (radius * 2 + 1);
 		let r = 0, g = 0, b = 0;
-		for (let dz = -2; dz <= 2; dz++) {
-			for (let dx = -2; dx <= 2; dx++) {
+		for (let dz = -radius; dz <= radius; dz++) {
+			for (let dx = -radius; dx <= radius; dx++) {
 				const c = this.resolveColor(kind, this.biomeAt(wx + dx, wy, wz + dz), wx + dx, wz + dz);
 				r += c >> 16 & 255;
 				g += c >> 8 & 255;
 				b += c & 255;
 			}
 		}
-		color = (Math.trunc(r / 25) & 255) << 16 | (Math.trunc(g / 25) & 255) << 8 | (Math.trunc(b / 25) & 255);
+		color = (Math.trunc(r / count) & 255) << 16 | (Math.trunc(g / count) & 255) << 8 | (Math.trunc(b / count) & 255);
 		this.tintCache.set(key, color);
 		return color;
 	}
@@ -736,10 +745,11 @@ export class Mesher {
 
 	noiseBiome(qx, qy, qz) {
 		const job = this.job;
-		const gx = qx - (job.sx * 4 - 1), gy = qy - (job.sy * 4 - 1), gz = qz - (job.sz * 4 - 1);
-		const clamp = v => Math.min(5, Math.max(0, v));
-		let index = this.biomeGrid[(clamp(gy) * 6 + clamp(gz)) * 6 + clamp(gx)];
-		if (index === UNKNOWN) index = this.biomeGrid[(2 * 6 + 2) * 6 + 2];
+		const W = BIOME_GRID_W;
+		const gx = qx - (job.sx * 4 - 3), gy = qy - (job.sy * 4 - 1), gz = qz - (job.sz * 4 - 3);
+		const clampXZ = v => Math.min(W - 1, Math.max(0, v)), clampY = v => Math.min(5, Math.max(0, v));
+		let index = this.biomeGrid[(clampY(gy) * W + clampXZ(gz)) * W + clampXZ(gx)];
+		if (index === UNKNOWN) index = this.biomeGrid[(2 * W + 4) * W + 4];
 		return this.biomeNames[index] || 'minecraft:plains';
 	}
 

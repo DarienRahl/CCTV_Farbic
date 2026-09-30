@@ -8,10 +8,13 @@ import org.joml.Vector4fc;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.sounds.Music;
+import net.minecraft.sounds.Musics;
 import net.minecraft.util.Mth;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.attribute.AmbientAdditionsSettings;
 import net.minecraft.world.attribute.AmbientSounds;
+import net.minecraft.world.attribute.BackgroundMusic;
 import net.minecraft.world.attribute.EnvironmentAttributeReader;
 import net.minecraft.world.attribute.EnvironmentAttributes;
 import net.minecraft.world.level.biome.BiomeManager;
@@ -93,6 +96,7 @@ final class EnvironmentSampler {
 				.field("waterFogEnd", attributes.getValue(EnvironmentAttributes.WATER_FOG_END_DISTANCE, pos), 2);
 
 		writeAmbientSounds(json, attributes.getValue(EnvironmentAttributes.AMBIENT_SOUNDS, pos));
+		writeMusic(json, attributes.getValue(EnvironmentAttributes.BACKGROUND_MUSIC, pos), !level.getDragons().isEmpty());
 		// block ambience that depends on the time and place: creaking hearts creak, firefly bushes chirp
 		if (attributes.getValue(EnvironmentAttributes.CREAKING_ACTIVE, pos)) {
 			json.field("creaking", true);
@@ -145,6 +149,29 @@ final class EnvironmentSampler {
 			json.endArray();
 		}
 		json.endObject();
+	}
+
+	/**
+	 * What Minecraft.getSituationalMusic chooses from at the camera: the place's BackgroundMusic (default and
+	 * underwater, each [sound, min delay, max delay, replace current]) and whether the dragon fight's boss music
+	 * plays instead (a camera is never in creative mode).
+	 */
+	private static void writeMusic(Json json, BackgroundMusic music, boolean dragon) {
+		if (music.defaultMusic().isEmpty() && music.underwaterMusic().isEmpty() && !dragon) {
+			return;
+		}
+		json.name("music").beginObject();
+		music.defaultMusic().ifPresent(m -> writeMusic(json, "d", m));
+		music.underwaterMusic().ifPresent(m -> writeMusic(json, "u", m));
+		if (dragon) {
+			writeMusic(json, "boss", Musics.END_BOSS);
+		}
+		json.endObject();
+	}
+
+	private static void writeMusic(Json json, String name, Music music) {
+		json.name(name).beginArray().value(music.sound().value().location().toString()).value(music.minDelay())
+				.value(music.maxDelay()).value(music.replaceCurrentMusic()).endArray();
 	}
 
 	/** The client's EndFlashState for one 600 tick period: [period, offset, duration, xAngle, yAngle]. */

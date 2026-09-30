@@ -130,6 +130,7 @@ export class Sounds {
 		}
 		this.playing.clear();
 		this.jukeboxes.clear();
+		this.music = null;
 		this.resetAmbience();
 		this.pending.length = 0;
 		if (this.ctx) this.ctx.suspend();
@@ -217,11 +218,64 @@ export class Sounds {
 	ambient(at) {
 		if (!this.enabled || !this.events || !this.ctx || !at.camera) return;
 		this.biomeAmbience(at);
+		this.musicTick(at);
 		this.jukeboxSongs(at.world);
 		this.underwaterAmbience(at);
 		this.bubbleColumn(at);
 		this.endFlash(at);
 		this.entitySounds(at.entities);
+	}
+
+	/**
+	 * MusicManager.tick with Minecraft.getSituationalMusic for the camera (never in creative): the place's
+	 * BackgroundMusic, its underwater music when the camera is in water, the boss music during the dragon fight.
+	 * The first song starts 100 ticks after sounds are turned on, the next ones after the song's delays capped by
+	 * the Music Frequency option (Default 20 minutes, Frequent 10, Constant right away).
+	 */
+	musicTick(at) {
+		const frequency = this.musicFrequency || 'default';
+		const m = this.music || (this.music = { delay: 100, current: null, random: randomFor(Math.floor(Math.random() * 2 ** 31)) });
+		if (frequency === 'off') {
+			if (m.current) this.stop(m.current.sound);
+			m.current = null;
+			m.delay = 100;
+			return;
+		}
+		const env = at.music || null;
+		const music = env ? (env.boss || (at.inWater && env.u) || env.d || null) : null;
+		if (!music) {
+			m.delay = Math.max(m.delay, 100);
+			return;
+		}
+		const [id, minDelay, maxDelay, replace] = music;
+		const nextInt = (lo, hi) => (lo >= hi ? lo : lo + m.random.nextInt(hi - lo + 1));
+		if (m.current) {
+			if (replace && id !== m.current.id) {
+				this.stop(m.current.sound);
+				m.current.stopped = true;
+				m.delay = nextInt(0, Math.floor(minDelay / 2));
+			}
+			const loading = !m.current.sound && !m.current.stopped && performance.now() - m.current.at < 60000;
+			const active = loading || (m.current.sound && !m.current.sound.ended && !m.current.sound.stopped);
+			if (!active) {
+				m.current = null;
+				// MusicFrequency.getNextSongDelay
+				const cap = { default: 24000, frequent: 12000, constant: 0 }[frequency] ?? 24000;
+				const next = frequency === 'constant' ? 100 : nextInt(Math.min(minDelay, cap), Math.min(maxDelay, cap));
+				m.delay = Math.min(m.delay, next);
+			}
+		}
+		m.delay = Math.min(m.delay, maxDelay);
+		if (!m.current && --m.delay <= 0) {
+			// SimpleSoundInstance.forMusic: the music category, not positioned
+			const current = { id, sound: null, at: performance.now() };
+			m.current = current;
+			this.play(id, 'music', 1, 1, m.random, null, 0, sound => {
+				if (m.current === current && !current.stopped) current.sound = sound;
+				else this.stop(sound);
+			});
+			m.delay = Infinity;
+		}
 	}
 
 	/**
@@ -645,9 +699,12 @@ export class Sounds {
 				// relative sounds at the listener (Attenuation.NONE): the same volume everywhere
 				node.connect(volumeNode).connect(this.master);
 			}
-			const playing = { source: node, panner, entity: at ? at.entity : undefined, record: source === 'record' };
+			const playing = { source: node, panner, entity: at ? at.entity : undefined, record: source === 'record' || source === 'music' };
 			this.playing.add(playing);
-			node.onended = () => this.playing.delete(playing);
+			node.onended = () => {
+				playing.ended = true;
+				this.playing.delete(playing);
+			};
 			node.start(ctx.currentTime + wait, offset);
 			if (started) started(playing);
 		});

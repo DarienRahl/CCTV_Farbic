@@ -132,6 +132,13 @@ public final class CctvConfig {
 		public String fog = "vanilla";
 		/** The viewers' field of view in degrees (30 to 110, like the game's option); 0 for each camera's own. */
 		public int fov = 0;
+		/** Options > Biome Blend: how far biome colours of grass, leaves and water blend, 0 (off) to 7 blocks. */
+		public int biomeBlend = 2;
+		/**
+		 * Background music once a viewer turns sounds on, like the game's Music Frequency option: "off", "default"
+		 * (a song every 10 to 20 minutes), "frequent" (up to 10 minutes apart) or "constant".
+		 */
+		public String music = "default";
 		/** Visitors cannot change the settings above. */
 		public boolean lockSettings = false;
 	}
@@ -219,6 +226,8 @@ public final class CctvConfig {
 		viewer.mode = oneOf(viewer.mode, "color", "color", "mono", "night");
 		viewer.fog = oneOf(viewer.fog, "vanilla", "vanilla", "smooth", "atmospheric", "minimal");
 		viewer.fov = viewer.fov == 0 ? 0 : clamp(viewer.fov, 30, 110);
+		viewer.biomeBlend = clamp(viewer.biomeBlend, 0, 7);
+		viewer.music = oneOf(viewer.music, "default", "off", "default", "frequent", "constant");
 		if (viewer.postShader == null || !viewer.postShader.matches("(builtin:)?[A-Za-z0-9_-]{0,64}")) {
 			viewer.postShader = "";
 		}
