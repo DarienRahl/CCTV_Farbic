@@ -3,6 +3,8 @@ package io.github.darienrahl.cctv.camera;
 import java.lang.reflect.Field;
 import java.util.Locale;
 
+import org.jspecify.annotations.Nullable;
+
 import net.minecraft.core.Registry;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.Identifier;
@@ -19,8 +21,22 @@ final class BiomeTable {
 	private BiomeTable() {
 	}
 
+	/** The table of the last registry (the same for every level of a server, so cameras share it). */
+	private static volatile @Nullable Registry<Biome> cachedRegistry;
+	private static volatile @Nullable String cachedJson;
+
 	static String json(ServerLevel level) {
 		Registry<Biome> registry = level.registryAccess().lookupOrThrow(Registries.BIOME);
+		String json = cachedJson;
+		if (registry != cachedRegistry || json == null) {
+			json = build(registry);
+			cachedJson = json;
+			cachedRegistry = registry;
+		}
+		return json;
+	}
+
+	private static String build(Registry<Biome> registry) {
 		Json json = new Json(8192);
 		json.beginObject();
 		for (Biome biome : registry) {

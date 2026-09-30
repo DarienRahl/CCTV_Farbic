@@ -594,8 +594,8 @@ def budget_check():
         per_section = session.get("sectionBytes", 0) / sent if sent else 0
         print(f"budget: camera {session.get('camera')}: {session.get('tickMs')} ms per tick (max {session.get('tickMsMax')}),"
               f" {sent} sections sent, {per_section:.0f} bytes each, {session.get('sectionsKept')} kept,"
-              f" {session.get('compacted')} of {session.get('sections')} kept compact; per part: {session.get('phases')}",
-              flush=True)
+              f" {session.get('compacted')} of {session.get('sections')} kept compact; per part: {session.get('phases')},"
+              f" most: {session.get('phasesMax')}", flush=True)
         if session.get("camera") == "far" and session.get("ready", 0) > 0 and session.get("ticks", 0) > 300 \
                 and not session.get("compacted"):
             failures.append("memory: the far camera's far sections were not compacted")

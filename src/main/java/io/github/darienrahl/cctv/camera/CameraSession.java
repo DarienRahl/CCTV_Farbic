@@ -279,6 +279,7 @@ final class CameraSession {
 			return false;
 		}
 
+		phaseStart = System.nanoTime();
 		if (needsRebuild || level != this.level) {
 			rebuild(level);
 			for (ViewerState state : viewers) {
@@ -286,6 +287,7 @@ final class CameraSession {
 				sendInit(state, tick);
 			}
 		}
+		phase(REBUILD);
 
 		Viewer joined;
 		while ((joined = pending.poll()) != null) {
@@ -304,9 +306,12 @@ final class CameraSession {
 		viewers.removeIf(state -> !state.viewer.isOpen());
 		viewerCount = viewers.size();
 
+		phase(JOIN);
+
 		if (tick % COMPACT_TICKS == 0) {
 			compactFarSections();
 		}
+		phase(COMPACT);
 		if (viewers.isEmpty()) {
 			blockChanges.clear();
 			blockEntityRefresh.clear();
@@ -335,22 +340,22 @@ final class CameraSession {
 
 		phaseStart = System.nanoTime();
 		installResults();
-		phase(0);
+		phase(3);
 		scheduleCaptures(level);
-		phase(1);
+		phase(4);
 		flushBlockChanges(tick);
 		if (tick % BEACON_CHECK_TICKS == 0) {
 			watchBeacons();
 		}
-		phase(2);
-		refreshBlockEntities(level);
-		phase(3);
-		refreshLight(level, tick);
-		phase(4);
-		rescan(level);
 		phase(5);
-		syncViewers(tick);
+		refreshBlockEntities(level);
 		phase(6);
+		refreshLight(level, tick);
+		phase(7);
+		rescan(level);
+		phase(8);
+		syncViewers(tick);
+		phase(9);
 
 		if (tick % config.entityUpdateTicks == 0) {
 			entityBlockStates.clear();
@@ -364,7 +369,7 @@ final class CameraSession {
 				state.viewer.sendEntities(entities);
 			}
 		}
-		phase(7);
+		phase(10);
 
 		if (tick % EnvironmentSampler.INTERVAL_TICKS == 0) {
 			String env = sampleEnvironment(level, tick);
@@ -374,7 +379,7 @@ final class CameraSession {
 				}
 			}
 		}
-		phase(8);
+		phase(11);
 		if (tick % WeatherSampler.INTERVAL_TICKS == 5) {
 			String weather;
 			try {
@@ -389,12 +394,15 @@ final class CameraSession {
 				}
 			}
 		}
-		phase(9);
+		phase(12);
 
 		return true;
 	}
 
-	/** Milliseconds of the server thread per tick: a running average (about the last five seconds) and the most. */
+	/**
+	 * Milliseconds of the server thread per tick: a running average (the plain average over the first hundred ticks,
+	 * then about the last five seconds, so the first ticks do not linger in it) and the most.
+	 */
 	private volatile double tickMs;
 	private volatile double tickMsMax;
 	/** Sections sent in full and their bytes, and sections confirmed from a browser's cache. */
@@ -403,25 +411,38 @@ final class CameraSession {
 	private volatile long sectionsKept;
 
 	/** The parts of a tick, and the milliseconds each takes per tick (running averages), for {@code /api/status}. */
-	private static final String[] PHASES = {"results", "captures", "blocks", "blockEntities", "light", "rescan", "sync", "entities",
-			"environment", "weather"};
+	private static final String[] PHASES = {"rebuild", "join", "compact", "results", "captures", "blocks", "blockEntities", "light",
+			"rescan", "sync", "entities", "environment", "weather"};
+	private static final int REBUILD = 0;
+	private static final int JOIN = 1;
+	private static final int COMPACT = 2;
 	private final double[] phaseMs = new double[PHASES.length];
+	private final double[] phaseMax = new double[PHASES.length];
+	private final int[] phaseSamples = new int[PHASES.length];
 	private long phaseStart;
+	private int tickSamples;
 
-	/** Ends the tick's part {@code index} (every tick, whether it did anything or not). */
+	/** Ends the tick's part {@code index} (every tick in which the part runs, whether it did anything or not). */
 	private void phase(int index) {
 		long now = System.nanoTime();
-		phaseMs[index] = phaseMs[index] * 0.99 + (now - phaseStart) / 1e6 * 0.01;
+		double ms = (now - phaseStart) / 1e6;
+		phaseMs[index] = average(phaseMs[index], ms, ++phaseSamples[index]);
+		phaseMax[index] = Math.max(phaseMax[index], ms);
 		phaseStart = now;
 	}
 
 	/** Server thread, after every tick: what the tick cost (budgets in CI, {@code /api/status}). */
 	void recordTickTime(long nanos) {
 		double ms = nanos / 1e6;
-		tickMs = tickMs == 0 ? ms : tickMs * 0.99 + ms * 0.01;
+		tickMs = average(tickMs, ms, ++tickSamples);
 		if (ms > tickMsMax) {
 			tickMsMax = ms;
 		}
+	}
+
+	private static double average(double average, double value, int samples) {
+		double weight = Math.max(0.01, 1.0 / Math.min(samples, 1000));
+		return average + (value - average) * weight;
 	}
 
 	/** Troubleshooting snapshot (web thread; plain reads of server-thread state, good enough for a status page). */
@@ -459,6 +480,11 @@ final class CameraSession {
 		json.name("phases").beginObject();
 		for (int i = 0; i < PHASES.length; i++) {
 			json.field(PHASES[i], phaseMs[i], 3);
+		}
+		json.endObject();
+		json.name("phasesMax").beginObject();
+		for (int i = 0; i < PHASES.length; i++) {
+			json.field(PHASES[i], phaseMax[i], 3);
 		}
 		json.endObject();
 		json.name("viewers").beginArray();
