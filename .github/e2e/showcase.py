@@ -6,10 +6,10 @@
     python3 showcase.py --play S   plays the party's moments while the viewer records, the server running at
                                    S times its speed, so every moment is in game time
 
-A jukebox plays Pigstep on a dance floor with parrots dancing on fence posts and allays around it, a jeb_ sheep
-changes colour, Dinnerbone's cow stands on its head, fireworks go up, a happy ghast carries pigs across the sky,
-lightning charges a creeper on a pillar, chickens rain down, a vault of TNT blows up and the charged creeper goes
-off. Needs the smoke test's server (RCON) and world.
+A jukebox plays Pigstep on a dance floor with a mannequin DJ under a hologram, parrots dancing on fence posts and
+allays around it, a jeb_ sheep changes colour, Dinnerbone's cow stands on its head, fireworks go up, a happy ghast
+carries pigs across the sky, lightning charges a creeper on a pillar, chickens rain down, a vault of TNT blows up
+and the charged creeper goes off. Needs the smoke test's server (RCON) and world.
 """
 
 import math
@@ -108,6 +108,13 @@ def build(rcon):
                  'VillagerData:{type:"minecraft:desert",profession:"minecraft:farmer",level:1}}')
     rcon.command(f"summon minecraft:creeper {X + 9.5} {Y + 5} {Z + 10.5} {{NoAI:1b,Rotation:[160f,0f]}}")
     rcon.command(f"summon minecraft:iron_golem {X + 3.5} {Y} {Z + 9.5} {{NoAI:1b,Rotation:[200f,0f]}}")
+    # the DJ: a mannequin with jeb_'s skin behind the jukebox, and a hologram over the dance floor
+    rcon.command(f'summon minecraft:mannequin {X + 0.5} {Y} {Z + 5.5} {{profile:"jeb_",CustomName:"DJ jeb_",'
+                 'CustomNameVisible:1b,description:"on the decks",Rotation:[180f,0f],immovable:1b}')
+    rcon.command(f'summon minecraft:text_display {X + 0.5} {Y + 3.4} {Z + 4.5} {{billboard:"center",'
+                 'text:[{text:"CCTV ",color:"gold",bold:true},{text:"PARTY",color:"light_purple",bold:true}],'
+                 'transformation:{translation:[0f,0f,0f],left_rotation:[0f,0f,0f,1f],scale:[1.6f,1.6f,1.6f],'
+                 'right_rotation:[0f,0f,0f,1f]}}')
     # the happy ghast, out of sight on the left until it flies over, pigs on its back
     rcon.command(f'summon minecraft:happy_ghast {X - 26} {Y + 7} {Z + 15} {{NoAI:1b,NoGravity:1b,Tags:["show_ghast"],'
                  'Rotation:[-90f,0f],equipment:{body:{id:"minecraft:pink_harness",count:1}},'
