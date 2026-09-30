@@ -1,6 +1,7 @@
 package io.github.darienrahl.cctv.camera;
 
 import java.lang.reflect.Field;
+import java.lang.reflect.Member;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.Collection;
@@ -36,10 +37,12 @@ import net.minecraft.world.entity.Pose;
 import net.minecraft.world.entity.decoration.ItemFrame;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.monster.Guardian;
+import net.minecraft.world.entity.monster.illager.AbstractIllager;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.player.PlayerModelPart;
 import net.minecraft.world.entity.projectile.FishingHook;
 import net.minecraft.world.entity.vehicle.boat.AbstractBoat;
+import net.minecraft.world.item.CrossbowItem;
 import net.minecraft.world.item.DyeColor;
 import net.minecraft.world.item.FishingRodItem;
 import net.minecraft.world.item.ItemStack;
@@ -107,6 +110,9 @@ final class EntityEncoder {
 	 * State read with no-argument getters when the entity's class has them: [method, json key]. The names are
 	 * the game's (unobfuscated); looking them up by name keeps this independent of package moves between versions.
 	 */
+	private static final String HORSES = "minecraft:horse minecraft:donkey minecraft:mule minecraft:skeleton_horse minecraft:zombie_horse";
+	private static final String ILLAGERS = "minecraft:vindicator minecraft:pillager minecraft:evoker minecraft:illusioner";
+
 	private static final String[][] PROBES = {
 			{"isPowered", "powered"},
 			{"isSheared", "sheared"},
@@ -170,7 +176,55 @@ final class EntityEncoder {
 			{"getClientAngerLevel", "anger", "minecraft:warden"},
 			{"hasBeenStaredAt", "staredAt", "minecraft:enderman"},
 			{"getMaxHealth", "maxHealth", "minecraft:wolf"},
+			// Poses of FoxModel, PandaModel, AbstractEquineModel and IllagerModel (their renderers' extractRenderState).
+			{"isCrouching", "crouching", "minecraft:fox"},
+			{"isSleeping", "sleeping", "minecraft:fox"},
+			{"isFaceplanted", "faceplanted", "minecraft:fox"},
+			{"isPouncing", "pouncing", "minecraft:fox"},
+			{"isSneezing", "sneezing", "minecraft:panda"},
+			{"isEating", "eating", "minecraft:panda"},
+			{"isScared", "scared", "minecraft:panda"},
+			{"isInWater", "inWater", HORSES},
+			{"getArmPose", "armPose", ILLAGERS},
+			{"getMainArm", "mainArm", ILLAGERS},
+			// Protected: which spell a spellcaster's hands glow with (SpellcasterIllager.tick, client).
+			{"getCurrentSpell", "spell", "minecraft:evoker minecraft:illusioner"},
 	};
+
+	/**
+	 * Animation amounts the game's entity tick also computes on the server (the inputs of the renderers'
+	 * extractRenderState, e.g. AbstractHorse.getStandAnim): [getter or public field, json key, entity types].
+	 * Getters that take the partial tick get 1. Sent only when not zero; the viewer interpolates them.
+	 */
+	private static final String[][] AMOUNTS = {
+			{"getEatAnim", "eat", HORSES},
+			{"getStandAnim", "stand", HORSES},
+			{"getMouthAnim", "mouth", HORSES},
+			{"tailCounter", "tail", HORSES},
+			{"getHeadRollAngle", "headRoll", "minecraft:fox"},
+			{"getCrouchAmount", "crouch", "minecraft:fox"},
+			{"getSitAmount", "sit", "minecraft:panda"},
+			{"getLieOnBackAmount", "onBack", "minecraft:panda"},
+			{"getRollAmount", "rollAmount", "minecraft:panda"},
+			{"rollCounter", "roll", "minecraft:panda"},
+			{"getSneezeCounter", "sneeze", "minecraft:panda"},
+			{"getUnhappyCounter", "unhappy", "minecraft:panda"},
+			{"getOfferFlowerTick", "flower", "minecraft:iron_golem"},
+			{"getTicksUsingItem", "useTicks", ILLAGERS},
+	};
+
+	private record Amount(Member member, String key) {
+		double read(Entity entity) throws ReflectiveOperationException {
+			if (member instanceof Field field) {
+				return ((Number) field.get(entity)).doubleValue();
+			}
+			Method method = (Method) member;
+			Object value = method.getParameterCount() == 1 ? method.invoke(entity, 1.0F) : method.invoke(entity);
+			return ((Number) value).doubleValue();
+		}
+	}
+
+	private static final Map<Class<?>, List<Amount>> AMOUNT_CACHE = new ConcurrentHashMap<>();
 
 	/** Entities that hang on a block face (their direction is the face they are on). */
 	private static final Set<String> HANGING = Set.of("minecraft:painting", "minecraft:item_frame", "minecraft:glow_item_frame");
@@ -660,14 +714,12 @@ final class EntityEncoder {
 	}
 
 	/** Variants and render state in a {@code "d"} object; only non-default values. */
-	private static void writeState(Json json, Entity entity, IntConsumer blockStates) {
-		boolean open = false;
+	private static void writeState(Json out, Entity entity, IntConsumer blockStates) {
+		State state = new State(out);
 		String type = BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType()).toString();
 		if (HANGING.contains(type)) {
-			json.name("d").beginObject();
-			open = true;
-			json.field("facing", entity.getDirection().getSerializedName());
-			writePainting(json, entity);
+			state.json().field("facing", entity.getDirection().getSerializedName());
+			writePainting(state.json(), entity);
 		}
 		for (Map.Entry<String, DataComponentType<?>> variant : VARIANTS) {
 			Object value;
@@ -678,11 +730,7 @@ final class EntityEncoder {
 			}
 			String text = describe(value);
 			if (text != null) {
-				if (!open) {
-					json.name("d").beginObject();
-					open = true;
-				}
-				json.field(variant.getKey(), text);
+				state.json().field(variant.getKey(), text);
 			}
 		}
 
@@ -693,14 +741,26 @@ final class EntityEncoder {
 			} catch (ReflectiveOperationException | RuntimeException e) {
 				continue;
 			}
-			if (value == null || Boolean.FALSE.equals(value)) {
+			if (value == null || Boolean.FALSE.equals(value) || value instanceof Enum<?> constant && constant.name().equals("NONE")) {
 				continue;
 			}
-			if (!open) {
-				json.name("d").beginObject();
-				open = true;
+			writeValue(state.json(), probe.getValue(), value, blockStates);
+		}
+
+		for (Amount amount : amounts(entity.getClass(), type)) {
+			double value;
+			try {
+				value = amount.read(entity);
+			} catch (ReflectiveOperationException | RuntimeException e) {
+				continue;
 			}
-			writeValue(json, probe.getValue(), value, blockStates);
+			if (value != 0) {
+				state.json().field(amount.key(), value, 3);
+			}
+		}
+		if (entity instanceof AbstractIllager illager && illager.getArmPose() == AbstractIllager.IllagerArmPose.CROSSBOW_CHARGE) {
+			// IllagerRenderer: how long this crossbow takes to load (quick charge)
+			state.json().field("chargeTicks", (double) CrossbowItem.getChargeDuration(illager.getUseItem(), illager), 2);
 		}
 
 		Method swelling = SWELLING_CACHE.computeIfAbsent(entity.getClass(), EntityEncoder::findSwelling).orElse(null);
@@ -708,19 +768,36 @@ final class EntityEncoder {
 			try {
 				float value = (float) swelling.invoke(entity, 1.0F);
 				if (value > 0) {
-					if (!open) {
-						json.name("d").beginObject();
-						open = true;
-					}
-					json.field("swelling", value, 3);
+					state.json().field("swelling", value, 3);
 				}
 			} catch (ReflectiveOperationException | RuntimeException ignored) {
 				// No swelling.
 			}
 		}
+		state.close();
+	}
 
-		if (open) {
-			json.endObject();
+	/** The {@code "d"} object, opened before its first field. */
+	private static final class State {
+		private final Json json;
+		private boolean open;
+
+		State(Json json) {
+			this.json = json;
+		}
+
+		Json json() {
+			if (!open) {
+				json.name("d").beginObject();
+				open = true;
+			}
+			return json;
+		}
+
+		void close() {
+			if (open) {
+				json.endObject();
+			}
 		}
 	}
 
@@ -817,18 +894,84 @@ final class EntityEncoder {
 				if (probe.length > 2 && !List.of(probe[2].split(" ")).contains(entityType)) {
 					continue;
 				}
-				try {
-					Method method = cls.getMethod(probe[0]);
-					if (!Modifier.isStatic(method.getModifiers()) && method.getReturnType() != void.class
-							&& found.stream().noneMatch(entry -> entry.getValue().equals(probe[1]))) {
-						found.add(Map.entry(method, probe[1]));
-					}
-				} catch (NoSuchMethodException | SecurityException ignored) {
-					// Not this kind of entity.
+				// protected getters only for the rows of named entity types (a common name could match anything)
+				Method method = findGetter(cls, probe[0], probe.length > 2);
+				if (method != null && !Modifier.isStatic(method.getModifiers()) && method.getReturnType() != void.class
+						&& found.stream().noneMatch(entry -> entry.getValue().equals(probe[1]))) {
+					found.add(Map.entry(method, probe[1]));
 				}
 			}
 			return found;
 		});
+	}
+
+	/** A public no-argument method, else (when allowed) a protected one of the class or its superclasses, made accessible. */
+	private static @Nullable Method findGetter(Class<?> type, String name, boolean protectedToo) {
+		try {
+			return type.getMethod(name);
+		} catch (NoSuchMethodException | SecurityException ignored) {
+			// Maybe not public.
+		}
+		if (!protectedToo) {
+			return null;
+		}
+		for (Class<?> cls = type; cls != null && cls != Object.class; cls = cls.getSuperclass()) {
+			try {
+				Method method = cls.getDeclaredMethod(name);
+				if (Modifier.isPrivate(method.getModifiers())) {
+					return null;
+				}
+				method.setAccessible(true);
+				return method;
+			} catch (NoSuchMethodException ignored) {
+				// Look further up.
+			} catch (RuntimeException e) {
+				return null;
+			}
+		}
+		return null;
+	}
+
+	private static List<Amount> amounts(Class<?> type, String entityType) {
+		return AMOUNT_CACHE.computeIfAbsent(type, cls -> {
+			List<Amount> found = new ArrayList<>();
+			for (String[] row : AMOUNTS) {
+				if (!List.of(row[2].split(" ")).contains(entityType)) {
+					continue;
+				}
+				Member member = findAmount(cls, row[0]);
+				if (member != null) {
+					found.add(new Amount(member, row[1]));
+				}
+			}
+			return found;
+		});
+	}
+
+	/** getX(float partialTick), getX() returning a number, or a public number field. */
+	private static @Nullable Member findAmount(Class<?> type, String name) {
+		try {
+			return type.getMethod(name, float.class);
+		} catch (NoSuchMethodException | SecurityException ignored) {
+			// Try the next form.
+		}
+		try {
+			Method method = type.getMethod(name);
+			if (method.getReturnType().isPrimitive() && method.getReturnType() != boolean.class && method.getReturnType() != void.class) {
+				return method;
+			}
+		} catch (NoSuchMethodException | SecurityException ignored) {
+			// Try the next form.
+		}
+		try {
+			Field field = type.getField(name);
+			if (field.getType().isPrimitive() && !Modifier.isStatic(field.getModifiers())) {
+				return field;
+			}
+		} catch (NoSuchFieldException | SecurityException ignored) {
+			// Not this kind of entity.
+		}
+		return null;
 	}
 
 	private static Optional<Method> findSwelling(Class<?> type) {

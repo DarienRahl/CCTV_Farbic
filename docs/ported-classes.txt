@@ -300,3 +300,31 @@ net/minecraft/client/renderer/OutlineBufferSource
 net/minecraft/client/particle/BreakingItemParticle
 net/minecraft/world/item/component/Consumable
 net/minecraft/world/entity/LivingEntity
+# poses and client-side animations of foxes, pandas, horses, illagers, iron golems, evoker fangs
+# (mobs.js fox, panda, horse, illager, golem; entities.js drawEvokerFangs, pandaRotations, drawFoxItem;
+# EntityEncoder AMOUNTS; particles.js pandaParticles, spell colours)
+net/minecraft/client/model/animal/fox/FoxModel
+net/minecraft/client/model/animal/fox/AdultFoxModel
+net/minecraft/client/model/animal/fox/BabyFoxModel
+net/minecraft/client/renderer/entity/FoxRenderer
+net/minecraft/client/renderer/entity/layers/FoxHeldItemLayer
+net/minecraft/client/model/animal/panda/PandaModel
+net/minecraft/client/model/animal/panda/BabyPandaModel
+net/minecraft/client/renderer/entity/PandaRenderer
+net/minecraft/client/renderer/entity/layers/PandaHoldsItemLayer
+net/minecraft/world/entity/animal/panda/Panda
+net/minecraft/client/model/animal/equine/AbstractEquineModel
+net/minecraft/client/model/animal/equine/BabyHorseModel
+net/minecraft/client/model/animal/equine/DonkeyModel
+net/minecraft/client/model/animal/equine/BabyDonkeyModel
+net/minecraft/client/renderer/entity/AbstractHorseRenderer
+net/minecraft/client/model/monster/illager/IllagerModel
+net/minecraft/client/renderer/entity/IllagerRenderer
+net/minecraft/world/entity/monster/illager/SpellcasterIllager
+net/minecraft/client/model/AnimationUtils
+net/minecraft/client/model/animal/golem/IronGolemModel
+net/minecraft/client/renderer/entity/layers/IronGolemFlowerLayer
+net/minecraft/client/model/effects/EvokerFangsModel
+net/minecraft/client/renderer/entity/EvokerFangsRenderer
+net/minecraft/world/entity/projectile/EvokerFangs
+net/minecraft/world/entity/animal/fox/Fox

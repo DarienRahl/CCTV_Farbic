@@ -487,6 +487,69 @@ function bookAnimationTick(b, be, list) {
 	b.flip += b.flipA;
 }
 
+/** PandaRenderer.setupRotations: rolling over, sitting up (shaking when scared) and lying on the back. */
+function pandaRotations(m, e) {
+	const d = e.d || {};
+	const xRot = e.pitch || 0;
+	const rollTime = Number(d.roll) || 0;
+	if (rollTime > 0) {
+		const transition = rollTime - Math.floor(rollTime);
+		const pos = Math.floor(rollTime), next = pos + 1;
+		const y = e.baby ? 0.3 : 0.8;
+		const angleOf = (from, to, threshold) => (next < threshold ? lerp(from, to, transition) : from);
+		if (pos < 8) {
+			const angle = angleOf(90 * pos / 7, 90 * next / 7, 8);
+			translate(m, 0, (y + 0.2) * (angle / 90), 0);
+			rotate(m, 0, -angle * DEG);
+		} else if (pos < 16) {
+			const angle = angleOf(90 + 90 * (pos - 8) / 7, 90 + 90 * (next - 8) / 7, 16);
+			translate(m, 0, y + 0.2 + (y - 0.2) * (angle - 90) / 90, 0);
+			rotate(m, 0, -angle * DEG);
+		} else if (pos < 24) {
+			const angle = angleOf(180 + 90 * (pos - 16) / 7, 180 + 90 * (next - 16) / 7, 24);
+			translate(m, 0, y + y * (270 - angle) / 90, 0);
+			rotate(m, 0, -angle * DEG);
+		} else if (pos < 32) {
+			const angle = angleOf(270 + 90 * (pos - 24) / 7, 270 + 90 * (next - 24) / 7, 32);
+			translate(m, 0, y * ((360 - angle) / 90), 0);
+			rotate(m, 0, -angle * DEG);
+		}
+	}
+	const sit = Number(d.sit) || 0;
+	if (sit > 0) {
+		translate(m, 0, 0.8 * sit, 0);
+		rotate(m, 0, lerp(xRot, xRot + 90, sit) * DEG);
+		translate(m, 0, -1 * sit, 0);
+		if (d.scared) {
+			rotate(m, 1, Math.cos((e.age || 0) * 1.25) * Math.PI * 0.05 * DEG);
+			if (e.baby) translate(m, 0, 0.8, 0.55);
+		}
+	}
+	const onBack = Number(d.onBack) || 0;
+	if (onBack > 0) {
+		translate(m, 0, (e.baby ? 0.5 : 1.3) * onBack, 0);
+		rotate(m, 0, lerp(xRot, xRot + 180, onBack) * DEG);
+	}
+}
+
+/**
+ * Animation amounts of the entity tick (EntityEncoder AMOUNTS, only sent when not zero) and the creeper's
+ * swelling, between two frames like the renderers' partial tick.
+ */
+const LERP_DATA = ['eat', 'stand', 'mouth', 'headRoll', 'crouch', 'sit', 'onBack', 'rollAmount', 'roll', 'sneeze', 'useTicks', 'swelling'];
+
+function lerpData(da, db, t) {
+	if (!da && !db) return db;
+	let out = db;
+	for (const key of LERP_DATA) {
+		const a = da ? da[key] : undefined, b = db ? db[key] : undefined;
+		if (a === undefined && b === undefined) continue;
+		if (out === db) out = { ...db };
+		out[key] = lerp(a || 0, b || 0, t);
+	}
+	return out;
+}
+
 function hashColor(text) {
 	let h = 0;
 	for (let i = 0; i < text.length; i++) h = (h * 31 + text.charCodeAt(i)) | 0;
@@ -994,6 +1057,7 @@ export class EntityRenderer {
 				walk: num('walk'), walkSpeed: num('walkSpeed'), age: num('age'), deathTime: num('deathTime'),
 				swimAmount: num('swimAmount'), flyingTicks: num('flyingTicks'),
 				rowL: num('rowL'), rowR: num('rowR'), hurtTime: num('hurtTime'), damage: num('damage'), bubble: num('bubble'),
+				d: lerpData(ea.d, eb.d, t),
 			});
 		}
 		for (const [id, eb] of b.map) {
@@ -1375,6 +1439,7 @@ export class EntityRenderer {
 			case 'shulker_bullet': return this.drawSimple(pos, { ...style, light: [240, 240] }, 'shulker_bullet#main', 'shulker/spark', now / 50 * 9);
 			case 'llama_spit': return this.drawSimple(pos, style, 'llama_spit#main', 'llama/llama_spit', e.yaw);
 			case 'fishing_bobber': return this.drawFishingHook(e, pos, style);
+			case 'evoker_fangs': return this.drawEvokerFangs(e, pos, style, now);
 			default: break;
 		}
 		if (THROWN[type]) return this.drawThrown(pos, style, THROWN[type]);
@@ -1458,6 +1523,9 @@ export class EntityRenderer {
 		}
 		if (def.puffer) translate(m, 0, Math.cos(age * 0.05) * 0.08, 0);
 		if (def.phantom) rotate(m, 0, (e.pitch || 0) * DEG);
+		// FoxRenderer.setupRotations: pouncing and face-planted foxes tilt with their pitch
+		if (def.fox && e.d && (e.d.pouncing || e.d.faceplanted)) rotate(m, 0, -(e.pitch || 0) * DEG);
+		if (def.panda) pandaRotations(m, e);
 		scale(m, -1, -1, 1);
 		// Renderer specific scale()
 		if (def.creeper && e.d && e.d.swelling) {
@@ -1542,10 +1610,70 @@ export class EntityRenderer {
 			const mesh = this.blockStateMesh(e.d.carried, world);
 			if (mesh) this.emitItem(mesh, bm, style);
 		}
+		if (e.hand && def.fox) this.drawFoxItem(base, m, e, style, anim);
+		if (e.hand && def.panda && e.d && e.d.sitting && !e.d.scared) {
+			// PandaHoldsItemLayer: bamboo (or whatever it picked up) held up to the mouth while it sits
+			let z = -0.6, y = 1.4;
+			if (e.d.eating) {
+				z -= 0.2 * Math.sin(age * 0.6) + 0.2;
+				y -= 0.09 * Math.sin(age * 0.6);
+			}
+			const im = Float32Array.from(m);
+			translate(im, 0.1, y, z);
+			this.drawGroundItem(e.hand, im, style);
+		}
+		// IronGolemFlowerLayer: the poppy in the right hand while the golem offers it
+		if (def.flower && e.d && e.d.flower > 0) {
+			const fm = partMatrix(base, 'right_arm', m);
+			if (fm) {
+				scale(fm, 16);
+				translate(fm, -1.1875 + 0.5, 1.0625 + 0.5, -0.9375 + 0.5);
+				scale(fm, 0.5);
+				rotate(fm, 0, -90 * DEG);
+				translate(fm, -0.5, -0.5, -0.5);
+				this.emitBlock('minecraft:poppy', fm, style);
+			}
+		}
 		if (def.anim === 'guardian' && e.beam !== undefined) this.drawGuardianBeam(e, type, pos, world);
 
 		// EntityRenderDispatcher: no shadow under invisible entities
 		if (!e.invisible && !e.base) this.shadowFor(e, pos, typeof mob.shadow === 'number' ? mob.shadow * entityScale : 0.5, world);
+	}
+
+	/**
+	 * EvokerFangsRenderer: nothing until the bite starts (entity event 4, CLIENT.evoker_fangs), then the jaws
+	 * rise out of the ground, snap and sink back (EvokerFangs.getAnimationProgress, EvokerFangsModel).
+	 */
+	drawEvokerFangs(e, pos, style, now) {
+		const states = this.keyframeStates('evoker_fangs', e, this.animState(e, now));
+		const biteAt = states.memory.biteAt;
+		if (biteAt === undefined) return;
+		const model = this.library.get('minecraft:evoker_fangs#main');
+		const texture = model && this.texture('illager/evoker_fangs');
+		if (!texture) return;
+		// lifeTicks counts down from 22 once the bite started: progress = 1 - (lifeTicks - 2 - partialTick) / 20
+		const progress = Math.min(1, Math.max(0, ((e.age || 0) - biteAt) / 20));
+		if (progress === 0) return;
+		model.reset();
+		const p = model.parts;
+		let bite = Math.min(progress * 2, 1);
+		bite = 1 - bite * bite * bite;
+		if (p.upper_jaw) p.upper_jaw.zRot = Math.PI - bite * 0.35 * Math.PI;
+		if (p.lower_jaw) p.lower_jaw.zRot = Math.PI + bite * 0.35 * Math.PI;
+		if (p.base) p.base.y -= (progress + Math.sin(progress * 2.7)) * 7.2;
+		let preScale = 1;
+		if (progress > 0.9) preScale *= (1 - progress) / 0.1;
+		const root = model.root;
+		root.y = 24 - 20 * preScale;
+		root.xScale = root.yScale = root.zScale = preScale;
+		const m = mat4();
+		translate(m, pos[0], pos[1], pos[2]);
+		rotate(m, 1, (90 - (e.yaw || 0)) * DEG);
+		scale(m, -1, -1, 1);
+		translate(m, 0, -1.501, 0);
+		const start = this.sink.count;
+		emitModel(this.sink, model, m, style);
+		this.batch(texture, MODE_CUTOUT, start);
 	}
 
 	/**
@@ -2156,6 +2284,36 @@ export class EntityRenderer {
 		this.applyDisplay(m, this.displayTransform(e.item, 'ground', fallback), false);
 		this.emitItem(mesh, m, e.foil & FOIL_ITEM ? { ...style, glint: GLINT_ITEM } : style, e.itemPatterns);
 		this.shadowFor(e, pos, 0.15, this.world, 0.75);
+	}
+
+	/** An item as ItemStackRenderState.submit draws it for ItemDisplayContext.GROUND (what mobs hold in their mouths). */
+	drawGroundItem(item, m, style) {
+		const mesh = this.itemMesh(item);
+		if (!mesh) return;
+		const fallback = mesh.kind === 'block'
+			? { translation: [0, 3, 0], scale: [0.25, 0.25, 0.25] }
+			: { translation: [0, 2, 0], scale: [0.5, 0.5, 0.5] };
+		this.applyDisplay(m, this.displayTransform(item, 'ground', fallback), false);
+		this.emitItem(mesh, m, style);
+	}
+
+	/** FoxHeldItemLayer: the item in a fox's mouth, following its head. */
+	drawFoxItem(model, m, e, style, anim) {
+		const head = model.parts.head;
+		if (!head) return;
+		const sleeping = !!(e.d && e.d.sleeping);
+		const im = Float32Array.from(m);
+		translate(im, head.x / 16, head.y / 16, head.z / 16);
+		if (e.baby) scale(im, 0.75);
+		rotate(im, 2, Number(e.d && e.d.headRoll) || 0);
+		rotate(im, 1, anim.netHeadYaw * DEG);
+		rotate(im, 0, anim.headPitch * DEG);
+		if (e.baby) translate(im, sleeping ? 0.4 : 0.06, 0.26, sleeping ? 0.15 : -0.5);
+		else if (sleeping) translate(im, 0.46, 0.26, 0.22);
+		else translate(im, 0.06, 0.27, -0.5);
+		rotate(im, 0, 90 * DEG);
+		if (sleeping) rotate(im, 2, 90 * DEG);
+		this.drawGroundItem(e.hand, im, style);
 	}
 
 	drawThrown(pos, style, item) {

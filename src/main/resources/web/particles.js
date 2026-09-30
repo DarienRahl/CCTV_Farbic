@@ -1723,6 +1723,19 @@ const rgbOf = c => [(c >> 16 & 255) / 255, (c >> 8 & 255) / 255, (c & 255) / 255
  * The options the server sends with a particle ({b: block state id} or the game's own serialisation of the
  * options, see EffectEncoder.java) as the providers use them: rgb and alpha of colour options (dust, effects).
  */
+/** SpellcasterIllager.IllagerSpell colours */
+const SPELL_COLORS = {
+	summon_vex: [0.7, 0.7, 0.8], fangs: [0.4, 0.3, 0.35], wololo: [0.7, 0.5, 0.2], disappear: [0.3, 0.3, 0.8], blindness: [0.1, 0.1, 0.2],
+};
+
+/** Vec3.xRot(xRot).yRot(yRot) */
+function rotateXY(x, y, z, xRot, yRot) {
+	const cx = Math.cos(xRot), sx = Math.sin(xRot);
+	const y1 = y * cx + z * sx, z1 = z * cx - y * sx;
+	const cy = Math.cos(yRot), sy = Math.sin(yRot);
+	return [x * cy + z1 * sy, y1, z1 * cy - x * sy];
+}
+
 function particleOptions(raw) {
 	if (!raw || typeof raw !== 'object') return null;
 	const options = { ...raw };
@@ -1908,6 +1921,11 @@ export class Particles {
 		this.starters = [];
 		/** Firework rockets' last heights, for their trail (entity id -> y) */
 		this.rockets = new Map();
+		/** Client-side particles due later: [{t, run(level)}] (EvokerFangs' crits) */
+		this.delayed = [];
+		this.renderTick = 0;
+		/** Pandas that were sneezing in the last tick (Panda.afterSneeze when it stops) */
+		this.sneezing = new Set();
 	}
 
 	/** Sprite sets from particles/*.json and one atlas of textures/particle (from the asset bundle). */
@@ -1961,6 +1979,7 @@ export class Particles {
 		this.starters.length = 0;
 		this.pending.length = 0;
 		this.explosions.length = 0;
+		this.delayed.length = 0;
 	}
 
 	/** The "fx" of an entity frame (see EffectEncoder.java), played when the entities are drawn at its tick. */
@@ -1981,6 +2000,12 @@ export class Particles {
 		const level = this.levelFor(world, weather, columns);
 		this.camera = camera;
 		this.tickWeatherEffects(level, camera, weather, columns, gameTime);
+		if (renderTick !== undefined) this.renderTick = renderTick;
+		if (this.delayed.length) {
+			const due = this.delayed.filter(d => d.t <= this.renderTick);
+			this.delayed = this.delayed.filter(d => d.t > this.renderTick);
+			for (const d of due) if (this.renderTick - d.t < 40) d.run(level);
+		}
 		while (this.pending.length && (renderTick === undefined || this.pending[0].t <= renderTick)) {
 			const { t, fx } = this.pending.shift();
 			if (renderTick !== undefined && renderTick - t > 40) continue;
@@ -2103,11 +2128,49 @@ export class Particles {
 					}
 					break;
 				}
+				case 'minecraft:evoker':
+				case 'minecraft:illusioner': {
+					// SpellcasterIllager.tick (client): the casting hands glow in the spell's colour
+					const color = SPELL_COLORS[e.d && e.d.spell];
+					if (!color || e.dead) break;
+					const angle = (e.body ?? e.yaw ?? 0) * Math.PI / 180 + Math.cos(Math.floor(e.age || 0) * 0.6662) * 0.25;
+					const cos = Math.cos(angle), sin = Math.sin(angle), scale = e.scale || 1;
+					const options = particleOptions({ color });
+					this.addFx(level, 'minecraft:entity_effect', e.x + cos * 0.6 * scale, e.y + 1.8 * scale, e.z + sin * 0.6 * scale, 0, 0, 0, options);
+					this.addFx(level, 'minecraft:entity_effect', e.x - cos * 0.6 * scale, e.y + 1.8 * scale, e.z - sin * 0.6 * scale, 0, 0, 0, options);
+					break;
+				}
+				case 'minecraft:panda':
+					this.pandaParticles(level, e, seen);
+					break;
 				default:
 					break;
 			}
 		}
 		for (const id of this.rockets.keys()) if (!seen.has(id)) this.rockets.delete(id);
+		for (const id of this.sneezing) if (!seen.has(id)) this.sneezing.delete(id);
+	}
+
+	/** Panda.addEatingParticles (every fifth tick of eating: crumbs of what it holds) and Panda.afterSneeze. */
+	pandaParticles(level, e, seen) {
+		seen.add(e.id);
+		const d = e.d || {};
+		const body = (e.body ?? e.yaw ?? 0) * Math.PI / 180;
+		const eyeY = e.y + (e.h || 1.25) * 0.85;
+		if (d.eating && e.hand && Math.floor(e.age || 0) % 5 === 0) {
+			const xRot = -(e.pitch || 0) * Math.PI / 180, yRot = -(e.yaw || 0) * Math.PI / 180;
+			for (let i = 0; i < 6; i++) {
+				const [vx, vy, vz] = rotateXY((nextFloat() - 0.5) * 0.1, nextFloat() * 0.1 + 0.1, (nextFloat() - 0.5) * 0.1, xRot, yRot);
+				const [px, py, pz] = rotateXY((nextFloat() - 0.5) * 0.8, -nextFloat() * 0.6 - 0.3, 1 + (nextFloat() - 0.5) * 0.4, 0, -body);
+				this.add(level, 'minecraft:item', px + e.x, py + eyeY + 1, pz + e.z, vx, vy + 0.05, vz, { item: e.hand });
+			}
+		}
+		if (d.sneezing) {
+			this.sneezing.add(e.id);
+		} else if (this.sneezing.delete(e.id)) {
+			const w = e.w || 1.3;
+			this.addFx(level, 'minecraft:sneeze', e.x - (w + 1) * 0.5 * Math.sin(body), eyeY - 0.1, e.z + (w + 1) * 0.5 * Math.cos(body), 0, 0, 0);
+		}
 	}
 
 	/**
@@ -2421,6 +2484,20 @@ export class Particles {
 			case 'angry': around('minecraft:angry_villager', 5, 1); break;
 			case 'happy': around('minecraft:happy_villager', 5, 1); break;
 			case 'splash': around('minecraft:splash', 5, 1); break;
+			case 'fangs':
+				// EvokerFangs.tick (client): when lifeTicks gets to 14, eight ticks after the bite started
+				if (this.delayed.length < 64) {
+					this.delayed.push({
+						t: this.renderTick + 8,
+						run: at => {
+							for (let i = 0; i < 12; i++) {
+								this.addFx(at, 'minecraft:crit', x + (nextDouble() * 2 - 1) * w * 0.5, y + 0.05 + nextDouble() + 1, z + (nextDouble() * 2 - 1) * w * 0.5,
+									(nextDouble() * 2 - 1) * 0.3, 0.3 + nextDouble() * 0.3, (nextDouble() * 2 - 1) * 0.3);
+							}
+						},
+					});
+				}
+				break;
 			default: break;
 		}
 	}

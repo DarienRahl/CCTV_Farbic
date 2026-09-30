@@ -78,6 +78,7 @@ class StreamReader(threading.Thread):
         self.leashed = set()
         self.equipment = set()
         self.cracks = set()
+        self.poses = set()
         self.items = set()
         self.effects = set()
         self.block_updates = []
@@ -125,6 +126,9 @@ class StreamReader(threading.Thread):
                                     self.leashed.add(e["type"])
                                 if "glow" in e:
                                     self.glowing.add((e["type"], e["glow"]))
+                                for key in ("sleeping", "armPose"):
+                                    if key in e.get("d", {}):
+                                        self.poses.add((e["type"], key, e["d"][key]))
                                 for piece in e.get("eq") or []:
                                     if piece:
                                         # equipment asset, whether it is dyed, its trim pattern
@@ -264,6 +268,9 @@ def main():
     rcon.command("setblock -7 -60 -2 minecraft:oak_fence")
     rcon.command("summon minecraft:pig -6 -60 -4 {leash:[I;-7,-60,-2]}")
     rcon.command("summon minecraft:breeze 6 -60 2 {NoAI:1b}")
+    # poses the viewer takes from the entities' state (FoxModel sleeping, IllagerModel holding a crossbow)
+    rcon.command("summon minecraft:fox -6 -60 5 {Sleeping:1b,NoAI:1b}")
+    rcon.command("summon minecraft:pillager 7 -60 9 {NoAI:1b}")
     rcon.command("item replace entity @e[type=minecraft:armor_stand,limit=1] armor.head"
                  " with minecraft:golden_helmet[enchantments={'minecraft:protection':1}]")
     # a dyed leather chestplate with a gold coast trim (equipment layers, dye and trim palette)
@@ -437,6 +444,11 @@ def main():
     print("glowing:", sorted(stream.glowing), flush=True)
     if ("minecraft:cow", 0xFFFFFF) not in stream.glowing:
         failures.append("the glowing cow was not streamed with its outline colour")
+    print("poses:", sorted(stream.poses), flush=True)
+    for pose, what in ((("minecraft:fox", "sleeping", True), "the sleeping fox"),
+                       (("minecraft:pillager", "armPose", "crossbow_hold"), "the pillager holding its crossbow")):
+        if pose not in stream.poses:
+            failures.append(f"{what} was not streamed with its pose")
     print("armour cracks:", sorted(stream.cracks), flush=True)
     if ("minecraft:wolf", "high") not in stream.cracks:
         failures.append("the worn wolf armour was not streamed with its cracks")
@@ -582,7 +594,7 @@ def cache_check():
 
 # Performance budgets (docs/ROADMAP.md 1.4): the server's milliseconds per camera tick (running average over
 # the last seconds) and the average size of a section message.
-TICK_MS_BUDGET = 15.0
+TICK_MS_BUDGET = 3.0
 SECTION_BYTES_BUDGET = 8192
 
 

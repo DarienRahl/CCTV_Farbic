@@ -24,13 +24,17 @@ import net.minecraft.util.RandomSource;
 import net.minecraft.util.random.Weighted;
 import net.minecraft.util.random.WeightedList;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.TamableAnimal;
 import net.minecraft.world.entity.animal.Animal;
 import net.minecraft.world.entity.animal.equine.AbstractHorse;
+import net.minecraft.world.entity.animal.fox.Fox;
 import net.minecraft.world.entity.npc.villager.Villager;
+import net.minecraft.world.entity.projectile.EvokerFangs;
 import net.minecraft.world.entity.projectile.FireworkRocketEntity;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.component.FireworkExplosion;
 import net.minecraft.world.item.component.Fireworks;
 import net.minecraft.world.level.block.BonemealableBlock;
@@ -135,6 +139,21 @@ final class EffectEncoder {
 		return json.endArray().toString();
 	}
 
+	/** Fox.handleEntityEvent 45: crumbs of the item in its mouth, as "ip" (see itemParticles). */
+	private static String foxEating(Fox fox, String item) {
+		RandomSource random = RandomSource.create();
+		float xRot = -fox.getXRot() * Mth.DEG_TO_RAD, yRot = -fox.getYRot() * Mth.DEG_TO_RAD;
+		Vec3 look = fox.getLookAngle();
+		Json json = new Json(64 + 8 * 56);
+		json.beginArray().value("ip").value(item);
+		for (int i = 0; i < 8; i++) {
+			Vec3 d = new Vec3((random.nextFloat() - 0.5) * 0.1, random.nextFloat() * 0.1 + 0.1, 0.0).xRot(xRot).yRot(yRot);
+			json.value(fox.getX() + look.x / 2.0, 3).value(fox.getY(), 3).value(fox.getZ() + look.z / 2.0, 3)
+					.value(d.x, 4).value(d.y + 0.05, 4).value(d.z, 4);
+		}
+		return json.endArray().toString();
+	}
+
 	/** ServerLevel#sendParticles: what the ClientboundLevelParticlesPacket carries. */
 	static String particles(ServerLevel level, ParticleOptions particle, boolean overrideLimiter, double x, double y, double z, int count,
 			double xDist, double yDist, double zDist, double xSpeed, double ySpeed, double zSpeed, RandomizationType randomization,
@@ -222,7 +241,15 @@ final class EffectEncoder {
 		if (event == 17 && entity instanceof FireworkRocketEntity rocket) {
 			return fireworks(rocket);
 		}
+		if (event == 45 && entity instanceof Fox fox) {
+			ItemStack mouth = fox.getItemBySlot(EquipmentSlot.MAINHAND);
+			return mouth.isEmpty() ? null : foxEating(fox, BuiltInRegistries.ITEM.getKey(mouth.getItem()).toString());
+		}
 		String kind = null;
+		if (event == 4 && entity instanceof EvokerFangs) {
+			// EvokerFangs.tick (client): the bite started, crit particles follow when it closes
+			kind = "fangs";
+		}
 		if (entity instanceof Villager) {
 			kind = switch (event) {
 				case 12 -> "villager_heart";

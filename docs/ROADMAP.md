@@ -61,8 +61,11 @@ to the milestone it belongs to. The roadmap on the README page is drawn from thi
 - [x] Client-side animations from entity events: iron golem, ravager, hoglin and zoglin attacks,
       the ravager's stun and roar, sheep eating grass, wolves shaking off water and begging, goats
       ramming (events are queued, so none is lost when the viewer draws fewer frames than it gets)
-- [ ] More of them: evoker fangs and spells, horse rearing and eating, fox and panda poses, the
-      iron golem offering a flower
+- [x] More of them: evoker fangs biting and the evoker's casting hands with their spell particles, illagers
+      celebrating and holding or loading crossbows, horses and donkeys rearing, grazing and swishing their
+      tails, foxes sitting, sleeping, stalking and pouncing with the item in their mouth (and its crumbs),
+      pandas sitting with bamboo, rolling, lying on their back and sneezing, the iron golem offering a poppy
+      (the amounts the game's entity tick computes are sent and interpolated, so the poses move like the game's)
 
 ## 1.3 — 1:1 picture (parts released: 1.3.0, 1.3.1, 1.3.2, 1.3.3, 1.3.4)
 

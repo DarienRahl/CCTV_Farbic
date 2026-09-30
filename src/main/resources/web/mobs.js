@@ -243,17 +243,69 @@ function swimStroke(p, a, attacking) {
 	if (p.right_leg) p.right_leg.xRot = lerp(s, p.right_leg.xRot, 0.3 * cos(l * 0.33333334));
 }
 
-/** AnimationUtils.animateZombieArms */
-function zombieArms(p, a, aggressive) {
-	const attack2 = sin(a.attack * PI);
-	const attack = sin((1 - (1 - a.attack) * (1 - a.attack)) * PI);
-	const armX = -PI / (aggressive ? 1.5 : 2.25);
-	if (p.right_arm) { p.right_arm.zRot = 0; p.right_arm.yRot = -(0.1 - attack2 * 0.6); p.right_arm.xRot = armX + attack2 * 1.2 - attack * 0.4; }
-	if (p.left_arm) { p.left_arm.zRot = 0; p.left_arm.yRot = 0.1 - attack2 * 0.6; p.left_arm.xRot = armX + attack2 * 1.2 - attack * 0.4; }
+/** AnimationUtils.animateZombieArms (26.3: no bobbing of its own; a baby holding an item keeps its arms down) */
+function animateZombieArms(p, a, e, aggressive) {
+	const raise = !e.baby || !e.hand;
+	const armDrop = raise ? -PI / (aggressive ? 1.5 : 2.25) : 0;
+	const attackY = (raise ? 1 : -1) * sin(a.attack * PI);
+	const attackX = sin((1 - (1 - a.attack) * (1 - a.attack)) * PI);
+	const xRot = armDrop + attackY * 1.2 - attackX * 0.4;
+	const yRot = 0.1 - attackY * 0.6;
+	if (p.right_arm) Object.assign(p.right_arm, { xRot, yRot: raise ? -yRot : yRot, zRot: 0 });
+	if (p.left_arm) Object.assign(p.left_arm, { xRot, yRot: raise ? yRot : -yRot, zRot: 0 });
+}
+
+/** ZombieModel.setupAttackAnimation, then the arms' bob that HumanoidModel.setupAnim ends with. */
+function zombieArms(p, a, e, aggressive) {
+	animateZombieArms(p, a, e, aggressive);
 	bobArms(p, a.age);
 }
 
 const triangleWave = (t, period) => (abs(t % period - period * 0.5) - period * 0.25) / (period * 0.25);
+
+/** Mth.rotLerpRad */
+function rotLerpRad(t, from, to) {
+	let delta = to - from;
+	while (delta < -PI) delta += PI * 2;
+	while (delta >= PI) delta -= PI * 2;
+	return from + t * delta;
+}
+
+/** AnimationUtils.swingWeaponDown: side 1 for a right-handed mob. */
+function swingWeaponDown(p, side, attackTime, age) {
+	const R = p.right_arm, L = p.left_arm;
+	if (!R || !L) return;
+	const attack2 = sin(attackTime * PI);
+	const attack = sin((1 - (1 - attackTime) * (1 - attackTime)) * PI);
+	R.zRot = 0; L.zRot = 0;
+	R.yRot = PI / 20; L.yRot = -PI / 20;
+	const [main, off] = side > 0 ? [R, L] : [L, R];
+	main.xRot = -1.8849558 + cos(age * 0.09) * 0.15 + attack2 * 2.2 - attack * 0.4;
+	off.xRot = cos(age * 0.19) * 0.5 + attack2 * 1.2 - attack * 0.4;
+	bobArms(p, age);
+}
+
+/** AnimationUtils.animateCrossbowHold (right-handed) */
+function crossbowHold(p) {
+	const R = p.right_arm, L = p.left_arm, head = p.head;
+	if (!R || !L || !head) return;
+	R.yRot = -0.3 + head.yRot;
+	L.yRot = 0.6 + head.yRot;
+	R.xRot = -PI / 2 + head.xRot + 0.1;
+	L.xRot = -1.5 + head.xRot;
+}
+
+/** AnimationUtils.animateCrossbowCharge (right-handed) */
+function crossbowCharge(p, maxCharge, ticksUsing) {
+	const R = p.right_arm, L = p.left_arm;
+	if (!R || !L) return;
+	R.yRot = -0.8;
+	R.xRot = -0.97079635;
+	L.xRot = R.xRot;
+	const alpha = clamp(ticksUsing, 0, maxCharge) / maxCharge;
+	L.yRot = lerp(alpha, 0.4, 0.85);
+	L.xRot = lerp(alpha, L.xRot, -PI / 2);
+}
 
 const ANIMS = {
 	none() {},
@@ -265,7 +317,7 @@ const ANIMS = {
 	humanoid,
 	zombie(p, a, e) {
 		humanoid(p, a, e);
-		zombieArms(p, a, !!(e.d && e.d.aggressive));
+		zombieArms(p, a, e, !!(e.d && e.d.aggressive));
 	},
 	skeleton(p, a, e) {
 		humanoid(p, a, e);
@@ -281,20 +333,58 @@ const ANIMS = {
 		if (p.right_leg) p.right_leg.xRot = cos(w) * 1.4 * s * 0.5;
 		if (p.left_leg) p.left_leg.xRot = cos(w + PI) * 1.4 * s * 0.5;
 	},
+	/** IllagerModel.setupAnim with IllagerRenderer's state (the illager's own arm pose, AbstractIllager.getArmPose). */
 	illager(p, a, e) {
-		headLook(p, a);
-		const w = a.walk * 0.6662, s = a.walkSpeed;
-		if (p.right_leg) p.right_leg.xRot = cos(w) * 1.4 * s * 0.5;
-		if (p.left_leg) p.left_leg.xRot = cos(w + PI) * 1.4 * s * 0.5;
-		const crossed = !e.hand;
-		if (p.arms) p.arms.visible = crossed;
-		if (p.left_arm) p.left_arm.visible = !crossed;
-		if (p.right_arm) p.right_arm.visible = !crossed;
-		if (!crossed) {
-			if (p.right_arm) p.right_arm.xRot = cos(w + PI) * 2 * s * 0.5;
-			if (p.left_arm) p.left_arm.xRot = cos(w) * 2 * s * 0.5;
-			if (e.d && e.d.aggressive) zombieArms(p, a, true);
+		const d = e.d || {};
+		const R = p.right_arm, L = p.left_arm, head = p.head;
+		if (head) { head.yRot = a.netHeadYaw * DEG; head.xRot = a.headPitch * DEG; }
+		const legs = (xr, yr, zr, xl, yl, zl) => {
+			if (p.right_leg) Object.assign(p.right_leg, { xRot: xr, yRot: yr, zRot: zr });
+			if (p.left_leg) Object.assign(p.left_leg, { xRot: xl, yRot: yl, zRot: zl });
+		};
+		if (e.riding) {
+			if (R) Object.assign(R, { xRot: -PI / 5, yRot: 0, zRot: 0 });
+			if (L) Object.assign(L, { xRot: -PI / 5, yRot: 0, zRot: 0 });
+			legs(-1.4137167, PI / 10, 0.07853982, -1.4137167, -PI / 10, -0.07853982);
+		} else {
+			const w = a.walk * 0.6662, s = a.walkSpeed;
+			if (R) Object.assign(R, { xRot: cos(w + PI) * 2 * s * 0.5, yRot: 0, zRot: 0 });
+			if (L) Object.assign(L, { xRot: cos(w) * 2 * s * 0.5, yRot: 0, zRot: 0 });
+			legs(cos(w) * 1.4 * s * 0.5, 0, 0, cos(w + PI) * 1.4 * s * 0.5, 0, 0);
 		}
+		const pose = d.armPose || (e.hand ? 'neutral' : 'crossed');
+		if (R && L) {
+			if (pose === 'attacking') {
+				if (!e.hand) {
+					animateZombieArms(p, a, e, true);
+					bobArms(p, a.age);
+				} else {
+					swingWeaponDown(p, d.mainArm === 'left' ? -1 : 1, a.attack, a.age);
+				}
+			} else if (pose === 'spellcasting') {
+				const swing = cos(a.age * 0.6662) * 0.25;
+				Object.assign(R, { z: 0, x: -5, xRot: swing, zRot: PI * 3 / 4, yRot: 0 });
+				Object.assign(L, { z: 0, x: 5, xRot: swing, zRot: -PI * 3 / 4, yRot: 0 });
+			} else if (pose === 'bow_and_arrow' && head) {
+				R.yRot = -0.1 + head.yRot;
+				R.xRot = -PI / 2 + head.xRot;
+				L.xRot = -0.9424779 + head.xRot;
+				L.yRot = head.yRot - 0.4;
+				L.zRot = PI / 2;
+			} else if (pose === 'crossbow_hold') {
+				crossbowHold(p);
+			} else if (pose === 'crossbow_charge') {
+				crossbowCharge(p, Number(d.chargeTicks) || 25, Number(d.useTicks) || 0);
+			} else if (pose === 'celebrating') {
+				const wave = cos(a.age * 0.6662) * 0.05;
+				Object.assign(R, { z: 0, x: -5, xRot: wave, zRot: 2.670354, yRot: 0 });
+				Object.assign(L, { z: 0, x: 5, xRot: wave, zRot: -PI * 3 / 4, yRot: 0 });
+			}
+		}
+		const crossed = pose === 'crossed';
+		if (p.arms) p.arms.visible = crossed;
+		if (L) L.visible = !crossed;
+		if (R) R.visible = !crossed;
 	},
 	spider(p, a) {
 		headLook(p, a);
@@ -321,25 +411,224 @@ const ANIMS = {
 		if (p.right_leg) p.right_leg.xRot = cos(w) * 1.4 * s;
 		if (p.left_leg) p.left_leg.xRot = cos(w + PI) * 1.4 * s;
 	},
+	/**
+	 * AbstractEquineModel.setupAnim (HorseModel, DonkeyModel and their baby models) with AbstractHorseRenderer's
+	 * state: rearing (getStandAnim), grazing (getEatAnim), the mouth (getMouthAnim) and the swishing tail.
+	 */
 	horse(p, a, e) {
-		const head = p.head_parts;
+		const d = e.d || {};
+		const head = p.head_parts, body = p.body, tail = p.tail;
+		const lh = p.left_hind_leg, rh = p.right_hind_leg, lf = p.left_front_leg, rf = p.right_front_leg;
+		const donkey = /(donkey|mule)$/.test(e.type || '');
+		const babyDonkey = donkey && e.baby, babyHorse = !donkey && e.baby;
+		const clampedYRot = clamp(a.netHeadYaw, -20, 20);
+		const speed = a.walkSpeed, pos = a.walk;
+		let headRotX = a.headPitch * DEG;
+		if (speed > 0.2) headRotX += cos(pos * 0.8) * 0.15 * speed;
+		const eating = Number(d.eat) || 0, standing = Number(d.stand) || 0, iStanding = 1 - standing;
+		const feeding = Number(d.mouth) || 0;
+		const legAnim1 = cos((d.inWater ? 0.2 : 1) * pos * 0.6662 + PI);
+		const legX = legAnim1 * 0.8 * speed;
+		const baseAngle = headX => (1 - Math.max(standing, eating)) * (PI / 6 + headX + feeding * sin(a.age) * 0.05);
 		if (head) {
-			head.xRot = PI / 6 + clamp(a.headPitch, -20, 20) * DEG;
-			head.yRot = clamp(a.netHeadYaw, -20, 20) * DEG;
+			head.yRot = clampedYRot * DEG;
+			head.xRot = standing * (PI / 12 + headRotX) + eating * (2.1816616 + sin(a.age) * 0.05) + baseAngle(headRotX);
+			head.yRot = standing * clampedYRot * DEG + (1 - Math.max(standing, eating)) * head.yRot;
+			// animateHeadPartsPlacement
+			if (babyDonkey) {
+				head.y = lerp(eating, head.y, -1.2);
+				head.z = lerp(standing, head.z, -3.6);
+			} else {
+				head.y += lerp(eating, lerp(standing, 0, babyHorse ? -2 : -8), babyHorse ? 2 : 7);
+				head.z = lerp(standing, head.z, -4);
+			}
 		}
-		const w = a.walk * 0.6662, s = a.walkSpeed;
-		const legSwing = cos(w + PI) * 0.8 * s;
-		if (p.left_hind_leg) p.left_hind_leg.xRot = legSwing;
-		if (p.right_hind_leg) p.right_hind_leg.xRot = -legSwing;
-		if (p.left_front_leg) p.left_front_leg.xRot = -legSwing;
-		if (p.right_front_leg) p.right_front_leg.xRot = legSwing;
-		if (p.tail) p.tail.xRot = PI / 6 + s * 0.75;
-		if (e.d && e.d.chest) {
-			if (p.left_chest) p.left_chest.visible = true;
-			if (p.right_chest) p.right_chest.visible = true;
+		if (body) body.xRot = standing * (-PI / 4) + iStanding * body.xRot;
+		const standY = babyDonkey ? 1 : babyHorse ? 4 : 12, standZ = babyDonkey ? 0.5 : babyHorse ? 0 : 4;
+		if (lf) {
+			lf.y -= standY * standing;
+			lf.z += standZ * standing;
+			if (rf) { rf.y = lf.y; rf.z = lf.z; }
+		}
+		const standAngle = (babyDonkey ? PI / 3 : PI / 12) * standing;
+		const bob = cos(a.age * 0.6 + PI);
+		const xOffset = babyDonkey ? 0 : -PI / 3;
+		if (lh) lh.xRot = standAngle - legAnim1 * 0.5 * speed * iStanding;
+		if (rh) rh.xRot = standAngle + legAnim1 * 0.5 * speed * iStanding;
+		if (lf) lf.xRot = (xOffset + bob) * standing + legX * iStanding;
+		if (rf) rf.xRot = (xOffset - bob) * standing - legX * iStanding;
+		if (babyDonkey && lh && rh) {
+			// BabyDonkeyModel.offsetLegPositionWhenStanding
+			lh.y = lerp(standing, lh.y, -0.3);
+			rh.y = lerp(standing, lh.y, -0.3);
+		}
+		const ageScale = e.baby ? 0.5 : 1;
+		if (tail) {
+			tail.xRot = (babyDonkey ? -PI / 4 : babyHorse ? -PI / 2 : 0) + PI / 6 + speed * 0.75;
+			tail.y += speed * ageScale;
+			tail.z += speed * 2 * ageScale;
+			tail.yRot = d.tail > 0 ? cos(a.age * 0.7) : 0;
+		}
+		if (babyDonkey && head) {
+			// BabyDonkeyModel.setupAnim: the head keeps looking 30 degrees up
+			const headX = -30 * DEG;
+			head.xRot = standing * (PI / 12 + headX) + eating * (PI / 2 + sin(a.age) * 0.05) + baseAngle(headX);
+		}
+		const chest = !!d.chest;
+		if (p.left_chest) p.left_chest.visible = chest;
+		if (p.right_chest) p.right_chest.visible = chest;
+	},
+	/**
+	 * FoxModel.setupAnim with the AdultFoxModel / BabyFoxModel poses: sitting, sleeping, crouching to stalk
+	 * (FoxRenderState.crouchAmount), pouncing, face-planted in snow and the head tilt of an interested fox.
+	 */
+	fox(p, a, e) {
+		const d = e.d || {};
+		const { head, body, tail } = p;
+		const rh = p.right_hind_leg, lh = p.left_hind_leg, rf = p.right_front_leg, lf = p.left_front_leg;
+		if (!head || !body || !rh || !lh || !rf || !lf) return;
+		const baby = !!e.baby, ageScale = baby ? 0.5 : 1;
+		const crouch = Number(d.crouch) || 0;
+		// setWalkingPose
+		head.zRot = Number(d.headRoll) || 0;
+		if (baby) {
+			if (a.k && a.k.has('FoxBabyAnimation.FOX_BABY_WALK')) a.k.walk('FoxBabyAnimation.FOX_BABY_WALK', a.walk, a.walkSpeed, 1, 2.5);
 		} else {
-			if (p.left_chest) p.left_chest.visible = false;
-			if (p.right_chest) p.right_chest.visible = false;
+			const w = a.walk * 0.6662, s = a.walkSpeed;
+			rh.xRot = cos(w) * 1.4 * s;
+			lh.xRot = cos(w + PI) * 1.4 * s;
+			rf.xRot = cos(w + PI) * 1.4 * s;
+			lf.xRot = cos(w) * 1.4 * s;
+		}
+		if (d.crouching) {
+			body.xRot += 0.10471976;
+			head.y += crouch * ageScale;
+			const wiggle = cos(a.age) * 0.05;
+			body.yRot = wiggle;
+			rh.zRot = wiggle; lh.zRot = wiggle;
+			rf.zRot = wiggle / 2; lf.zRot = wiggle / 2;
+			body.y += baby ? crouch / 6 : crouch;
+		} else if (d.sleeping) {
+			rh.visible = lh.visible = rf.visible = lf.visible = false;
+			body.zRot = -PI / 2;
+			if (baby) {
+				body.xRot = -PI / 18;
+				body.y++; body.z--; body.x--;
+				if (tail) { tail.xRot = -2.1816616; tail.x -= 0.7; tail.z += 0.6; tail.y += 0.9; }
+				head.x -= 2; head.y += 2.8; head.z -= 4;
+			} else {
+				body.y += 5;
+				if (tail) tail.xRot = -PI * 5 / 6;
+				head.x += 2; head.y += 2.99;
+			}
+			head.yRot = -PI * 2 / 3;
+			head.zRot = 0;
+		} else if (d.sitting) {
+			head.xRot = 0; head.yRot = 0;
+			if (baby) {
+				body.xRot = -0.959931;
+				body.z -= 4.5 * ageScale; body.y += 3 * ageScale;
+				if (tail) { tail.y -= 0.6; tail.z -= 2 * ageScale; tail.xRot = 0.95993114; }
+				head.y -= 0.75;
+				rf.xRot = lf.xRot = -PI / 12;
+				rf.z--; lf.z--; rf.x += 0.01; lf.x -= 0.01;
+				rh.z -= 3.75; lh.z -= 3.75; rh.x += 0.01; lh.x -= 0.01;
+			} else {
+				body.xRot = PI / 6;
+				body.y -= 7; body.z += 3;
+				if (tail) { tail.xRot = PI / 4; tail.z--; }
+				head.y -= 6.5; head.z += 2.75;
+				rf.xRot = lf.xRot = -PI / 12;
+				rh.xRot = lh.xRot = -PI * 5 / 12;
+				rh.y += 4; rh.z -= 0.25; lh.y += 4; lh.z -= 0.25;
+			}
+		}
+		if (d.pouncing && !baby) {
+			body.y -= crouch / 2;
+			head.y -= crouch / 2;
+		}
+		if (!d.sleeping && !d.faceplanted && !d.crouching) {
+			head.xRot = a.headPitch * DEG;
+			head.yRot = a.netHeadYaw * DEG;
+		}
+		if (d.sleeping) {
+			head.xRot = 0;
+			head.yRot = -PI * 2 / 3;
+			head.zRot = cos(a.age * 0.027) / 22;
+		}
+		if (d.faceplanted) {
+			// legMotionPos grows every frame the model is drawn
+			const m = a.memory;
+			m.legMotion = (m.legMotion || 0) + 0.67;
+			rh.xRot = cos(m.legMotion * 0.4662) * 0.1;
+			lh.xRot = cos(m.legMotion * 0.4662 + PI) * 0.1;
+			rf.xRot = cos(m.legMotion * 0.4662 + PI) * 0.1;
+			lf.xRot = cos(m.legMotion * 0.4662) * 0.1;
+		}
+	},
+	/** PandaModel.setupAnim (BabyPandaModel's sitting) with PandaRenderer's state. */
+	panda(p, a, e) {
+		const d = e.d || {};
+		headLook(p, a);
+		quadrupedLegs(p, a);
+		const { head, body } = p;
+		const rh = p.right_hind_leg, lh = p.left_hind_leg, rf = p.right_front_leg, lf = p.left_front_leg;
+		if (!head || !body || !rh || !lh || !rf || !lf) return;
+		const age = a.age;
+		if (d.unhappy > 0) {
+			head.yRot = 0.35 * sin(0.6 * age);
+			head.zRot = 0.35 * sin(0.6 * age);
+			rf.xRot = -0.75 * sin(0.3 * age);
+			lf.xRot = 0.75 * sin(0.3 * age);
+		} else {
+			head.zRot = 0;
+		}
+		if (d.sneezing) {
+			const time = Math.floor(Number(d.sneeze) || 0);
+			if (time < 15) head.xRot = -PI / 4 * time / 14;
+			else if (time < 20) head.xRot = -PI / 4 + PI / 4 * Math.trunc((time - 15) / 5);
+		}
+		const sit = Number(d.sit) || 0;
+		if (sit > 0) {
+			if (e.baby) {
+				body.xRot = rotLerpRad(sit, body.xRot, PI / 18);
+				body.z = lerp(sit, body.z, -1.5);
+				head.z = lerp(sit, head.z, -11.5);
+				head.y = lerp(sit, head.y, 17.5);
+				rf.z = lerp(sit, rf.z, -5); lf.z = lerp(sit, lf.z, -5);
+				rh.z = lerp(sit, rh.z, 3); lh.z = lerp(sit, lh.z, 3);
+			} else {
+				body.xRot = rotLerpRad(sit, body.xRot, 1.7407963);
+				head.xRot = rotLerpRad(sit, head.xRot, PI / 2);
+			}
+			rf.zRot = -0.27079642; lf.zRot = 0.27079642;
+			rh.zRot = 0.5707964; lh.zRot = -0.5707964;
+			if (d.eating) {
+				head.xRot = PI / 2 + 0.2 * sin(age * 0.6);
+				rf.xRot = lf.xRot = -0.4 - 0.2 * sin(age * 0.6);
+			}
+			if (d.scared) {
+				head.xRot = 2.1707964;
+				rf.xRot = lf.xRot = -0.9;
+			}
+		} else {
+			rh.zRot = lh.zRot = rf.zRot = lf.zRot = 0;
+		}
+		const onBack = Number(d.onBack) || 0;
+		if (onBack > 0) {
+			rh.xRot = -0.6 * sin(age * 0.15);
+			lh.xRot = 0.6 * sin(age * 0.15);
+			rf.xRot = 0.3 * sin(age * 0.25);
+			lf.xRot = -0.3 * sin(age * 0.25);
+			head.xRot = rotLerpRad(onBack, head.xRot, PI / 2);
+		}
+		const roll = e.baby ? 0 : Number(d.rollAmount) || 0;
+		if (roll > 0) {
+			head.xRot = rotLerpRad(roll, head.xRot, 2.0561945);
+			rh.xRot = -0.5 * sin(age * 0.5);
+			lh.xRot = 0.5 * sin(age * 0.5);
+			rf.xRot = 0.5 * sin(age * 0.5);
+			lf.xRot = -0.5 * sin(age * 0.5);
 		}
 	},
 	llama(p, a, e) {
@@ -482,15 +771,22 @@ const ANIMS = {
 		if (p.tail_base) p.tail_base.xRot = -(5 + cos(f * 2) * 5) * DEG;
 		if (p.tail_tip) p.tail_tip.xRot = -(5 + cos(f * 2) * 5) * DEG;
 	},
-	/** IronGolemModel.setupAnim; the attack swing starts with entity event 4 (CLIENT.iron_golem). */
-	golem(p, a) {
+	/**
+	 * IronGolemModel.setupAnim; the attack swing starts with entity event 4 (CLIENT.iron_golem), the right arm
+	 * holds out a poppy while the golem offers it (IronGolem.offerFlowerTick, IronGolemFlowerLayer).
+	 */
+	golem(p, a, e) {
 		headLook(p, a);
 		const s = a.walkSpeed;
 		// IronGolemRenderer.extractRenderState: attackAnimationTick - partialTicks
 		const attack = a.memory.attackAt !== undefined ? 9 - (a.age - a.memory.attackAt) : 0;
+		const flower = Number(e.d && e.d.flower) || 0;
 		if (attack > 0) {
 			if (p.right_arm) p.right_arm.xRot = -2 + 1.5 * triangleWave(attack, 10);
 			if (p.left_arm) p.left_arm.xRot = -2 + 1.5 * triangleWave(attack, 10);
+		} else if (flower > 0) {
+			if (p.right_arm) p.right_arm.xRot = -0.8 + 0.025 * triangleWave(flower, 70);
+			if (p.left_arm) p.left_arm.xRot = 0;
 		} else {
 			if (p.right_arm) p.right_arm.xRot = (-0.2 + 1.5 * triangleWave(a.walk, 13)) * s;
 			if (p.left_arm) p.left_arm.xRot = (-0.2 - 1.5 * triangleWave(a.walk, 13)) * s;
@@ -1064,6 +1360,12 @@ CLIENT.iron_golem = {
 		if (id === 4) st.memory.attackAt = tick;
 	},
 };
+/** EvokerFangs.handleEntityEvent: 4 starts the bite (clientSideAttackStarted). */
+CLIENT.evoker_fangs = {
+	event(e, st, id, tick) {
+		if (id === 4) st.memory.biteAt = tick;
+	},
+};
 /** Sheep.handleEntityEvent: 10 starts eating grass (eatAnimationTick = 40). */
 CLIENT.sheep = {
 	event(e, st, id, tick) {
@@ -1175,8 +1477,8 @@ const MOBS = {
 	evoker_fangs: { layer: 'evoker_fangs#main', texture: 'illager/evoker_fangs', shadow: 0, anim: 'none', living: false },
 	fox: {
 		layer: e => (e.baby ? 'fox_baby#main' : 'fox#main'),
-		texture: e => 'fox/fox' + (variant(e, 'red') === 'snow' ? '_snow' : '') + (e.pose === 'sleeping' ? '_sleep' : '') + baby(e),
-		shadow: 0.4, anim: 'quadruped',
+		texture: e => 'fox/fox' + (variant(e, 'red') === 'snow' ? '_snow' : '') + (e.d && e.d.sleeping ? '_sleep' : '') + baby(e),
+		shadow: 0.4, anim: 'fox', fox: true,
 	},
 	frog: { layer: 'frog#main', texture: e => 'frog/frog_' + variant(e, 'temperate'), shadow: 0.3, anim: 'frog' },
 	ghast: { layer: 'ghast#main', texture: e => (e.d && e.d.charging ? 'ghast/ghast_shooting' : 'ghast/ghast'), shadow: 1.5, anim: 'ghast', fullBright: true },
@@ -1208,7 +1510,7 @@ const MOBS = {
 	husk: { layer: e => (e.baby ? 'husk_baby#main' : 'husk#main'), texture: e => 'zombie/husk' + baby(e), shadow: 0.5, anim: 'zombie', armor: 'husk' },
 	illusioner: { layer: 'illusioner#main', texture: 'illager/illusioner', shadow: 0.5, anim: 'illager' },
 	iron_golem: {
-		layer: 'iron_golem#main', texture: 'iron_golem/iron_golem', shadow: 0.7, anim: 'golem', walkRoll: true,
+		layer: 'iron_golem#main', texture: 'iron_golem/iron_golem', shadow: 0.7, anim: 'golem', walkRoll: true, flower: true,
 		layers: [{ layer: 'iron_golem#main', texture: e => 'iron_golem/iron_golem_crackiness_' + e.d.crackiness, when: e => e.d && e.d.crackiness && e.d.crackiness !== 'none' }],
 	},
 	llama: {
@@ -1231,7 +1533,7 @@ const MOBS = {
 			if (e.baby) return gene === 'normal' ? 'panda/panda_baby' : 'panda/' + gene + '_panda_baby';
 			return gene === 'normal' ? 'panda/panda' : 'panda/panda_' + gene;
 		},
-		shadow: 0.9, anim: 'quadruped',
+		shadow: 0.9, anim: 'panda', panda: true,
 	},
 	parched: { layer: 'parched#main', texture: 'skeleton/parched', shadow: 0.5, anim: 'skeleton', armor: 'parched' },
 	parrot: { layer: 'parrot#main', texture: e => 'parrot/parrot_' + variant(e, 'red_blue').replace(/^gray$/, 'grey'), shadow: 0.3, anim: 'parrot' },
