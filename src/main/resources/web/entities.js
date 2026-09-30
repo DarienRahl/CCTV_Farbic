@@ -10,7 +10,7 @@ import { describeMob, isKnownMob, blockEntityModel, dyeRgb, CLIENT, equipmentPos
 import { Animator, AnimationStates } from './keyframes.js';
 import { collectParts } from './models.js';
 import { JavaRandom } from './rng.js';
-import { program, FOG_GLSL, setFog } from './gl.js';
+import { program, FOG_GLSL, setFog, Target, FULLSCREEN_VS } from './gl.js';
 import { SHADOW_GLSL, SHADER_LIGHT_GLSL } from './renderer.js';
 import { lerp, lerpAngle, wrapDegrees } from './math.js';
 import { TextRenderer, rgb, matrixTransform, FULL_BRIGHT } from './text.js';
@@ -305,6 +305,69 @@ in vec2 vUv;
 uniform sampler2D uTexture;
 void main() {
 	if (texture(uTexture, vUv).a < 0.1) discard;
+}`;
+
+// rendertype_outline: glowing entities drawn in their team colour into the outline target
+const OUTLINE_VS = `
+layout(location = 0) in vec3 aPos;
+layout(location = 2) in vec2 aUv;
+uniform mat4 uViewProj;
+out vec2 vUv;
+void main() {
+	vUv = aUv;
+	gl_Position = uViewProj * vec4(aPos, 1.0);
+}`;
+
+const OUTLINE_FS = `
+in vec2 vUv;
+uniform sampler2D uTexture;
+uniform vec3 uColor;
+out vec4 outColor;
+void main() {
+	if (texture(uTexture, vUv).a == 0.0) discard;
+	outColor = vec4(uColor, 1.0);
+}`;
+
+// post/entity_sobel: the silhouettes' edges, coloured like the entity next to them
+const SOBEL_FS = `
+in vec2 vUv;
+uniform sampler2D uIn;
+uniform vec2 uInSize;
+out vec4 outColor;
+void main() {
+	vec2 oneTexel = 1.0 / uInSize;
+	vec4 center = texture(uIn, vUv);
+	vec4 left = texture(uIn, vUv - vec2(oneTexel.x, 0.0));
+	vec4 right = texture(uIn, vUv + vec2(oneTexel.x, 0.0));
+	vec4 up = texture(uIn, vUv - vec2(0.0, oneTexel.y));
+	vec4 down = texture(uIn, vUv + vec2(0.0, oneTexel.y));
+	float total = clamp(abs(center.a - left.a) + abs(center.a - right.a) + abs(center.a - up.a) + abs(center.a - down.a), 0.0, 1.0);
+	vec3 color = center.rgb * center.a + left.rgb * left.a + right.rgb * right.a + up.rgb * up.a + down.rgb * down.a;
+	outColor = vec4(color * 0.2, total);
+}`;
+
+// post/entity_outline_box_blur (radius 2, bilinear samples)
+const OUTLINE_BLUR_FS = `
+in vec2 vUv;
+uniform sampler2D uIn;
+uniform vec2 uInSize;
+uniform vec2 uDir;
+out vec4 outColor;
+void main() {
+	vec2 sampleStep = uDir / uInSize;
+	vec4 blurred = vec4(0.0);
+	float radius = 2.0;
+	for (float a = -radius + 0.5; a <= radius; a += 2.0) blurred += texture(uIn, vUv + sampleStep * a);
+	blurred += texture(uIn, vUv + sampleStep * radius) / 2.0;
+	outColor = vec4((blurred / (radius + 0.5)).rgb, blurred.a);
+}`;
+
+const OUTLINE_BLIT_FS = `
+in vec2 vUv;
+uniform sampler2D uIn;
+out vec4 outColor;
+void main() {
+	outColor = texture(uIn, vUv);
 }`;
 
 // RenderPipelines.ENTITY_SHADOW (rendertype_entity_shadow): shadow.png times the vertex alpha, with fog.
@@ -974,18 +1037,93 @@ export class EntityRenderer {
 	begin() {
 		this.sink.reset();
 		this.batches = [];
+		this.outline = null;
 	}
 
-	/** Records that the vertices emitted since `start` use this texture / mode. */
+	/**
+	 * Records that the vertices emitted since `start` use this texture / mode (and, while a glowing entity is
+	 * drawn, its outline colour).
+	 */
 	batch(texture, mode, start, cull = true, glint = 0) {
 		const count = this.sink.count - start;
 		if (count <= 0) return;
+		const outline = this.outline;
 		const last = this.batches[this.batches.length - 1];
-		if (last && last.texture === texture && last.mode === mode && last.cull === cull && last.glint === glint && last.start + last.count === start) {
+		if (last && last.texture === texture && last.mode === mode && last.cull === cull && last.glint === glint && last.outline === outline
+			&& last.start + last.count === start) {
 			last.count += count;
 			return;
 		}
-		this.batches.push({ texture, mode, start, count, cull, glint });
+		this.batches.push({ texture, mode, start, count, cull, glint, outline });
+	}
+
+	/**
+	 * The Glowing effect (LevelRenderer's entity outline target and the entity_outline post chain): glowing
+	 * entities drawn in their team colour into their own target, their edges found (entity_sobel), blurred and
+	 * blended over the picture, walls or not.
+	 */
+	drawOutlines(frame, scene) {
+		if (!this.batches.some(b => b.outline && b.mode <= MODE_TRANSLUCENT)) return;
+		const gl = this.gl;
+		if (!this.outlinePrograms) {
+			this.outlinePrograms = {
+				entity: program(gl, OUTLINE_VS, OUTLINE_FS),
+				sobel: program(gl, FULLSCREEN_VS, SOBEL_FS),
+				blur: program(gl, FULLSCREEN_VS, OUTLINE_BLUR_FS),
+				blit: program(gl, FULLSCREEN_VS, OUTLINE_BLIT_FS),
+			};
+			this.outlineTarget = new Target(gl, { color: true, depth: true });
+			this.outlineSwap = new Target(gl, { color: true, depth: false });
+			this.fullscreenVao = gl.createVertexArray();
+		}
+		const P = this.outlinePrograms;
+		const w = scene.width, h = scene.height;
+		this.outlineTarget.resize(w, h);
+		this.outlineSwap.resize(w, h);
+
+		this.outlineTarget.bind();
+		gl.clearColor(0, 0, 0, 0);
+		gl.clearDepth(1);
+		gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+		gl.enable(gl.DEPTH_TEST);
+		gl.depthMask(true);
+		gl.disable(gl.BLEND);
+		gl.useProgram(P.entity.program);
+		gl.uniformMatrix4fv(P.entity.u.uViewProj, false, frame.viewProj);
+		gl.uniform1i(P.entity.u.uTexture, 0);
+		gl.activeTexture(gl.TEXTURE0);
+		gl.bindVertexArray(this.vao);
+		for (const b of this.batches) {
+			if (!b.outline || b.mode > MODE_TRANSLUCENT) continue;
+			if (b.cull) gl.enable(gl.CULL_FACE); else gl.disable(gl.CULL_FACE);
+			gl.uniform3fv(P.entity.u.uColor, b.outline);
+			gl.bindTexture(gl.TEXTURE_2D, b.texture);
+			gl.drawArrays(gl.TRIANGLES, b.start, b.count);
+		}
+		gl.disable(gl.CULL_FACE);
+		gl.disable(gl.DEPTH_TEST);
+		gl.bindVertexArray(this.fullscreenVao);
+		const pass = (p, input, output, setup) => {
+			output.bind();
+			gl.useProgram(p.program);
+			gl.bindTexture(gl.TEXTURE_2D, input.colorTexture);
+			gl.uniform1i(p.u.uIn, 0);
+			if (p.u.uInSize) gl.uniform2f(p.u.uInSize, input.width, input.height);
+			if (setup) setup(p.u);
+			gl.drawArrays(gl.TRIANGLES, 0, 3);
+		};
+		pass(P.sobel, this.outlineTarget, this.outlineSwap);
+		pass(P.blur, this.outlineSwap, this.outlineTarget, u => gl.uniform2f(u.uDir, 1, 0));
+		pass(P.blur, this.outlineTarget, this.outlineSwap, u => gl.uniform2f(u.uDir, 0, 1));
+		// RenderPipelines.ENTITY_OUTLINE_BLIT: blended over the picture, its alpha left alone
+		gl.enable(gl.BLEND);
+		gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+		gl.colorMask(true, true, true, false);
+		pass(P.blit, this.outlineSwap, scene);
+		gl.colorMask(true, true, true, true);
+		gl.disable(gl.BLEND);
+		gl.enable(gl.DEPTH_TEST);
+		gl.bindVertexArray(null);
 	}
 
 	/**
@@ -998,6 +1136,7 @@ export class EntityRenderer {
 		this.env = env;
 		this.bolts = [];
 		this.shadows = [];
+		this.mapLabels = [];
 		this.boxed.clear();
 		const now = frame.now;
 		const o = frame.origin, cam = frame.camPos;
@@ -1026,18 +1165,23 @@ export class EntityRenderer {
 			visible++;
 			const light = this.lightFor(e, world);
 			try {
+				// a glowing entity's geometry also goes into the outline target, in its team colour
+				this.outline = e.glow !== undefined ? [(e.glow >> 16 & 255) / 255, (e.glow >> 8 & 255) / 255, (e.glow & 255) / 255] : null;
 				if (!e.invisible || showsInvisible) this.drawEntity(e, type, [rx, ry, rz], light, now, world);
+				this.outline = null;
 				// EntityRenderer.submit: burning entities (invisible ones too) are wrapped in flames.
 				if (e.burning) this.drawFlame(e, [rx, ry, rz], light, frame.viewRotation);
 			} catch (error) {
 				console.warn('CCTV: could not draw', e.type, error);
 			}
 		}
+		this.outline = null;
 		this.visibleCount = visible;
 		this.drawLeashes(frame, list, world);
 		const view = frame.viewRotation;
 		this.text.begin();
 		this.text.nameTags(this.collectNameTags(frame, list, world), [view[0], view[4], view[8]], [view[1], view[5], view[9]]);
+		this.addMapLabels();
 		this.addSignText(frame, world);
 		this.text.finish();
 		if (this.assets) this.prepareBlockEntities(frame, world, list);
@@ -2130,7 +2274,8 @@ export class EntityRenderer {
 			128, 0, -0.01, 1, 0, 0, 0, -0.01, 0, 0,
 		]), m, style, texture);
 		let count = 0;
-		for (const [sprite, x, y, rot] of e.mapd || []) {
+		for (const [sprite, x, y, rot, name] of e.mapd || []) {
+			if (name) this.mapLabels.push({ m: new Float32Array(m), x, y, name, light: style.light });
 			const icon = this.texture('decorations/' + String(sprite).replace(/^minecraft:/, ''), 'map');
 			if (icon) {
 				const dm = new Float32Array(m);
@@ -2145,6 +2290,24 @@ export class EntityRenderer {
 				]), dm, style, icon);
 			}
 			count++;
+		}
+	}
+
+	/**
+	 * MapRenderer: the names of named decorations (banners on the map) under their icons, white on a half
+	 * transparent black background, shrunk to fit 25 map pixels.
+	 */
+	addMapLabels() {
+		if (!this.mapLabels.length || !this.text.font) return;
+		for (const label of this.mapLabels) {
+			const width = this.text.font.width(label.name);
+			if (!width) continue;
+			const textScale = Math.min(Math.max(25 / width, 0), 6 / 9);
+			const m = label.m;
+			translate(m, label.x / 2 + 64 - width * textScale / 2, label.y / 2 + 64 + 4, -0.025);
+			scale(m, textScale, textScale, -1);
+			translate(m, 0, 0, 0.1);
+			this.text.add(matrixTransform(m), label.name, 0, 0, [1, 1, 1, 1], label.light, 'normal', [0, 0, 0, 128 / 255]);
 		}
 	}
 

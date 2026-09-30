@@ -74,6 +74,7 @@ class StreamReader(threading.Thread):
         self.first = {}
         self.entity_types = set()
         self.foil = set()
+        self.glowing = set()
         self.leashed = set()
         self.equipment = set()
         self.cracks = set()
@@ -122,6 +123,8 @@ class StreamReader(threading.Thread):
                                     self.foil.add((e["type"], e["foil"]))
                                 if e.get("leash"):
                                     self.leashed.add(e["type"])
+                                if "glow" in e:
+                                    self.glowing.add((e["type"], e["glow"]))
                                 for piece in e.get("eq") or []:
                                     if piece:
                                         # equipment asset, whether it is dyed, its trim pattern
@@ -305,7 +308,12 @@ def main():
     rcon.command('data merge block -3 -60 0 {front_text:{messages:["CCTV","edited","",""]}}')
     rcon.command("data merge block 6 -60 0 {hit_direction:1}")
     rcon.command("kill @e[type=minecraft:sheep]")
+    # a glowing cow (the Glowing effect: outlined in white, the default team colour)
+    rcon.command("effect give @e[type=minecraft:cow,limit=1] minecraft:glowing infinite 0 true")
     time.sleep(4)
+    # the worn wolf armour breaks (pieces of it fly and its break sound plays, LivingEntity.breakItem)
+    rcon.command("damage @e[type=minecraft:wolf,nbt={equipment:{body:{id:\"minecraft:wolf_armor\"}}},limit=1] 30")
+    time.sleep(2)
 
     print("events:", stream.events, flush=True)
     print("init:", stream.first.get("init"), flush=True)
@@ -413,12 +421,17 @@ def main():
                          ("be:minecraft:note_block", "the note block's block event"),
                          ("s:minecraft:block.note_block.harp", "the note block's sound"),
                          ("s:minecraft:block.stone.break", "the broken block's sound (level event 2001)"),
-                         ("s:minecraft:entity.generic.explode", "the explosion's sound")):
+                         ("s:minecraft:entity.generic.explode", "the explosion's sound"),
+                         ("ip:minecraft:wolf_armor", "the pieces of the broken wolf armour"),
+                         ("s:minecraft:item.wolf_armor.break", "the broken wolf armour's sound")):
         if effect not in stream.effects:
             failures.append(f"{what} ({effect}) was not streamed as an effect")
     print("equipment:", sorted(stream.equipment, key=str), flush=True)
     if ("minecraft:armor_stand", "minecraft:leather", True, "minecraft:coast") not in stream.equipment:
         failures.append("the armour stand's dyed and trimmed leather chestplate was not streamed with its equipment asset")
+    print("glowing:", sorted(stream.glowing), flush=True)
+    if ("minecraft:cow", 0xFFFFFF) not in stream.glowing:
+        failures.append("the glowing cow was not streamed with its outline colour")
     print("armour cracks:", sorted(stream.cracks), flush=True)
     if ("minecraft:wolf", "high") not in stream.cracks:
         failures.append("the worn wolf armour was not streamed with its cracks")

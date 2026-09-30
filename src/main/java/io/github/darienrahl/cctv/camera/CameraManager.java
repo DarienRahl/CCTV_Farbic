@@ -12,6 +12,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.jspecify.annotations.Nullable;
@@ -19,8 +20,10 @@ import org.slf4j.Logger;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
+import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.particles.ExplosionParticleInfo;
 import net.minecraft.core.particles.ParticleOptions;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.protocol.game.ClientboundLevelParticlesPacket.RandomizationType;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
@@ -28,7 +31,9 @@ import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.util.random.WeightedList;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.projectile.FireworkRocketEntity;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.piston.PistonMovingBlockEntity;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
@@ -313,6 +318,25 @@ public final class CameraManager implements CameraDirectory {
 				String sound = SoundEncoder.levelEvent(level, type, pos, data);
 				return particles == null ? sound : sound == null ? particles : particles + "," + sound;
 			});
+		}
+	}
+
+	/**
+	 * Called (server thread) when a living entity makes pieces of an item: every few ticks while it eats or
+	 * drinks and when it finishes (Consumable), or when a tool or armour piece breaks, which also plays the
+	 * item's break sound (LivingEntity.breakItem, which players' clients run themselves).
+	 */
+	public void onItemParticles(ServerLevel level, LivingEntity entity, ItemStack stack, int count, boolean broken) {
+		if (sessions.isEmpty() || stack.isEmpty()) {
+			return;
+		}
+		String effect = EffectEncoder.itemParticles(entity, BuiltInRegistries.ITEM.getKey(stack.getItem()).toString(), count);
+		Holder<SoundEvent> breakSound = broken && !entity.isSilent() ? stack.get(DataComponents.BREAK_SOUND) : null;
+		String all = breakSound == null ? effect : effect + "," + SoundEncoder.sound(breakSound.value(), entity.getSoundSource(),
+				entity.getX(), entity.getY(), entity.getZ(), 0.8F, 0.8F + ThreadLocalRandom.current().nextFloat() * 0.4F,
+				ThreadLocalRandom.current().nextLong(), false);
+		for (CameraSession session : sessions.values()) {
+			session.onEffect(level, entity.getX(), entity.getY(), entity.getZ(), session.entityEffectRange(), states -> all);
 		}
 	}
 

@@ -295,3 +295,8 @@ net/minecraft/client/renderer/special/SkullSpecialRenderer
 net/minecraft/client/renderer/special/BannerSpecialRenderer
 net/minecraft/client/renderer/special/ConduitSpecialRenderer
 net/minecraft/client/renderer/special/CopperGolemStatueSpecialRenderer
+# glowing outlines, item pieces (entities.js drawOutlines; particles.js BreakingItemParticle; LivingEntityMixin)
+net/minecraft/client/renderer/OutlineBufferSource
+net/minecraft/client/particle/BreakingItemParticle
+net/minecraft/world/item/component/Consumable
+net/minecraft/world/entity/LivingEntity

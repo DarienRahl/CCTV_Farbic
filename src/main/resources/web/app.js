@@ -612,6 +612,7 @@ function frame(now) {
 			weather.render({ viewProj, camera: { x: c.x, y: c.y, z: c.z }, fog, lightmap: renderer.lightmap }, rain, environment.gameTime(now),
 				(x, y, z) => world.lightAt(x, y, z), state.assets ? state.assets.environment : null);
 			weather.renderLightning(frameData, entities.bolts);
+			entities.drawOutlines(frameData, renderer.scene);
 		},
 	});
 

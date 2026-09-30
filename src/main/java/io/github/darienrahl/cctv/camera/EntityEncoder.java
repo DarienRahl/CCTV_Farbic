@@ -324,6 +324,10 @@ final class EntityEncoder {
 		if (entity.isInvisible()) {
 			json.field("invisible", true);
 		}
+		if (entity.isCurrentlyGlowing()) {
+			// the Glowing effect or tag: the client outlines it in its team's colour (EntityRenderer.extractRenderState)
+			json.field("glow", entity.getTeamColor() & 0xFFFFFF);
+		}
 		if (entity.isShiftKeyDown()) {
 			json.field("sneak", true);
 		}

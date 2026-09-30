@@ -1132,8 +1132,30 @@ class TerrainParticle extends QuadParticle {
 	}
 }
 
+/**
+ * BreakingItemParticle (item, item_snowball, item_slime, item_cobweb): a quarter of the item's particle texture,
+ * falling with gravity; with a speed given, that speed plus a tenth of the usual random spread.
+ */
+class BreakingItemParticle extends QuadParticle {
+	constructor(level, x, y, z, sprite, speed = null) {
+		super(level, x, y, z, 0, 0, 0, null);
+		if (speed) {
+			this.xd = this.xd * 0.1 + speed[0];
+			this.yd = this.yd * 0.1 + speed[1];
+			this.zd = this.zd * 0.1 + speed[2];
+		}
+		this.gravity = 1;
+		this.quadSize /= 2;
+		const uo = nextFloat() * 3, vo = nextFloat() * 3;
+		const [u0, v0, u1, v1] = sprite;
+		const u = f => u0 + (u1 - u0) * f, v = f => v0 + (v1 - v0) * f;
+		this.sprite = [u((uo + 1) / 4), v(vo / 4), u(uo / 4), v((vo + 1) / 4)];
+		this.atlas = 'block';
+	}
+}
+
 /** Particles drawn with the block atlas or not at all, which have no sprite set of their own. */
-const NO_SPRITES = new Set(['block', 'block_crumble', 'dust_pillar', 'explosion_emitter']);
+const NO_SPRITES = new Set(['block', 'block_crumble', 'dust_pillar', 'explosion_emitter', 'item', 'item_snowball', 'item_slime', 'item_cobweb']);
 /** ParticleType.getOverrideLimiter: drawn however far from the camera. */
 const OVERRIDE_LIMITER = new Set(['explosion', 'explosion_emitter', 'elder_guardian', 'sonic_boom', 'gust', 'gust_emitter_large', 'gust_emitter_small']);
 /** BlockBehaviour.Properties.noTerrainParticles and the moving piston: no pieces when broken. */
@@ -1279,6 +1301,13 @@ const PROVIDERS = {
 	cloud: (l, x, y, z, xa, ya, za, s) => new PlayerCloudParticle(l, x, y, z, xa, ya, za, s),
 	sweep_attack: (l, x, y, z, xa, ya, za, s) => new AttackSweepParticle(l, x, y, z, xa, s),
 	block: (l, x, y, z, xa, ya, za, s, o) => terrain(l, x, y, z, xa, ya, za, o),
+	item: (l, x, y, z, xa, ya, za, s, o) => {
+		const sprite = l.itemSprite(o && (typeof o.item === 'string' ? o.item : o.item && o.item.id));
+		return sprite ? new BreakingItemParticle(l, x, y, z, sprite, [xa, ya, za]) : null;
+	},
+	item_snowball: (l, x, y, z) => itemPiece(l, x, y, z, 'minecraft:snowball'),
+	item_slime: (l, x, y, z) => itemPiece(l, x, y, z, 'minecraft:slime_ball'),
+	item_cobweb: (l, x, y, z) => itemPiece(l, x, y, z, 'minecraft:cobweb'),
 	block_crumble: (l, x, y, z, xa, ya, za, s, o) => {
 		const p = terrain(l, x, y, z, xa, ya, za, o);
 		if (p) {
@@ -1318,6 +1347,12 @@ function spell(p, options, instant) {
 }
 
 /** TerrainParticle.createTerrainParticle: nothing for air and blocks without terrain particles. */
+/** BreakingItemParticle.SnowballProvider and the like: a piece of a fixed item, no speed of its own. */
+function itemPiece(level, x, y, z, item) {
+	const sprite = level.itemSprite(item);
+	return sprite ? new BreakingItemParticle(level, x, y, z, sprite) : null;
+}
+
 function terrain(level, x, y, z, xa, ya, za, options) {
 	const block = options && options.b !== undefined ? level.terrainBlock(options.b, x, y, z) : null;
 	return block ? new TerrainParticle(level, x, y, z, xa, ya, za, block) : null;
@@ -1866,6 +1901,7 @@ export class Particles {
 		this.camera = null;
 		this.blockAssets = null;
 		this.terrainSprites = new Map();
+		this.itemSprites = new Map();
 		/** ClientLevel.rainSoundTime */
 		this.rainSoundTime = 0;
 		/** Exploding fireworks (FireworkParticles.Starter) */
@@ -1878,6 +1914,7 @@ export class Particles {
 	async setAssets(bundle, colormaps, blockAssets) {
 		this.blockAssets = blockAssets || null;
 		this.terrainSprites.clear();
+		this.itemSprites.clear();
 		const textures = bundle.particleTextures || {};
 		const images = new Map();
 		for (const [id, b64] of Object.entries(textures)) {
@@ -2146,6 +2183,12 @@ export class Particles {
 			case 'ps': this.spawnParticles(level, fx[1], fx[2], fx[3], fx[4], fx[5], fx[6], fx[7], !!fx[8]); break;
 			case 'p': this.particlePacket(level, fx); break;
 			case 'ex': this.explosion(level, fx); break;
+			case 'ip':
+				// LivingEntity.spawnItemParticles (eating, drinking, a broken tool): pieces with the server's positions
+				for (let i = 2; i + 5 < fx.length; i += 6) {
+					this.add(level, 'minecraft:item', fx[i], fx[i + 1], fx[i + 2], fx[i + 3], fx[i + 4], fx[i + 5], { item: fx[1] });
+				}
+				break;
 			case 'ee': this.entityEffect(level, fx[1], fx[2], fx[3], fx[4], fx[5], fx[6]); break;
 			case 'be': this.blockEvent(level, fx); break;
 			case 'fw': this.fireworks(level, fx); break;
@@ -2393,6 +2436,27 @@ export class Particles {
 	}
 
 	/** A block's particle sprite (BlockStateModelSet.getParticleMaterial) and its tint for terrain particles. */
+	/**
+	 * ItemStackRenderState.pickParticleMaterial, roughly: the item's own sprite (layer0 of generated item
+	 * models), else the particle texture of its block. [u0, v0, u1, v1] in the block atlas, or null.
+	 */
+	itemSprite(item) {
+		if (!item || !this.blockAssets) return null;
+		const id = item.includes(':') ? item : 'minecraft:' + item;
+		let sprite = this.itemSprites.get(id);
+		if (sprite === undefined) {
+			const colon = id.indexOf(':');
+			let s = this.blockAssets.sprites ? this.blockAssets.sprites.get(id.slice(0, colon) + ':item/' + id.slice(colon + 1)) : null;
+			if (!s && this.blockAssets.models) {
+				const texture = this.blockAssets.models.particleTexture(id, {});
+				s = texture ? this.blockAssets.sprite(texture) : null;
+			}
+			sprite = s ? [s.u0, s.v0, s.u1, s.v1] : null;
+			this.itemSprites.set(id, sprite);
+		}
+		return sprite;
+	}
+
 	terrainBlock(world, stateId, x, y, z) {
 		const info = world.infos && world.infos[stateId];
 		if (!info || NO_TERRAIN_PARTICLES.has(info.name) || !this.blockAssets || !this.blockAssets.models) return null;
@@ -2499,6 +2563,9 @@ export class Particles {
 			},
 			terrainBlock(stateId, x, y, z) {
 				return engine.terrainBlock(world, stateId, x, y, z);
+			},
+			itemSprite(item) {
+				return engine.itemSprite(item);
 			},
 		};
 		return this.level;

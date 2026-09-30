@@ -62,7 +62,7 @@ to the milestone it belongs to. The roadmap on the README page is drawn from thi
 - [ ] More of them: evoker fangs and spells, horse rearing and eating, fox and panda poses, the
       iron golem offering a flower
 
-## 1.3 — 1:1 picture (parts released: 1.3.0, 1.3.1, 1.3.2, 1.3.3)
+## 1.3 — 1:1 picture (parts released: 1.3.0, 1.3.1, 1.3.2, 1.3.3, 1.3.4)
 
 - [ ] **Reference renders in CI**: a Fabric client game test builds the CI scene in single
       player, takes a screenshot from the camera position with the game, and the viewer takes
@@ -123,7 +123,9 @@ to the milestone it belongs to. The roadmap on the README page is drawn from thi
       whirlpools, reverse portal specks, white smoke
 - [x] **Fireworks**: rockets' sparks and their explosions (FireworkParticles: balls, stars, creepers,
       bursts, trails, twinkling, fading colours, the flash) with the blast and twinkle sounds
-- [ ] More particles: item pieces (eating, breaking tools), sulfur bubbles
+- [x] **Item pieces** (BreakingItemParticle): food and potions while something eats or drinks (Consumable), tools
+      and armour that break, with their break sound; snowball, slime and cobweb pieces
+- [ ] More particles: sulfur bubbles
 - [x] Fire on burning entities (FlameFeatureRenderer, invisible ones too); invisible mobs show
       their equipment
 - [x] Capes (from the player's Mojang profile, swinging like ClientAvatarState's cloak), elytra
@@ -145,7 +147,9 @@ to the milestone it belongs to. The roadmap on the README page is drawn from thi
       hand holding the rod) and **wolf armour cracks** (WolfArmorLayer with Crackiness.WOLF_ARMOR)
 - [x] **Items with special models** (the game's `items/*.json`: chests, shulker boxes, heads, banners, conduits,
       decorated pots, copper golem statues, beds) dropped, held and in item frames, like SpecialModelWrapper
-- [ ] Entity details: glowing outlines, names of map markers
+- [x] **Glowing outlines** (the Glowing effect and tag: the entity outline target and the game's entity_outline
+      post chain, in the team colour, seen through walls) and the **names of map markers** on framed maps
+      (MapRenderer)
 - [ ] Terrain: the game's chunk occlusion culling (visibility graph), remaining fluid edge cases, the
       biome blend setting
 - [ ] Camera in water, lava and powder snow: the game's overlays and fog

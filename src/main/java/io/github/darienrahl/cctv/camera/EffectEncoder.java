@@ -19,6 +19,8 @@ import net.minecraft.core.particles.SimpleParticleType;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.protocol.game.ClientboundLevelParticlesPacket.RandomizationType;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.util.Mth;
+import net.minecraft.util.RandomSource;
 import net.minecraft.util.random.Weighted;
 import net.minecraft.util.random.WeightedList;
 import net.minecraft.world.entity.Entity;
@@ -111,6 +113,26 @@ final class EffectEncoder {
 	 */
 	static String blockEvent(BlockPos pos, Block block, int a, int b) {
 		return "[\"be\"," + pos.getX() + "," + pos.getY() + "," + pos.getZ() + ",\"" + BuiltInRegistries.BLOCK.getKey(block) + "\"," + a + "," + b + "]";
+	}
+
+	/**
+	 * LivingEntity.spawnItemParticles: pieces of an item flying out in front of the entity's eyes, as
+	 * ["ip", item, x, y, z, xa, ya, za, ...] (the viewer makes "item" particles of them). Drawn with a random
+	 * of its own, so the entity's random numbers stay as the game uses them.
+	 */
+	static String itemParticles(LivingEntity entity, String item, int count) {
+		RandomSource random = RandomSource.create();
+		float xRot = -entity.getXRot() * Mth.DEG_TO_RAD, yRot = -entity.getYRot() * Mth.DEG_TO_RAD;
+		Json json = new Json(64 + count * 56);
+		json.beginArray().value("ip").value(item);
+		for (int i = 0; i < count; i++) {
+			Vec3 d = new Vec3((random.nextFloat() - 0.5) * 0.1, random.nextFloat() * 0.1 + 0.1, 0.0).xRot(xRot).yRot(yRot);
+			double y = -random.nextFloat() * 0.6 - 0.3;
+			Vec3 p = new Vec3((random.nextFloat() - 0.5) * 0.3, y, 0.6).xRot(xRot).yRot(yRot)
+					.add(entity.getX(), entity.getEyeY(), entity.getZ());
+			json.value(p.x, 3).value(p.y, 3).value(p.z, 3).value(d.x, 4).value(d.y + 0.05, 4).value(d.z, 4);
+		}
+		return json.endArray().toString();
 	}
 
 	/** ServerLevel#sendParticles: what the ClientboundLevelParticlesPacket carries. */
