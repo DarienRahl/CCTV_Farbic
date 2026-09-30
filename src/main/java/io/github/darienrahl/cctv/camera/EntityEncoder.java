@@ -170,7 +170,9 @@ final class EntityEncoder {
 			{"shouldHideInShell", "hiding"},
 			// Methods every entity has: only sent for the types that need them (third column).
 			{"isInWater", "inWater", "minecraft:frog minecraft:axolotl"},
-			{"onGround", "onGround", "minecraft:axolotl"},
+			{"onGround", "onGround", "minecraft:axolotl minecraft:bee minecraft:turtle"},
+			// Fish tails beat harder out of water; TurtleModel swims or walks.
+			{"isInWater", "inWater", "minecraft:cod minecraft:salmon minecraft:tropical_fish minecraft:tadpole minecraft:turtle"},
 			{"isInterested", "interested", "minecraft:wolf"},
 			{"getHealth", "health", "minecraft:wolf"},
 			// Guardians' spikes and tail (Guardian.aiStep), the warden's heartbeat pace, the enderman's stare sound.
@@ -192,6 +194,12 @@ final class EntityEncoder {
 			{"getMainArm", "mainArm", ILLAGERS},
 			// Protected: which spell a spellcaster's hands glow with (SpellcasterIllager.tick, client).
 			{"getCurrentSpell", "spell", "minecraft:evoker minecraft:illusioner"},
+			// AbstractFelineModel (sprinting cats and ocelots), PolarBearModel (standing up)
+			{"isSprinting", "sprinting", "minecraft:cat minecraft:ocelot"},
+			{"isStanding", "standing", "minecraft:polar_bear"},
+			// TurtleModel: the egg belly and faster flippers while digging
+			{"hasEgg", "hasEgg", "minecraft:turtle"},
+			{"isLayingEgg", "layingEgg", "minecraft:turtle"},
 	};
 
 	/**
@@ -214,6 +222,13 @@ final class EntityEncoder {
 			{"getUnhappyCounter", "unhappy", "minecraft:panda"},
 			{"getOfferFlowerTick", "flower", "minecraft:iron_golem"},
 			{"getTicksUsingItem", "useTicks", ILLAGERS},
+			{"getLieDownAmount", "lie", "minecraft:cat"},
+			{"getLieDownAmountTail", "lieTail", "minecraft:cat"},
+			{"getRelaxStateOneAmount", "relax", "minecraft:cat"},
+			{"getRollAmount", "rollAmount", "minecraft:bee"},
+			// Chicken.aiStep: the wings flap while it falls
+			{"flap", "flap", "minecraft:chicken"},
+			{"flapSpeed", "flapSpeed", "minecraft:chicken"},
 	};
 
 	private record Amount(Member member, String key) {

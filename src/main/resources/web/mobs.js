@@ -114,7 +114,8 @@ function humanoid(p, a, e) {
 /** Poses of the equipment models drawn over a mob (CapeLayer, WingsLayer), after they took the body's pose. */
 export function equipmentPose(p, e, a) {
 	if (p.cape) capePose(p.cape, e, a);
-	if (p.left_wing && p.right_wing) elytraPose(p, e, a);
+	// only the elytra model: chickens, bees, parrots, bats, allays, vexes and the dragon have wings of their own
+	if (p.left_wing && p.right_wing && !p.body) elytraPose(p, e, a);
 }
 
 /**
@@ -404,12 +405,17 @@ const ANIMS = {
 		headLook(p, a);
 		quadrupedLegs(p, a);
 	},
-	chicken(p, a) {
+	/** ChickenModel / AdultChickenModel.setupAnim: legs, and the wings flapping while it falls (Chicken.flap) */
+	chicken(p, a, e) {
 		headLook(p, a);
 		if (p.beak) { p.beak.yRot = p.head ? p.head.yRot : 0; }
 		const w = a.walk * 0.6662, s = a.walkSpeed;
 		if (p.right_leg) p.right_leg.xRot = cos(w) * 1.4 * s;
 		if (p.left_leg) p.left_leg.xRot = cos(w + PI) * 1.4 * s;
+		const d = e.d || {};
+		const flap = (sin(Number(d.flap) || 0) + 1) * (Number(d.flapSpeed) || 0);
+		if (p.right_wing) p.right_wing.zRot = flap;
+		if (p.left_wing) p.left_wing.zRot = -flap;
 	},
 	/**
 	 * AbstractEquineModel.setupAnim (HorseModel, DonkeyModel and their baby models) with AbstractHorseRenderer's
@@ -690,16 +696,93 @@ const ANIMS = {
 			a.tint = [shade, shade, shade, 1];
 		}
 	},
+	/**
+	 * AdultFelineModel / BabyFelineModel.setupAnim (cats and ocelots): sneaking and sprinting with the tail, sitting,
+	 * lying down next to a sleeping player (Cat.getLieDownAmount) and the relaxed head.
+	 */
 	cat(p, a, e) {
-		headLook(p, a);
-		quadrupedLegs(p, a, 1);
-		if (e.d && e.d.sitting && p.body) {
-			p.body.xRot = PI / 4;
-			p.body.y -= 4; p.body.z += 5;
-			if (p.head) { p.head.y -= 3.3; p.head.z += 1; }
-			for (const leg of ['right_hind_leg', 'left_hind_leg']) if (p[leg]) { p[leg].xRot = -PI / 2; p[leg].y += 4; p[leg].z += 2; }
-			for (const leg of ['right_front_leg', 'left_front_leg']) if (p[leg]) { p[leg].xRot = -0.15707964; p[leg].y += 2.1; p[leg].z -= 1.1; }
+		const d = e.d || {};
+		const { head, body, tail1, tail2 } = p;
+		const lh = p.left_hind_leg, rh = p.right_hind_leg, lf = p.left_front_leg, rf = p.right_front_leg;
+		if (!head || !body || !lh || !rh || !lf || !rf) return;
+		const baby = !!e.baby, ageScale = baby ? 0.5 : 1;
+		const crouching = e.pose === 'crouching' || !!e.sneak, sprinting = !!d.sprinting, sitting = !!d.sitting;
+		if (crouching) {
+			body.y += ageScale;
+			head.y += 2 * ageScale;
+			if (tail1) { tail1.y += ageScale; tail1.xRot = PI / 2; }
+			if (tail2) { tail2.y -= 4 * ageScale; tail2.z += 2 * ageScale; tail2.xRot = PI / 2; }
+		} else if (sprinting && tail1 && tail2) {
+			tail2.y = tail1.y;
+			tail2.z += 2 * ageScale;
+			tail1.xRot = PI / 2;
+			tail2.xRot = PI / 2;
 		}
+		head.xRot = a.headPitch * DEG;
+		head.yRot = a.netHeadYaw * DEG;
+		if (!sitting) {
+			if (!baby) body.xRot = PI / 2;
+			const s = a.walkSpeed, w = a.walk * 0.6662;
+			lh.xRot = cos(w) * s;
+			if (sprinting) {
+				rh.xRot = cos(w + 0.3) * s;
+				lf.xRot = cos(w + PI + 0.3) * s;
+				rf.xRot = cos(w + PI) * s;
+				if (tail2) tail2.xRot = 1.7278761 + PI / 10 * cos(a.walk) * s;
+			} else {
+				rh.xRot = cos(w + PI) * s;
+				lf.xRot = cos(w + PI) * s;
+				rf.xRot = cos(w) * s;
+				if (tail2) tail2.xRot = 1.7278761 + (crouching ? 0.47123894 : PI / 4) * cos(a.walk) * s;
+			}
+		} else if (baby) {
+			body.xRot += -0.43633232;
+			body.y++;
+			head.z += 0.75;
+			if (tail1) { tail1.xRot += 0.5454154; tail1.y += 4; tail1.z -= 0.9; }
+			lh.z -= 0.9;
+			rh.z -= 0.9;
+		} else {
+			body.xRot = PI / 4;
+			body.y -= 4 * ageScale; body.z += 5 * ageScale;
+			head.y -= 3.3 * ageScale; head.z += ageScale;
+			if (tail1) { tail1.y += 8 * ageScale; tail1.z -= 2 * ageScale; tail1.xRot = 1.7278761; }
+			if (tail2) { tail2.y += 2 * ageScale; tail2.z -= 0.8 * ageScale; tail2.xRot = 2.670354; }
+			for (const leg of [lf, rf]) { leg.xRot = -PI / 20; leg.y += 2 * ageScale; leg.z -= 2 * ageScale; }
+			for (const leg of [lh, rh]) { leg.xRot = -PI / 2; leg.y += 3 * ageScale; leg.z -= 4 * ageScale; }
+		}
+		const lie = Number(d.lie) || 0, lieTail = Number(d.lieTail) || 0;
+		// Mth.rotLerp (degrees, used on radians: a plain lerp at these angles)
+		const rotLerp = (t, from, to) => from + t * (to - from);
+		if (lie > 0) {
+			if (baby) {
+				body.x++;
+				head.xRot = rotLerp(lie, head.xRot, PI / 18);
+				head.zRot = rotLerp(lie, head.zRot, -PI * 5 / 12);
+				head.x++; head.y += 0.75; head.z -= 0.5;
+				rf.xRot = -PI / 4; rf.x += 3.5; rf.y -= 0.5;
+				lf.xRot = -PI / 2; lf.x++; lf.y--; lf.z -= 2;
+				rh.xRot = PI * 2 / 9; rh.yRot = PI / 9; rh.zRot = -PI / 9; rh.x += 2.5; rh.y -= 0.25; rh.z += 0.5;
+				lh.x++; lh.z--;
+				if (tail1) {
+					tail1.xRot += rotLerp(lieTail, tail1.xRot, -PI / 6);
+					tail1.yRot += rotLerp(lieTail, tail1.yRot, 0);
+					tail1.zRot += rotLerp(lieTail, tail1.zRot, -PI / 18);
+					tail1.x++; tail1.y += 0.5; tail1.z -= 0.25;
+				}
+			} else {
+				head.zRot = rotLerp(lie, head.zRot, -1.2707963);
+				head.yRot = rotLerp(lie, head.yRot, 1.2707963);
+				lf.xRot = -1.2707963;
+				rf.xRot = -0.47079635; rf.zRot = -0.2; rf.x += ageScale;
+				lh.xRot = -0.4;
+				rh.xRot = 0.5; rh.zRot = -0.5; rh.x += 0.8 * ageScale; rh.y += 2 * ageScale;
+				if (tail1) tail1.xRot = rotLerp(lieTail, tail1.xRot, 0.8);
+				if (tail2) tail2.xRot = rotLerp(lieTail, tail2.xRot, -0.4);
+			}
+		}
+		const relax = Number(d.relax) || 0;
+		if (relax > 0) head.xRot = rotLerp(relax, head.xRot, -0.58177644);
 	},
 	ghast(p, a) {
 		for (let i = 0; i < 9; i++) {
@@ -743,11 +826,26 @@ const ANIMS = {
 		if (p.right_wing_tip) p.right_wing_tip.yRot = flap * 0.5;
 		if (p.left_wing_tip) p.left_wing_tip.yRot = -flap * 0.5;
 	},
-	bee(p, a) {
-		const flap = cos(a.age * 2.1) * PI * 0.15;
-		if (p.right_wing) { p.right_wing.yRot = 0; p.right_wing.zRot = flap; }
-		if (p.left_wing) { p.left_wing.yRot = 0; p.left_wing.zRot = -flap; }
-		if (p.bone) p.bone.y += cos(a.age * 0.18) * 0.9;
+	/** BeeModel.setupAnim: wings and tucked legs in flight, the idle bob, the stinger, rolling over (Bee.getRollAmount) */
+	bee(p, a, e) {
+		const d = e.d || {};
+		if (p.stinger) p.stinger.visible = !d.stung;
+		const legs = [p.front_legs || p.front_leg, p.middle_legs || p.mid_leg, p.back_legs || p.back_leg];
+		if (!d.onGround) {
+			const flap = cos(a.age * 120.32113 * DEG) * PI * 0.15;
+			if (p.right_wing) { p.right_wing.yRot = 0; p.right_wing.zRot = flap; }
+			if (p.left_wing) { p.left_wing.xRot = p.right_wing ? p.right_wing.xRot : 0; p.left_wing.yRot = 0; p.left_wing.zRot = -flap; }
+			for (const leg of legs) if (leg) leg.xRot = PI / 4;
+		}
+		if (!d.angry && !d.onGround && p.bone) {
+			const speed = cos(a.age * 0.18);
+			p.bone.xRot = 0.1 + speed * PI * 0.025;
+			p.bone.y -= cos(a.age * 0.18) * 0.9;
+			if (legs[0]) legs[0].xRot = -speed * PI * 0.1 + PI / 8;
+			if (legs[2]) legs[2].xRot = -speed * PI * 0.05 + PI / 4;
+		}
+		const roll = Number(d.rollAmount) || 0;
+		if (roll > 0 && p.bone) p.bone.xRot = rotLerpRad(roll, p.bone.xRot, 3.0915928);
 	},
 	flyer(p, a) {
 		headLook(p, a);
@@ -869,9 +967,193 @@ const ANIMS = {
 		if (head && lower > 0) head.xRot = lower / 20 * (e.baby ? 52.5 : 30) * DEG;
 		else if (head && e.baby) head.xRot = PI / 8; // BabyGoatModel.setupAnim
 	},
-	fish(p, a) {
-		const tail = p.tail_fin || p.tail || p.body_back;
-		if (tail) tail.yRot = -0.45 * sin(0.6 * a.age);
+	/**
+	 * CodModel, TropicalFish(Small|Large)Model, TadpoleModel and SalmonModel: the tail beats harder out of water;
+	 * PufferfishModels: the fins paddle.
+	 */
+	fish(p, a, e) {
+		const water = !!(e.d && e.d.inWater);
+		const type = (e.type || '').replace('minecraft:', '');
+		if (type === 'salmon') {
+			if (p.body_back) p.body_back.yRot = -(water ? 1 : 1.3) * 0.25 * sin((water ? 1 : 1.7) * 0.6 * a.age);
+			return;
+		}
+		const amplitude = water ? 1 : 1.5;
+		if (type === 'tadpole') {
+			if (p.tail) p.tail.yRot = -amplitude * 0.25 * sin(0.3 * a.age);
+			return;
+		}
+		const tail = p.tail_fin || p.tail;
+		if (tail) tail.yRot = -amplitude * 0.45 * sin(0.6 * a.age);
+	},
+	pufferfish(p, a) {
+		const right = p.right_blue_fin || p.right_fin, left = p.left_blue_fin || p.left_fin;
+		if (right) right.zRot = -0.2 + 0.4 * sin(a.age * 0.2);
+		if (left) left.zRot = 0.2 - 0.4 * sin(a.age * 0.2);
+	},
+	/** DolphinModel.setupAnim */
+	dolphin(p, a) {
+		const { body } = p;
+		if (!body) return;
+		body.xRot = a.headPitch * DEG;
+		body.yRot = a.netHeadYaw * DEG;
+		if (a.walkSpeed > 0.01) {
+			body.xRot += -0.05 - 0.05 * cos(a.age * 0.3);
+			if (p.tail) p.tail.xRot = -0.1 * cos(a.age * 0.3);
+			if (p.tail_fin) p.tail_fin.xRot = -0.2 * cos(a.age * 0.3);
+		}
+	},
+	/** TurtleModel / AdultTurtleModel.setupAnim: walking on land (faster flippers while laying eggs), swimming */
+	turtle(p, a, e) {
+		const d = e.d || {};
+		headLook(p, a);
+		quadrupedLegs(p, a);
+		const pos = a.walk, speed = a.walkSpeed;
+		const rf = p.right_front_leg, lf = p.left_front_leg, rh = p.right_hind_leg, lh = p.left_hind_leg;
+		if (!d.inWater && d.onGround) {
+			const layEgg = d.layingEgg ? 4 : 1, amplitude = d.layingEgg ? 2 : 1;
+			const swing = pos * 5, front = cos(layEgg * swing), hind = cos(swing);
+			if (rf) rf.yRot = -front * 8 * speed * amplitude;
+			if (lf) lf.yRot = front * 8 * speed * amplitude;
+			if (rh) rh.yRot = -hind * 3 * speed;
+			if (lh) lh.yRot = hind * 3 * speed;
+		} else {
+			const swing = cos(pos * 0.6662 * 0.6) * 0.5 * speed;
+			if (rh) rh.xRot = swing;
+			if (lh) lh.xRot = -swing;
+			if (rf) rf.zRot = -swing;
+			if (lf) lf.zRot = swing;
+		}
+		if (p.egg_belly) {
+			p.egg_belly.visible = !!d.hasEgg;
+			if (d.hasEgg && p.root) p.root.y--;
+		}
+	},
+	/** EndermiteModel / SilverfishModel.setupAnim: the body segments wriggle */
+	crawler(p, a, e) {
+		const silverfish = (e.type || '').endsWith('silverfish');
+		const turn = silverfish ? 0.05 : 0.01, shift = silverfish ? 0.2 : 0.1;
+		for (let i = 0; p['segment' + i]; i++) {
+			const part = p['segment' + i], t = a.age * 0.9 + i * 0.15 * PI;
+			part.yRot = cos(t) * PI * turn * (1 + abs(i - 2));
+			part.x = sin(t) * PI * shift * abs(i - 2);
+		}
+		if (silverfish && p.layer0 && p.segment2) {
+			p.layer0.yRot = p.segment2.yRot;
+			if (p.layer1 && p.segment4) { p.layer1.yRot = p.segment4.yRot; p.layer1.x = p.segment4.x; }
+			if (p.layer2 && p.segment1) { p.layer2.yRot = p.segment1.yRot; p.layer2.x = p.segment1.x; }
+		}
+	},
+	/** VexModel.setupAnim */
+	vex(p, a, e) {
+		const { head, body } = p;
+		const R = p.right_arm, L = p.left_arm;
+		if (head) { head.yRot = a.netHeadYaw * DEG; head.xRot = a.headPitch * DEG; }
+		const bob = cos(a.age * 5.5 * DEG) * 0.1;
+		if (R) R.zRot = PI / 5 + bob;
+		if (L) L.zRot = -(PI / 5 + bob);
+		if (e.d && e.d.charging) {
+			if (body) body.xRot = 0;
+			const right = !!e.hand, left = !!e.offhand;
+			if (!right && !left) {
+				if (R) Object.assign(R, { xRot: -1.2217305, yRot: PI / 12, zRot: -0.47123888 - bob });
+				if (L) Object.assign(L, { xRot: -1.2217305, yRot: -PI / 12, zRot: 0.47123888 + bob });
+			} else {
+				if (right && R) Object.assign(R, { xRot: PI * 7 / 6, yRot: PI / 12, zRot: -0.47123888 - bob });
+				if (left && L) Object.assign(L, { xRot: PI * 7 / 6, yRot: -PI / 12, zRot: 0.47123888 + bob });
+			}
+		} else if (body) {
+			body.xRot = PI / 20;
+		}
+		const wing = 1.0995574 + cos(a.age * 45.836624 * DEG) * DEG * 16.2;
+		if (p.left_wing) Object.assign(p.left_wing, { yRot: wing, xRot: 0.47123888, zRot: -0.47123888 });
+		if (p.right_wing) Object.assign(p.right_wing, { yRot: -wing, xRot: 0.47123888, zRot: 0.47123888 });
+	},
+	/** AllayModel.setupAnim: flying, the idle bob, dancing and spinning to a jukebox, holding its item */
+	allay(p, a, e) {
+		const { head, body, root } = p;
+		const m = a.memory;
+		const speed = a.walkSpeed, pos = a.walk;
+		const flapAmount = cos(a.age * 20 * DEG + pos) * PI * 0.15 + speed;
+		const idleBob = a.age * 9 * DEG;
+		const flying = Math.min(speed / 0.3, 1), idle = 1 - flying;
+		const partial = a.age - Math.floor(a.age);
+		const holding = lerp(partial, m.holdO ?? 0, m.hold ?? 0) / 5;
+		if (e.d && e.d.dancing) {
+			const dance = a.age * 8 * DEG + speed;
+			const spin = lerp(partial, m.spinO ?? 0, m.spin ?? 0) / 15;
+			if (root) {
+				if (m.spinning) root.yRot = PI * 4 * spin;
+				root.zRot = cos(dance) * 16 * DEG * (1 - spin);
+			}
+			if (head) {
+				head.yRot = cos(dance) * 30 * DEG * (1 - spin);
+				head.zRot = cos(dance) * 14 * DEG * (1 - spin);
+			}
+		} else if (head) {
+			head.xRot = a.headPitch * DEG;
+			head.yRot = a.netHeadYaw * DEG;
+		}
+		if (p.right_wing) { p.right_wing.xRot = 0.43633232 * (1 - flying); p.right_wing.yRot = -PI / 4 + flapAmount; }
+		if (p.left_wing) { p.left_wing.xRot = 0.43633232 * (1 - flying); p.left_wing.yRot = PI / 4 - flapAmount; }
+		if (body) body.xRot = flying * PI / 4;
+		const armX = holding * lerp(flying, -PI / 3, -1.134464);
+		if (root) root.y += cos(idleBob) * 0.25 * idle;
+		const armBob = 0.43633232 - cos(idleBob + PI * 3 / 2) * PI * 0.075 * idle * (1 - holding);
+		if (p.right_arm) { p.right_arm.xRot = armX; p.right_arm.zRot = armBob; p.right_arm.yRot = 0.27925268 * holding; }
+		if (p.left_arm) { p.left_arm.xRot = armX; p.left_arm.zRot = -armBob; p.left_arm.yRot = -0.27925268 * holding; }
+	},
+	/** StriderModel with AdultStriderModel / BabyStriderModel.customAnimations: the walk, the bristles, bobbing */
+	strider(p, a, e) {
+		const { body } = p;
+		const L = p.left_leg, R = p.right_leg;
+		if (!body || !L || !R) return;
+		const pos = a.walk, speed = Math.min(a.walkSpeed, 0.25);
+		if (!(e.d && e.d.ridden)) { body.xRot = a.headPitch * DEG; body.yRot = a.netHeadYaw * DEG; }
+		else { body.xRot = 0; body.yRot = 0; }
+		body.zRot = 0.1 * sin(pos * 1.5) * 4 * speed;
+		L.xRot = sin(pos * 1.5 * 0.5) * 2 * speed;
+		R.xRot = sin(pos * 1.5 * 0.5 + PI) * 2 * speed;
+		L.zRot = PI / 18 * cos(pos * 1.5 * 0.5) * speed;
+		R.zRot = PI / 18 * cos(pos * 1.5 * 0.5 + PI) * speed;
+		const flow = cos(pos * 1.5 + PI) * speed;
+		const bristle = (parts, axis) => {
+			const [first, second, third] = parts;
+			if (first) first[axis] += flow * 0.6 + 0.1 * sin(a.age * 0.4);
+			if (second) second[axis] += flow * 1.2 + 0.1 * sin(a.age * 0.2);
+			if (third) third[axis] += flow * 1.3 + 0.05 * sin(a.age * -0.4);
+		};
+		if (e.baby) {
+			body.y = 17.25 - cos(pos * 1.5) * 2 * speed;
+			L.y = 20 + 2 * sin(pos * 1.5 * 0.5 + PI) * 2 * speed;
+			R.y = 20 + 2 * sin(pos * 1.5 * 0.5) * 2 * speed;
+			bristle([p.bristle0, p.bristle1, p.bristle2], 'xRot');
+		} else {
+			const set = (name, z) => { if (p[name]) p[name].zRot = z; };
+			set('right_bottom_bristle', -1.2217305); set('right_middle_bristle', -1.134464); set('right_top_bristle', -0.87266463);
+			set('left_top_bristle', 0.87266463); set('left_middle_bristle', 1.134464); set('left_bottom_bristle', 1.2217305);
+			bristle([p.right_top_bristle, p.right_middle_bristle, p.right_bottom_bristle], 'zRot');
+			bristle([p.left_top_bristle, p.left_middle_bristle, p.left_bottom_bristle], 'zRot');
+			body.y = 2 - 2 * cos(pos * 1.5) * 2 * speed;
+			L.y = 8 + 2 * sin(pos * 1.5 * 0.5 + PI) * 2 * speed;
+			R.y = 8 + 2 * sin(pos * 1.5 * 0.5) * 2 * speed;
+		}
+	},
+	/** PolarBearModel.setupAnim: standing up on the hind legs (PolarBear.getStandingAnimationScale, CLIENT.polar_bear) */
+	polarBear(p, a, e) {
+		headLook(p, a);
+		quadrupedLegs(p, a);
+		const m = a.memory;
+		const partial = a.age - Math.floor(a.age);
+		const scale = lerp(partial, m.standO ?? 0, m.stand ?? 0) / 6;
+		const stand = scale * scale, ageScale = e.baby ? 0.5 : 1;
+		if (stand <= 0) return;
+		const { body, head } = p;
+		const rf = p.right_front_leg, lf = p.left_front_leg;
+		if (body) { body.xRot -= stand * PI * 0.35; body.y += stand * ageScale * 2; }
+		if (rf) { rf.y -= stand * ageScale * 20; rf.z += stand * ageScale * 4; rf.xRot -= stand * PI * 0.45; }
+		if (lf && rf) { lf.y = rf.y; lf.z = rf.z; lf.xRot -= stand * PI * 0.45; }
+		if (head) { head.y -= stand * 24; head.z += stand * 13; head.xRot += stand * PI * 0.15; }
 	},
 	snowGolem(p, a) {
 		headLook(p, a);
@@ -1360,6 +1642,30 @@ CLIENT.iron_golem = {
 		if (id === 4) st.memory.attackAt = tick;
 	},
 };
+/** PolarBear.tick (client): clientSideStandAnimation climbs to 6 while standing */
+CLIENT.polar_bear = {
+	tick(e, st) {
+		const m = st.memory;
+		m.standO = m.stand ?? 0;
+		m.stand = clamp((m.stand ?? 0) + (e.d && e.d.standing ? 1 : -1), 0, 6);
+	},
+};
+/** Allay.tick (client): holdingItemAnimationTicks, dancingAnimationTicks and spinningAnimationTicks */
+CLIENT.allay = {
+	tick(e, st) {
+		const m = st.memory;
+		m.holdO = m.hold ?? 0;
+		m.hold = clamp((m.hold ?? 0) + (e.hand ? 1 : -1), 0, 5);
+		if (e.d && e.d.dancing) {
+			m.dance = (m.dance ?? 0) + 1;
+			m.spinO = m.spin ?? 0;
+			m.spinning = m.dance % 55 < 15;
+			m.spin = clamp((m.spin ?? 0) + (m.spinning ? 1 : -1), 0, 15);
+		} else {
+			m.dance = 0; m.spin = 0; m.spinO = 0; m.spinning = false;
+		}
+	},
+};
 /** EvokerFangs.handleEntityEvent: 4 starts the bite (clientSideAttackStarted). */
 CLIENT.evoker_fangs = {
 	event(e, st, id, tick) {
@@ -1427,7 +1733,7 @@ const baby = e => (e.baby ? '_baby' : '');
 const HUMANOID_ARMOR = true;
 
 const MOBS = {
-	allay: { layer: 'allay#main', texture: 'allay/allay', shadow: 0.4, anim: 'flyer', cull: false },
+	allay: { layer: 'allay#main', texture: 'allay/allay', shadow: 0.4, anim: 'allay', cull: false },
 	armadillo: { layer: e => (e.baby ? 'armadillo_baby#main' : 'armadillo#main'), texture: e => 'armadillo/armadillo' + baby(e), shadow: 0.4, anim: 'armadillo' },
 	armor_stand: { layer: e => (e.d && e.d.small ? 'armor_stand_small#main' : 'armor_stand#main'), texture: 'armorstand/armorstand', shadow: 0, anim: 'armorStand', armor: 'armor_stand' },
 	axolotl: { layer: e => (e.baby ? 'axolotl_baby#main' : 'axolotl#main'), texture: e => 'axolotl/axolotl_' + variant(e, 'lucy') + baby(e), shadow: 0.5, anim: 'axolotl' },
@@ -1462,7 +1768,7 @@ const MOBS = {
 		layer: 'creeper#main', texture: 'creeper/creeper', shadow: 0.5, anim: 'creeper', creeper: true,
 		layers: [{ layer: 'creeper#armor', texture: 'creeper/creeper_armor', when: e => e.d && e.d.powered, mode: 'energy' }],
 	},
-	dolphin: { layer: e => (e.baby ? 'dolphin_baby#main' : 'dolphin#main'), texture: e => 'dolphin/dolphin' + baby(e), shadow: 0.7, anim: 'fish' },
+	dolphin: { layer: e => (e.baby ? 'dolphin_baby#main' : 'dolphin#main'), texture: e => 'dolphin/dolphin' + baby(e), shadow: 0.7, anim: 'dolphin' },
 	donkey: { layer: e => (e.baby ? 'donkey_baby#main' : 'donkey#main'), texture: e => 'horse/donkey' + baby(e), shadow: 0.75, anim: 'horse', saddle: ['donkey#saddle', 'equipment/donkey_saddle/saddle'] },
 	drowned: {
 		layer: e => (e.baby ? 'drowned_baby#main' : 'drowned#main'), texture: e => 'zombie/drowned' + baby(e), shadow: 0.5, anim: 'zombie', armor: 'drowned',
@@ -1472,7 +1778,7 @@ const MOBS = {
 	end_crystal: { special: 'endCrystal' },
 	ender_dragon: { layer: 'ender_dragon#main', texture: 'enderdragon/dragon', shadow: 0.5, anim: 'dragon', dragon: true, layers: [{ layer: 'ender_dragon#main', texture: 'enderdragon/dragon_eyes', mode: 'eyes' }] },
 	enderman: { layer: 'enderman#main', texture: 'enderman/enderman', shadow: 0.5, anim: 'enderman', creepyShake: true, carries: true, layers: [{ layer: 'enderman#main', texture: 'enderman/enderman_eyes', mode: 'eyes' }] },
-	endermite: { layer: 'endermite#main', texture: 'endermite/endermite', shadow: 0.3, anim: 'none' },
+	endermite: { layer: 'endermite#main', texture: 'endermite/endermite', shadow: 0.3, anim: 'crawler' },
 	evoker: { layer: 'evoker#main', texture: 'illager/evoker', shadow: 0.5, anim: 'illager' },
 	evoker_fangs: { layer: 'evoker_fangs#main', texture: 'illager/evoker_fangs', shadow: 0, anim: 'none', living: false },
 	fox: {
@@ -1546,10 +1852,10 @@ const MOBS = {
 	piglin_brute: { layer: 'piglin_brute#main', texture: 'piglin/piglin_brute', shadow: 0.5, anim: 'humanoid', armor: 'piglin_brute' },
 	pillager: { layer: 'pillager#main', texture: 'illager/pillager', shadow: 0.5, anim: 'illager' },
 	player: { player: true, shadow: 0.5, anim: 'humanoid', armor: 'player' },
-	polar_bear: { layer: e => (e.baby ? 'polar_bear_baby#main' : 'polar_bear#main'), texture: e => 'bear/polarbear' + baby(e), shadow: 0.9, anim: 'quadruped' },
+	polar_bear: { layer: e => (e.baby ? 'polar_bear_baby#main' : 'polar_bear#main'), texture: e => 'bear/polarbear' + baby(e), shadow: 0.9, anim: 'polarBear' },
 	pufferfish: {
 		layer: e => ['pufferfish_small#main', 'pufferfish_medium#main', 'pufferfish_big#main'][clamp(Number(e.d && e.d.puff) || 0, 0, 2)],
-		texture: 'fish/pufferfish', shadow: 0.2, anim: 'none', puffer: true,
+		texture: 'fish/pufferfish', shadow: 0.2, anim: 'pufferfish', puffer: true,
 	},
 	rabbit: {
 		layer: e => (e.baby ? 'rabbit_baby#main' : 'rabbit#main'),
@@ -1575,7 +1881,7 @@ const MOBS = {
 	shulker: {
 		layer: 'shulker#main', texture: e => (e.d && e.d.color ? 'shulker/shulker_' + strip(e.d.color) : 'shulker/shulker'), shadow: 0, anim: 'shulker', shulker: true,
 	},
-	silverfish: { layer: 'silverfish#main', texture: 'silverfish/silverfish', shadow: 0.3, anim: 'none' },
+	silverfish: { layer: 'silverfish#main', texture: 'silverfish/silverfish', shadow: 0.3, anim: 'crawler' },
 	skeleton: { layer: 'skeleton#main', texture: 'skeleton/skeleton', shadow: 0.5, anim: 'skeleton', armor: 'skeleton' },
 	skeleton_horse: { layer: e => (e.baby ? 'skeleton_horse_baby#main' : 'skeleton_horse#main'), texture: e => 'horse/horse_skeleton' + baby(e), shadow: 0.75, anim: 'horse', body: e => (e.baby ? [] : bodyLayers(e, 'horse_body', 'undead_horse_armor#main')), saddle: ['skeleton_horse#saddle', 'equipment/skeleton_horse_saddle/saddle'] },
 	slime: { layer: 'slime#main', texture: 'slime/slime', shadow: 0.25, anim: 'none', slime: true, layers: [{ layer: 'slime#outer', texture: 'slime/slime', mode: 'translucent' }] },
@@ -1591,8 +1897,8 @@ const MOBS = {
 	sulfur_cube: { layer: 'sulfur_cube#main', texture: 'sulfur_cube/sulfur_cube_outer', shadow: 0.25, anim: 'none', slime: true, layers: [{ layer: 'sulfur_cube#inner', texture: 'sulfur_cube/sulfur_cube_inner' }] },
 	tadpole: { layer: 'tadpole#main', texture: 'tadpole/tadpole', shadow: 0.14, anim: 'fish' },
 	tropical_fish: { tropical: true, shadow: 0.15, anim: 'fish', fish: true },
-	turtle: { layer: e => (e.baby ? 'turtle_baby#main' : 'turtle#main'), texture: e => 'turtle/turtle' + baby(e), shadow: 0.7, anim: 'quadruped' },
-	vex: { layer: 'vex#main', texture: e => (e.d && e.d.charging ? 'illager/vex_charging' : 'illager/vex'), shadow: 0.3, anim: 'flyer', fullBright: true },
+	turtle: { layer: e => (e.baby ? 'turtle_baby#main' : 'turtle#main'), texture: e => 'turtle/turtle' + baby(e), shadow: 0.7, anim: 'turtle' },
+	vex: { layer: 'vex#main', texture: e => (e.d && e.d.charging ? 'illager/vex_charging' : 'illager/vex'), shadow: 0.3, anim: 'vex', fullBright: true },
 	villager: { villager: 'villager', shadow: 0.5, anim: 'villager' },
 	vindicator: { layer: 'vindicator#main', texture: 'illager/vindicator', shadow: 0.5, anim: 'illager' },
 	wandering_trader: { layer: 'wandering_trader#main', texture: 'wandering_trader/wandering_trader', shadow: 0.5, anim: 'villager' },

@@ -536,7 +536,7 @@ function pandaRotations(m, e) {
  * Animation amounts of the entity tick (EntityEncoder AMOUNTS, only sent when not zero) and the creeper's
  * swelling, between two frames like the renderers' partial tick.
  */
-const LERP_DATA = ['eat', 'stand', 'mouth', 'headRoll', 'crouch', 'sit', 'onBack', 'rollAmount', 'roll', 'sneeze', 'useTicks', 'swelling'];
+const LERP_DATA = ['eat', 'stand', 'mouth', 'headRoll', 'crouch', 'sit', 'onBack', 'rollAmount', 'roll', 'sneeze', 'useTicks', 'swelling', 'flap', 'flapSpeed', 'lie', 'lieTail', 'relax'];
 
 function lerpData(da, db, t) {
 	if (!da && !db) return db;
