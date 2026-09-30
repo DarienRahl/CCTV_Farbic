@@ -10,7 +10,7 @@
   <a href="https://github.com/DarienRahl/CCTV_Farbic/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/DarienRahl/CCTV_Farbic?style=for-the-badge&amp;label=release&amp;color=5d8c3e"></a>
   <img alt="Minecraft 26.3" src="https://img.shields.io/badge/minecraft-26.3-866043?style=for-the-badge">
   <img alt="Fabric, server side only" src="https://img.shields.io/badge/fabric-server%20side%20only-8b8b8b?style=for-the-badge">
-  <a href="#roadmap"><img alt="Roadmap" src="https://img.shields.io/badge/roadmap-94%2F95%20done-80ff20?style=for-the-badge"></a>
+  <a href="#roadmap"><img alt="Roadmap" src="https://img.shields.io/badge/roadmap-98%2F101%20done-80ff20?style=for-the-badge"></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-555555?style=for-the-badge"></a>
 </p>
 <!-- badges:end -->
@@ -199,7 +199,7 @@ at once as a video wall.
 ## Roadmap
 
 <!-- roadmap:start -->
-<p align="center"><img src="docs/images/roadmap/banner.svg" width="100%" alt="CCTV roadmap: 94 of 95 done"></p>
+<p align="center"><img src="docs/images/roadmap/banner.svg" width="100%" alt="CCTV roadmap: 98 of 101 done"></p>
 
 What is done and what comes next, milestone by milestone (the full plan with its principles is in
 [docs/ROADMAP.md](docs/ROADMAP.md)).
@@ -351,6 +351,28 @@ What is done and what comes next, milestone by milestone (the full plan with its
 - [x] **Lingering potion and dragon's breath clouds** (AreaEffectCloud's client tick): the particles over the cloud's radius in the potion's colour, the few white and coloured puffs while it waits
 - [x] **The wither's armour** at half health (WitherArmorLayer) and the charged creeper's aura drawn like EnergySwirlLayer: grey, scrolled by each layer's own offsets, and still shown on an invisible creeper
 - [x] **Minecarts like AbstractMinecartRenderer**: sitting on their rail and tilted along slopes, rocking when hit, the block they carry at its display offset (lit furnaces, custom display blocks), TNT minecarts swelling and flashing on their fuse, and the id's tiny offset that keeps carts in one place from flickering
+
+</details>
+
+<img src="docs/images/roadmap/1-8.svg" width="100%" alt="1.8 — every particle: started, 4 of 4 done">
+
+<details>
+<summary><b>1.8 — every particle</b> · started · 4 of 4 done</summary>
+
+- [x] **Every particle type of 26.3** (ParticleResources): ash, white ash, crimson and warped spores, souls, sculk souls, charges and shrieks, vibrations flying to their listener, sonic booms, glow squids' glow and ink, squid ink, wax on and off, scrapes, electric sparks, enchanting glyphs, nautilus and vault connections, the totem of undying, gusts, dust plumes, dust changing colour, falling dust, snowflakes, spit, trails, trial spawner flames, fishing wakes, sneezes, mob growth specks and sulfur cube goo, with the game's physics, their quads turned like the game's (LOOKAT_Y, shrieks and vibrations) and glowing where they glow
+- [x] **Level events' particles** (LevelEventHandler): splash and lingering potions bursting, dragon fireballs, eyes of ender breaking, dragon eggs and endermen teleporting, waxing, scraping and sparks on copper and lightning rods, sculk spreading and shriekers, a mace's smash, other players mining blocks, composters, trial spawners spawning, detecting and ejecting, cobwebs woven
+- [x] **Entity events' particles**: a totem of undying saving someone, teleporting mobs, witches drinking; glow squids glowing all the time
+- [x] **Biome ambient particles** (EnvironmentAttributes.AMBIENT_PARTICLES): the Nether's ash, white ash and spores and any data pack's, around the camera like ClientLevel.doAnimateTick
+
+</details>
+
+<img src="docs/images/roadmap/1-9.svg" width="100%" alt="1.9 — blocks' own particles: planned, 0 of 2 done">
+
+<details>
+<summary><b>1.9 — blocks' own particles</b> · planned · 0 of 2 done</summary>
+
+- [ ] Enchanting tables' glyphs flying from bookshelves, ender chests' portal specks, redstone wire, repeaters, comparators and ore glowing dust, falling dust under sand and gravel, mycelium, end portals and gateways
+- [ ] Conduits' nautilus specks, vaults' connections to players, trial spawners' idle flames, bees dripping nectar
 
 </details>
 

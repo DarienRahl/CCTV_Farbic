@@ -275,6 +275,29 @@ to the milestone it belongs to. The roadmap on the README page is drawn from thi
       hit, the block they carry at its display offset (lit furnaces, custom display blocks), TNT minecarts swelling
       and flashing on their fuse, and the id's tiny offset that keeps carts in one place from flickering
 
+## 1.8 — every particle
+
+- [x] **Every particle type of 26.3** (ParticleResources): ash, white ash, crimson and warped spores, souls, sculk
+      souls, charges and shrieks, vibrations flying to their listener, sonic booms, glow squids' glow and ink,
+      squid ink, wax on and off, scrapes, electric sparks, enchanting glyphs, nautilus and vault connections, the
+      totem of undying, gusts, dust plumes, dust changing colour, falling dust, snowflakes, spit, trails,
+      trial spawner flames, fishing wakes, sneezes, mob growth specks and sulfur cube goo, with the game's
+      physics, their quads turned like the game's (LOOKAT_Y, shrieks and vibrations) and glowing where they glow
+- [x] **Level events' particles** (LevelEventHandler): splash and lingering potions bursting, dragon fireballs,
+      eyes of ender breaking, dragon eggs and endermen teleporting, waxing, scraping and sparks on copper and
+      lightning rods, sculk spreading and shriekers, a mace's smash, other players mining blocks, composters,
+      trial spawners spawning, detecting and ejecting, cobwebs woven
+- [x] **Entity events' particles**: a totem of undying saving someone, teleporting mobs, witches drinking;
+      glow squids glowing all the time
+- [x] **Biome ambient particles** (EnvironmentAttributes.AMBIENT_PARTICLES): the Nether's ash, white ash and spores
+      and any data pack's, around the camera like ClientLevel.doAnimateTick
+
+## 1.9 — blocks' own particles
+
+- [ ] Enchanting tables' glyphs flying from bookshelves, ender chests' portal specks, redstone wire, repeaters,
+      comparators and ore glowing dust, falling dust under sand and gravel, mycelium, end portals and gateways
+- [ ] Conduits' nautilus specks, vaults' connections to players, trial spawners' idle flames, bees dripping nectar
+
 ## Later
 
 - [x] **Recording and timelapse** of a camera in the browser: a video with the game's sounds, or one picture

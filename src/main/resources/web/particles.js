@@ -1254,6 +1254,643 @@ class DragonBreathParticle extends QuadParticle {
 	}
 }
 
+// --- the rest of the game's particles (26.3) ---------------------------------------------------------------
+
+/** LightCoordsUtil.withBlock(coords, 15): full block light, the place's sky light. */
+const fullBlockLight = l => [240, l[1]];
+/** LightCoordsUtil.addSmoothBlockEmission */
+const addBlockEmission = (l, emission) => [Math.min(l[0] + Math.trunc(clamp(emission, 0, 1) * 240), 240), l[1]];
+
+/** Quaternions [x, y, z, w] like JOML's rotationX, rotationY and their product (a then b). */
+const quatX = a => [Math.sin(a / 2), 0, 0, Math.cos(a / 2)];
+const quatY = a => [0, Math.sin(a / 2), 0, Math.cos(a / 2)];
+function quatMul(a, b) {
+	return [
+		a[3] * b[0] + a[0] * b[3] + a[1] * b[2] - a[2] * b[1],
+		a[3] * b[1] - a[0] * b[2] + a[1] * b[3] + a[2] * b[0],
+		a[3] * b[2] + a[0] * b[1] - a[1] * b[0] + a[2] * b[3],
+		a[3] * b[3] - a[0] * b[0] - a[1] * b[1] - a[2] * b[2],
+	];
+}
+
+/** An ARGB or RGB int as [r, g, b] (0..1), or a colour array as it is. */
+const colorOf = c => (Array.isArray(c) ? c.slice(0, 3) : rgbOf(c | 0));
+
+/** BubblePopParticle: a bubble bursting, four frames falling a little. */
+class BubblePopParticle extends QuadParticle {
+	constructor(level, x, y, z, xa, ya, za, sprites) {
+		super(level, x, y, z, undefined, undefined, undefined, sprites.first());
+		this.sprites = sprites;
+		this.lifetime = 4;
+		this.gravity = 0.008;
+		this.xd = xa; this.yd = ya; this.zd = za;
+		this.setSpriteFromAge(sprites);
+	}
+
+	tick() {
+		this.xo = this.x; this.yo = this.y; this.zo = this.z;
+		if (this.age++ >= this.lifetime) {
+			this.remove();
+			return;
+		}
+		this.yd -= this.gravity;
+		this.move(this.xd, this.yd, this.zd);
+		this.setSpriteFromAge(this.sprites);
+	}
+}
+
+/** DustColorTransitionParticle: dust fading from one colour to another over its life. */
+class DustColorTransitionParticle extends QuadParticle {
+	constructor(level, x, y, z, xa, ya, za, from, to, scale, sprites) {
+		super(level, x, y, z, xa, ya, za, sprites.first());
+		this.friction = 0.96;
+		this.speedUpWhenYMotionIsBlocked = true;
+		this.sprites = sprites;
+		this.xd *= 0.1; this.yd *= 0.1; this.zd *= 0.1;
+		this.quadSize *= 0.75 * scale;
+		this.lifetime = Math.trunc(Math.max(Math.trunc(8 / (nextDouble() * 0.8 + 0.2)) * scale, 1));
+		this.setSpriteFromAge(sprites);
+		const base = nextFloat() * 0.4 + 0.6;
+		const randomize = c => c.map(v => (nextFloat() * 0.2 + 0.8) * v * base);
+		this.from = randomize(from);
+		this.to = randomize(to);
+	}
+
+	beforeExtract(a) {
+		const t = (this.age + a) / (this.lifetime + 1);
+		this.setColor(lerp(t, this.from[0], this.to[0]), lerp(t, this.from[1], this.to[1]), lerp(t, this.from[2], this.to[2]));
+	}
+
+	quadSizeAt(a) {
+		return this.quadSize * clamp((this.age + a) / this.lifetime * 32, 0, 1);
+	}
+
+	tick() {
+		super.tick();
+		this.setSpriteFromAge(this.sprites);
+	}
+}
+
+/** DustPlumeParticle: grey dust thrown up (a mace's smash), slowing down fast. */
+class DustPlumeParticle extends AshSmokeParticle {
+	constructor(level, x, y, z, xa, ya, za, sprites) {
+		super(level, x, y, z, 0.7, 0.6, 0.7, xa, ya + 0.15, za, 1, sprites, 0.5, 7, 0.5, false);
+		const shift = nextFloat() * 0.2;
+		this.setColor(0xba / 255 - shift, 0xb1 / 255 - shift, 0xc2 / 255 - shift);
+	}
+
+	tick() {
+		this.gravity *= 0.88;
+		this.friction *= 0.92;
+		super.tick();
+	}
+}
+
+/** RisingParticle: a slow rise from its speed, jittered a little. */
+class RisingParticle extends QuadParticle {
+	constructor(level, x, y, z, xd, yd, zd, sprite) {
+		super(level, x, y, z, xd, yd, zd, sprite);
+		this.friction = 0.96;
+		this.xd = this.xd * 0.01 + xd;
+		this.yd = this.yd * 0.01 + yd;
+		this.zd = this.zd * 0.01 + zd;
+		this.x += (nextFloat() - nextFloat()) * 0.05;
+		this.y += (nextFloat() - nextFloat()) * 0.05;
+		this.z += (nextFloat() - nextFloat()) * 0.05;
+		this.lifetime = Math.trunc(8 / (nextFloat() * 0.8 + 0.2)) + 4;
+	}
+}
+
+/** EmissiveRisingParticle (soul, sculk_soul): a translucent soul rising, the sculk's glowing. */
+class EmissiveRisingParticle extends RisingParticle {
+	constructor(level, x, y, z, xd, yd, zd, sprites, glowing) {
+		super(level, x, y, z, xd, yd, zd, sprites.first());
+		this.sprites = sprites;
+		this.scale(1.5);
+		this.translucent = true;
+		this.glowing = glowing;
+		this.setSpriteFromAge(sprites);
+	}
+
+	light(a) {
+		return this.glowing ? fullBlockLight(super.light(a)) : super.light(a);
+	}
+
+	tick() {
+		super.tick();
+		this.setSpriteFromAge(this.sprites);
+	}
+}
+
+/** FallingDustParticle: dust of a block falling and turning slowly, flat once it lands. */
+class FallingDustParticle extends QuadParticle {
+	constructor(level, x, y, z, color, sprites) {
+		super(level, x, y, z, undefined, undefined, undefined, sprites.first());
+		this.sprites = sprites;
+		this.setColor(color[0], color[1], color[2]);
+		this.quadSize *= 0.67499995;
+		const baseLifetime = Math.trunc(32 / (nextFloat() * 0.8 + 0.2));
+		this.lifetime = Math.trunc(Math.max(baseLifetime * 0.9, 1));
+		this.setSpriteFromAge(sprites);
+		this.rotSpeed = (nextFloat() - 0.5) * 0.1;
+		this.roll = this.oRoll = nextFloat() * Math.PI * 2;
+	}
+
+	quadSizeAt(a) {
+		return this.quadSize * clamp((this.age + a) / this.lifetime * 32, 0, 1);
+	}
+
+	tick() {
+		this.xo = this.x; this.yo = this.y; this.zo = this.z;
+		if (this.age++ >= this.lifetime) {
+			this.remove();
+			return;
+		}
+		this.setSpriteFromAge(this.sprites);
+		this.oRoll = this.roll;
+		this.roll += Math.PI * this.rotSpeed * 2;
+		if (this.onGround) this.oRoll = this.roll = 0;
+		this.move(this.xd, this.yd, this.zd);
+		this.yd -= 0.003;
+		this.yd = Math.max(this.yd, -0.14);
+	}
+}
+
+/** FlyStraightTowardsParticle (ominous_spawning): flies in a straight line to its position, blue to white. */
+class FlyStraightTowardsParticle extends QuadParticle {
+	constructor(level, x, y, z, xd, yd, zd, startColor, endColor, sprite) {
+		super(level, x, y, z, undefined, undefined, undefined, sprite);
+		this.xd = xd; this.yd = yd; this.zd = zd;
+		this.start = [x, y, z];
+		this.setPos(x + xd, y + yd, z + zd);
+		this.xo = this.x; this.yo = this.y; this.zo = this.z;
+		this.quadSize = 0.1 * (nextFloat() * 0.5 + 0.2);
+		this.hasPhysics = false;
+		this.lifetime = Math.trunc(nextFloat() * 5) + 25;
+		this.startColor = startColor;
+		this.endColor = endColor;
+	}
+
+	move() {}
+
+	light(a) {
+		return fullBlockLight(super.light(a));
+	}
+
+	tick() {
+		this.xo = this.x; this.yo = this.y; this.zo = this.z;
+		if (this.age++ >= this.lifetime) {
+			this.remove();
+			return;
+		}
+		const t = this.age / this.lifetime, pos = 1 - t;
+		this.x = this.start[0] + this.xd * pos;
+		this.y = this.start[1] + this.yd * pos;
+		this.z = this.start[2] + this.zd * pos;
+		// ARGB.srgbLerp
+		const c = srgbLerp(t, this.startColor, this.endColor);
+		this.setColor((c >> 16 & 255) / 255, (c >> 8 & 255) / 255, (c & 255) / 255);
+		this.alpha = (c >>> 24 & 255) / 255;
+	}
+}
+
+/** ARGB.srgbLerp: each channel mixed in linear light. */
+function srgbLerp(t, a, b) {
+	const toLinear = v => { v /= 255; return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+	const toSrgb = v => Math.round(255 * (v <= 0.0031308 ? v * 12.92 : 1.055 * v ** (1 / 2.4) - 0.055));
+	const channel = shift => {
+		const x = toLinear(a >>> shift & 255), y = toLinear(b >>> shift & 255);
+		return clamp(toSrgb(x + (y - x) * t), 0, 255);
+	};
+	const alpha = Math.round(lerp(t, a >>> 24 & 255, b >>> 24 & 255));
+	return (alpha << 24 | channel(16) << 16 | channel(8) << 8 | channel(0)) >>> 0;
+}
+
+/** FlyTowardsPositionParticle (enchant, nautilus, vault_connection): glyphs curving in to their position. */
+class FlyTowardsPositionParticle extends QuadParticle {
+	constructor(level, x, y, z, xd, yd, zd, sprite, glowing = false, lifetimeAlpha = null) {
+		super(level, x, y, z, undefined, undefined, undefined, sprite);
+		this.glowing = glowing;
+		// LifetimeAlpha(startAlpha, endAlpha, startAtNormalizedAge, endAtNormalizedAge)
+		this.lifetimeAlpha = lifetimeAlpha || [1, 1, 0, 1];
+		this.alpha = this.lifetimeAlpha[0];
+		this.translucent = !(this.lifetimeAlpha[0] >= 1 && this.lifetimeAlpha[1] >= 1);
+		this.xd = xd; this.yd = yd; this.zd = zd;
+		this.start = [x, y, z];
+		this.setPos(x + xd, y + yd, z + zd);
+		this.xo = this.x; this.yo = this.y; this.zo = this.z;
+		this.quadSize = 0.1 * (nextFloat() * 0.5 + 0.2);
+		const br = nextFloat() * 0.6 + 0.4;
+		this.setColor(0.9 * br, 0.9 * br, br);
+		this.hasPhysics = false;
+		this.lifetime = Math.trunc(nextFloat() * 10) + 30;
+	}
+
+	move(xa, ya, za) {
+		this.moveFree(xa, ya, za);
+	}
+
+	light(a) {
+		if (this.glowing) return fullBlockLight(super.light(a));
+		let brightness = this.age / this.lifetime;
+		brightness *= brightness;
+		brightness *= brightness;
+		return addBlockEmission(super.light(a), brightness);
+	}
+
+	beforeExtract(a) {
+		const [start, end, from, to] = this.lifetimeAlpha;
+		if (start === end) {
+			this.alpha = start;
+			return;
+		}
+		const t = clamp(((this.age + a) / this.lifetime - from) / (to - from), 0, 1);
+		this.alpha = lerp(t, start, end);
+	}
+
+	tick() {
+		this.xo = this.x; this.yo = this.y; this.zo = this.z;
+		if (this.age++ >= this.lifetime) {
+			this.remove();
+			return;
+		}
+		const pos = 1 - this.age / this.lifetime;
+		let pp = 1 - pos;
+		pp *= pp;
+		pp *= pp;
+		this.x = this.start[0] + this.xd * pos;
+		this.y = this.start[1] + this.yd * pos - pp * 1.2;
+		this.z = this.start[2] + this.zd * pos;
+	}
+}
+
+/** GlowParticle (glow, electric_spark, scrape, wax_on, wax_off): specks growing brighter over their life. */
+class GlowParticle extends QuadParticle {
+	constructor(level, x, y, z, xa, ya, za, sprites) {
+		super(level, x, y, z, xa, ya, za, sprites.first());
+		this.friction = 0.96;
+		this.speedUpWhenYMotionIsBlocked = true;
+		this.sprites = sprites;
+		this.quadSize *= 0.75;
+		this.hasPhysics = false;
+		this.setSpriteFromAge(sprites);
+	}
+
+	light(a) {
+		return addBlockEmission(super.light(a), (this.age + a) / this.lifetime);
+	}
+
+	tick() {
+		super.tick();
+		this.setSpriteFromAge(this.sprites);
+	}
+}
+
+/** GustParticle: a wind charge's gust, a full-bright block-sized puff. */
+class GustParticle extends QuadParticle {
+	constructor(level, x, y, z, sprites) {
+		super(level, x, y, z, undefined, undefined, undefined, sprites.first());
+		this.sprites = sprites;
+		this.setSpriteFromAge(sprites);
+		this.lifetime = 12 + nextInt(4);
+		this.quadSize = 1;
+		this.setSize(1, 1);
+	}
+
+	light() {
+		return [240, 240];
+	}
+
+	tick() {
+		if (this.age++ >= this.lifetime) this.remove();
+		else this.setSpriteFromAge(this.sprites);
+	}
+}
+
+/** GustSeedParticle (gust_emitter_large, gust_emitter_small): no picture, it puffs gusts around for a while. */
+class GustSeedParticle extends Particle {
+	constructor(level, x, y, z, scale, lifetime, tickDelayInBetween) {
+		super(level, x, y, z, 0, 0, 0);
+		this.scale = scale;
+		this.lifetime = lifetime;
+		this.tickDelayInBetween = tickDelayInBetween;
+	}
+
+	tick() {
+		if (this.age % (this.tickDelayInBetween + 1) === 0) {
+			for (let i = 0; i < 3; i++) {
+				const x = this.x + (nextDouble() - nextDouble()) * this.scale;
+				const y = this.y + (nextDouble() - nextDouble()) * this.scale;
+				const z = this.z + (nextDouble() - nextDouble()) * this.scale;
+				this.level.add('minecraft:gust', x, y, z, this.age / this.lifetime, 0, 0);
+			}
+		}
+		if (this.age++ === this.lifetime) this.remove();
+	}
+}
+
+/** SculkChargeParticle: a charge spreading over sculk, lying on the block face at its roll. */
+class SculkChargeParticle extends QuadParticle {
+	constructor(level, x, y, z, xd, yd, zd, sprites, roll, pop) {
+		super(level, x, y, z, xd, yd, zd, sprites.first());
+		this.friction = 0.96;
+		this.sprites = sprites;
+		this.scale(pop ? 1 : 1.5);
+		this.hasPhysics = false;
+		this.translucent = true;
+		this.setSpriteFromAge(sprites);
+		this.alpha = 1;
+		this.xd = xd; this.yd = yd; this.zd = zd;
+		this.roll = this.oRoll = roll;
+		this.lifetime = pop ? nextInt(4) + 6 : nextInt(12) + 8;
+	}
+
+	light(a) {
+		return fullBlockLight(super.light(a));
+	}
+
+	tick() {
+		super.tick();
+		this.setSpriteFromAge(this.sprites);
+	}
+}
+
+/** ShriekParticle: the shrieker's rings rising, two tilted quads (after their delay). */
+class ShriekParticle extends QuadParticle {
+	constructor(level, x, y, z, delay, sprite) {
+		super(level, x, y, z, 0, 0, 0, sprite);
+		this.quadSize = 0.85;
+		this.delay = delay;
+		this.lifetime = 30;
+		this.gravity = 0;
+		this.xd = 0; this.yd = 0.1; this.zd = 0;
+		this.translucent = true;
+		this.hidden = delay > 0;
+	}
+
+	quadSizeAt(a) {
+		return this.quadSize * clamp((this.age + a) / this.lifetime * 0.75, 0, 1);
+	}
+
+	beforeExtract(a) {
+		this.alpha = 1 - clamp((this.age + a) / this.lifetime, 0, 1);
+	}
+
+	rotations() {
+		return [quatX(-1.0472), quatMul(quatY(-Math.PI), quatX(1.0472))];
+	}
+
+	light(a) {
+		return fullBlockLight(super.light(a));
+	}
+
+	tick() {
+		if (this.delay > 0) {
+			this.delay--;
+			this.hidden = this.delay > 0;
+		} else {
+			super.tick();
+		}
+	}
+}
+
+/** SimpleAnimatedParticle: full bright, fading (and changing colour) in its second half. */
+class SimpleAnimatedParticle extends QuadParticle {
+	constructor(level, x, y, z, sprites, gravity) {
+		super(level, x, y, z, undefined, undefined, undefined, sprites.first());
+		this.friction = 0.91;
+		this.gravity = gravity;
+		this.sprites = sprites;
+		this.translucent = true;
+		this.fadeColor = null;
+	}
+
+	light() {
+		return [240, 240];
+	}
+
+	tick() {
+		super.tick();
+		this.setSpriteFromAge(this.sprites);
+		if (this.age > this.lifetime / 2) {
+			this.alpha = 1 - (this.age - Math.trunc(this.lifetime / 2)) / this.lifetime;
+			if (this.fadeColor) {
+				this.rCol += (this.fadeColor[0] - this.rCol) * 0.2;
+				this.gCol += (this.fadeColor[1] - this.gCol) * 0.2;
+				this.bCol += (this.fadeColor[2] - this.bCol) * 0.2;
+			}
+		}
+	}
+}
+
+/** TotemParticle: the totem of undying's green and yellow sparks. */
+class TotemParticle extends SimpleAnimatedParticle {
+	constructor(level, x, y, z, xa, ya, za, sprites) {
+		super(level, x, y, z, sprites, 1.25);
+		this.friction = 0.6;
+		this.xd = xa; this.yd = ya; this.zd = za;
+		this.quadSize *= 0.75;
+		this.lifetime = 60 + nextInt(12);
+		this.setSpriteFromAge(sprites);
+		if (nextInt(4) === 0) this.setColor(0.6 + nextFloat() * 0.2, 0.6 + nextFloat() * 0.3, nextFloat() * 0.2);
+		else this.setColor(0.1 + nextFloat() * 0.2, 0.4 + nextFloat() * 0.3, nextFloat() * 0.2);
+	}
+}
+
+/** SquidInkParticle: a squid's (or glow squid's) ink, sinking out of water. */
+class SquidInkParticle extends SimpleAnimatedParticle {
+	constructor(level, x, y, z, xa, ya, za, color, sprites) {
+		super(level, x, y, z, sprites, 0);
+		this.friction = 0.92;
+		this.quadSize = 0.5;
+		this.alpha = 1;
+		this.setColor(color[0], color[1], color[2]);
+		this.lifetime = Math.trunc(this.quadSize * 12 / (nextFloat() * 0.8 + 0.2));
+		this.setSpriteFromAge(sprites);
+		this.hasPhysics = false;
+		this.xd = xa; this.yd = ya; this.zd = za;
+	}
+
+	tick() {
+		super.tick();
+		if (this.removed) return;
+		this.setSpriteFromAge(this.sprites);
+		if (this.age > this.lifetime / 2) this.alpha = 1 - (this.age - Math.trunc(this.lifetime / 2)) / this.lifetime;
+		if (this.level.isAir(Math.floor(this.x), Math.floor(this.y), Math.floor(this.z))) this.yd -= 0.0074;
+	}
+}
+
+/** SimpleVerticalParticle (pause_mob_growth, reset_mob_growth): short-lived specks going down or up. */
+class SimpleVerticalParticle extends QuadParticle {
+	constructor(level, x, y, z, xa, ya, za, sprite, upwards) {
+		super(level, x, y, z, xa, ya, za, sprite);
+		this.xd = xa; this.zd = za; this.yd = ya;
+		this.gravity = 0;
+		this.yd += upwards ? 0.03 : -0.03;
+		this.quadSize *= nextFloat() * 0.6 + 0.5;
+		this.lifetime = 8;
+	}
+}
+
+/** SnowflakeParticle: powder snow's flakes, falling and slowing down. */
+class SnowflakeParticle extends QuadParticle {
+	constructor(level, x, y, z, xa, ya, za, sprites) {
+		super(level, x, y, z, undefined, undefined, undefined, sprites.first());
+		this.gravity = 0.225;
+		this.friction = 1;
+		this.sprites = sprites;
+		this.xd = xa + (nextFloat() * 2 - 1) * 0.05;
+		this.yd = ya + (nextFloat() * 2 - 1) * 0.05;
+		this.zd = za + (nextFloat() * 2 - 1) * 0.05;
+		this.quadSize = 0.1 * (nextFloat() * nextFloat() + 1);
+		this.lifetime = Math.trunc(16 / (nextFloat() * 0.8 + 0.2)) + 2;
+		this.setSpriteFromAge(sprites);
+		this.setColor(0.923, 0.964, 0.999);
+	}
+
+	tick() {
+		super.tick();
+		this.setSpriteFromAge(this.sprites);
+		this.xd *= 0.95;
+		this.yd *= 0.9;
+		this.zd *= 0.95;
+	}
+}
+
+/** TrailParticle: a speck flying to its target in the given number of ticks (creaking hearts, eyeblossoms). */
+class TrailParticle extends QuadParticle {
+	constructor(level, x, y, z, xa, ya, za, target, color, sprite) {
+		super(level, x, y, z, xa, ya, za, sprite);
+		const scale = () => 0.875 + nextFloat() * 0.25;
+		this.setColor(Math.trunc(color[0] * 255 * scale()) / 255, Math.trunc(color[1] * 255 * scale()) / 255, Math.trunc(color[2] * 255 * scale()) / 255);
+		this.quadSize = 0.26;
+		this.target = target;
+	}
+
+	light() {
+		return [240, 240];
+	}
+
+	tick() {
+		this.xo = this.x; this.yo = this.y; this.zo = this.z;
+		if (this.age++ >= this.lifetime) {
+			this.remove();
+			return;
+		}
+		const alpha = 1 / (this.lifetime - this.age);
+		this.x = lerp(alpha, this.x, this.target[0]);
+		this.y = lerp(alpha, this.y, this.target[1]);
+		this.z = lerp(alpha, this.z, this.target[2]);
+	}
+}
+
+/** TrialSpawnerDetectionParticle: the flames over a trial spawner that saw a player, turning only about y. */
+class TrialSpawnerDetectionParticle extends QuadParticle {
+	constructor(level, x, y, z, xa, ya, za, scale, sprites) {
+		super(level, x, y, z, 0, 0, 0, sprites.first());
+		this.sprites = sprites;
+		this.friction = 0.96;
+		this.gravity = -0.1;
+		this.speedUpWhenYMotionIsBlocked = true;
+		this.xd = this.xd * 0 + xa;
+		this.yd = this.yd * 0.9 + ya;
+		this.zd = this.zd * 0 + za;
+		this.quadSize *= 0.75 * scale;
+		this.lifetime = Math.max(1, Math.trunc(8 / (0.5 + nextFloat() * 0.5) * scale));
+		this.setSpriteFromAge(sprites);
+		this.hasPhysics = true;
+		this.lookAtY = true;
+	}
+
+	light(a) {
+		return fullBlockLight(super.light(a));
+	}
+
+	quadSizeAt(a) {
+		return this.quadSize * clamp((this.age + a) / this.lifetime * 32, 0, 1);
+	}
+
+	tick() {
+		super.tick();
+		this.setSpriteFromAge(this.sprites);
+	}
+}
+
+/** VibrationSignalParticle: a sculk vibration flying to its listener, two crossed quads swaying on the way. */
+class VibrationSignalParticle extends QuadParticle {
+	constructor(level, x, y, z, target, arrival, sprite) {
+		super(level, x, y, z, 0, 0, 0, sprite);
+		this.quadSize = 0.3;
+		this.target = target;
+		this.lifetime = arrival;
+		this.translucent = true;
+		this.alpha = 1;
+		const dx = x - target[0], dy = y - target[1], dz = z - target[2];
+		this.rotO = this.rot = Math.atan2(dx, dz);
+		this.pitchO = this.pitch = Math.atan2(dy, Math.sqrt(dx * dx + dz * dz));
+	}
+
+	rotations(a) {
+		const sway = Math.sin((this.age + a - Math.PI * 2) * 0.05) * 2;
+		const rotation = lerp(a, this.rotO, this.rot);
+		const pitch = lerp(a, this.pitchO, this.pitch) + Math.PI / 2;
+		return [
+			quatMul(quatMul(quatY(rotation), quatX(-pitch)), quatY(sway)),
+			quatMul(quatMul(quatY(-Math.PI + rotation), quatX(pitch)), quatY(sway)),
+		];
+	}
+
+	light(a) {
+		return fullBlockLight(super.light(a));
+	}
+
+	tick() {
+		this.xo = this.x; this.yo = this.y; this.zo = this.z;
+		if (this.age++ >= this.lifetime) {
+			this.remove();
+			return;
+		}
+		const alpha = 1 / (this.lifetime - this.age);
+		const t = this.target;
+		this.x = lerp(alpha, this.x, t[0]);
+		this.y = lerp(alpha, this.y, t[1]);
+		this.z = lerp(alpha, this.z, t[2]);
+		const dx = this.x - t[0], dy = this.y - t[1], dz = this.z - t[2];
+		this.rotO = this.rot;
+		this.rot = Math.atan2(dx, dz);
+		this.pitchO = this.pitch;
+		this.pitch = Math.atan2(dy, Math.sqrt(dx * dx + dz * dz));
+	}
+}
+
+/** WakeParticle (fishing): the ripples in front of a fish coming to the hook. */
+class WakeParticle extends QuadParticle {
+	constructor(level, x, y, z, xa, ya, za, sprites) {
+		super(level, x, y, z, 0, 0, 0, sprites.first());
+		this.sprites = sprites;
+		this.setSize(0.01, 0.01);
+		this.lifetime = Math.trunc(8 / (nextFloat() * 0.8 + 0.2));
+		this.setSpriteFromAge(sprites);
+		this.gravity = 0;
+		this.xd = xa; this.yd = ya; this.zd = za;
+	}
+
+	tick() {
+		this.xo = this.x; this.yo = this.y; this.zo = this.z;
+		const life = 60 - this.lifetime;
+		if (this.lifetime-- <= 0) {
+			this.remove();
+			return;
+		}
+		this.yd -= this.gravity;
+		this.move(this.xd, this.yd, this.zd);
+		this.xd *= 0.98; this.yd *= 0.98; this.zd *= 0.98;
+		const size = life * 0.001;
+		this.setSize(size, size);
+		this.sprite = this.sprites.byAge(life % 4, 4);
+	}
+}
+
 /** NoteParticle: a note in the colour of its pitch. */
 class NoteParticle extends QuadParticle {
 	constructor(level, x, y, z, color, sprite) {
@@ -1374,7 +2011,7 @@ class BreakingItemParticle extends QuadParticle {
 }
 
 /** Particles drawn with the block atlas or not at all, which have no sprite set of their own. */
-const NO_SPRITES = new Set(['block', 'block_crumble', 'dust_pillar', 'explosion_emitter', 'item', 'item_snowball', 'item_slime', 'item_cobweb',
+const NO_SPRITES = new Set(['gust_emitter_large', 'gust_emitter_small', 'block', 'block_crumble', 'dust_pillar', 'explosion_emitter', 'item', 'item_snowball', 'item_slime', 'item_cobweb',
 	'geyser', 'noxious_gas_cloud']);
 /** ParticleType.getOverrideLimiter: drawn however far from the camera. */
 const OVERRIDE_LIMITER = new Set(['explosion', 'explosion_emitter', 'elder_guardian', 'sonic_boom', 'gust', 'gust_emitter_large', 'gust_emitter_small']);
@@ -1519,6 +2156,108 @@ const PROVIDERS = {
 	effect: (l, x, y, z, xa, ya, za, s, o) => spell(new SpellParticle(l, x, y, z, xa, ya, za, s), o, true),
 	instant_effect: (l, x, y, z, xa, ya, za, s, o) => spell(new SpellParticle(l, x, y, z, xa, ya, za, s), o, true),
 	entity_effect: (l, x, y, z, xa, ya, za, s, o) => spell(new SpellParticle(l, x, y, z, xa, ya, za, s), o, false),
+	// the rest of ParticleResources (26.3)
+	ash: (l, x, y, z, xa, ya, za, s) => new AshSmokeParticle(l, x, y, z, 0.1, -0.1, 0.1, 0, 0, 0, 1, s, 0.5, 20, 0.1, false),
+	white_ash: (l, x, y, z, xa, ya, za, s) => {
+		const p = new AshSmokeParticle(l, x, y, z, 0.1, -0.1, 0.1, nextFloat() * -1.9 * nextFloat() * 0.1,
+			nextFloat() * -0.5 * nextFloat() * 0.1 * 5, nextFloat() * -1.9 * nextFloat() * 0.1, 1, s, 0, 20, 0.0125, false);
+		p.setColor(0xba / 255, 0xb1 / 255, 0xc2 / 255);
+		return p;
+	},
+	crimson_spore: (l, x, y, z, xa, ya, za, s) => tint(new SuspendedParticle(l, x, y, z, nextGaussian() * 1e-6, nextGaussian() * 1e-4, nextGaussian() * 1e-6, s.random()), [0.9, 0.4, 0.5]),
+	warped_spore: (l, x, y, z, xa, ya, za, s) => {
+		const p = tint(new SuspendedParticle(l, x, y, z, 0, nextFloat() * -1.9 * nextFloat() * 0.1, 0, s.random()), [0.1, 0.1, 0.3]);
+		p.setSize(0.001, 0.001);
+		return p;
+	},
+	underwater: (l, x, y, z, xa, ya, za, s) => tint(new SuspendedParticle(l, x, y, z, undefined, undefined, undefined, s.random()), [0.4, 0.4, 0.7]),
+	bubble_pop: (l, x, y, z, xa, ya, za, s) => new BubblePopParticle(l, x, y, z, xa, ya, za, s),
+	dust_color_transition: (l, x, y, z, xa, ya, za, s, o) => new DustColorTransitionParticle(l, x, y, z, xa, ya, za,
+		colorOf(o && o.from_color !== undefined ? o.from_color : 0xffffff), colorOf(o && o.to_color !== undefined ? o.to_color : 0xffffff), (o && o.scale) || 1, s),
+	dust_plume: (l, x, y, z, xa, ya, za, s) => new DustPlumeParticle(l, x, y, z, xa, ya, za, s),
+	soul: (l, x, y, z, xa, ya, za, s) => new EmissiveRisingParticle(l, x, y, z, xa, ya, za, s, false),
+	sculk_soul: (l, x, y, z, xa, ya, za, s) => new EmissiveRisingParticle(l, x, y, z, xa, ya, za, s, true),
+	falling_dust: (l, x, y, z, xa, ya, za, s, o) => {
+		// FallingDustParticle.Provider: a falling block's dust colour, else its map colour
+		const info = o && o.b !== undefined && l.world && l.world.infos ? l.world.infos[o.b] : null;
+		if (info && info.noModel && !info.air) return null;
+		return new FallingDustParticle(l, x, y, z, rgbOf(info ? (info.dustColor ?? info.mapColor) : 0), s);
+	},
+	ominous_spawning: (l, x, y, z, xa, ya, za, s) => {
+		const p = new FlyStraightTowardsParticle(l, x, y, z, xa, ya, za, 0xff45e1fe, 0xffffffff, s.random());
+		return p.scale(3 + nextFloat() * 2);
+	},
+	enchant: (l, x, y, z, xa, ya, za, s) => new FlyTowardsPositionParticle(l, x, y, z, xa, ya, za, s.random()),
+	nautilus: (l, x, y, z, xa, ya, za, s) => new FlyTowardsPositionParticle(l, x, y, z, xa, ya, za, s.random()),
+	vault_connection: (l, x, y, z, xa, ya, za, s) => new FlyTowardsPositionParticle(l, x, y, z, xa, ya, za, s.random(), true, [0, 0.6, 0.25, 1]).scale(1.5),
+	glow: (l, x, y, z, xa, ya, za, s) => {
+		const p = new GlowParticle(l, x, y, z, 0.5 - nextDouble(), ya, 0.5 - nextDouble(), s);
+		if (nextBoolean()) p.setColor(0.6, 1, 0.8); else p.setColor(0.08, 0.4, 0.4);
+		p.yd *= 0.2;
+		if (xa === 0 && za === 0) { p.xd *= 0.1; p.zd *= 0.1; }
+		p.lifetime = Math.trunc(8 / (nextDouble() * 0.8 + 0.2));
+		return p;
+	},
+	electric_spark: (l, x, y, z, xa, ya, za, s) => glowSpeck(new GlowParticle(l, x, y, z, 0, 0, 0, s), [1, 0.9, 1], xa * 0.25, ya * 0.25, za * 0.25, nextInt(2) + 2),
+	scrape: (l, x, y, z, xa, ya, za, s) => glowSpeck(new GlowParticle(l, x, y, z, 0, 0, 0, s), nextBoolean() ? [0.29, 0.58, 0.51] : [0.43, 0.77, 0.62],
+		xa * 0.01, ya * 0.01, za * 0.01, nextInt(30) + 10),
+	wax_off: (l, x, y, z, xa, ya, za, s) => glowSpeck(new GlowParticle(l, x, y, z, 0, 0, 0, s), [1, 0.9, 1], xa * 0.01 / 2, ya * 0.01, za * 0.01 / 2, nextInt(30) + 10),
+	wax_on: (l, x, y, z, xa, ya, za, s) => glowSpeck(new GlowParticle(l, x, y, z, 0, 0, 0, s), [0.91, 0.55, 0.08], xa * 0.01 / 2, ya * 0.01, za * 0.01 / 2, nextInt(30) + 10),
+	gust: (l, x, y, z, xa, ya, za, s) => new GustParticle(l, x, y, z, s),
+	small_gust: (l, x, y, z, xa, ya, za, s) => new GustParticle(l, x, y, z, s).scale(0.15),
+	gust_emitter_large: (l, x, y, z) => new GustSeedParticle(l, x, y, z, 3, 7, 0),
+	gust_emitter_small: (l, x, y, z) => new GustSeedParticle(l, x, y, z, 1, 3, 2),
+	sneeze: (l, x, y, z, xa, ya, za, s) => {
+		const p = new PlayerCloudParticle(l, x, y, z, xa, ya, za, s);
+		p.setColor(0.22, 1, 0.53);
+		p.alpha = 0.4;
+		return p;
+	},
+	sculk_charge: (l, x, y, z, xa, ya, za, s, o) => new SculkChargeParticle(l, x, y, z, xa, ya, za, s, (o && o.roll) || 0, false),
+	sculk_charge_pop: (l, x, y, z, xa, ya, za, s) => new SculkChargeParticle(l, x, y, z, xa, ya, za, s, 0, true),
+	shriek: (l, x, y, z, xa, ya, za, s, o) => new ShriekParticle(l, x, y, z, (o && o.delay) || 0, s.random()),
+	snowflake: (l, x, y, z, xa, ya, za, s) => new SnowflakeParticle(l, x, y, z, xa, ya, za, s),
+	sonic_boom: (l, x, y, z, xa, ya, za, s) => {
+		// SonicBoomParticle: a HugeExplosionParticle of 16 ticks and 1.5 blocks
+		const p = new HugeExplosionParticle(l, x, y, z, xa, s);
+		p.lifetime = 16;
+		p.quadSize = 1.5;
+		p.setSpriteFromAge(s);
+		return p;
+	},
+	spit: (l, x, y, z, xa, ya, za, s) => {
+		const p = new ExplodeParticle(l, x, y, z, xa, ya, za, s);
+		p.gravity = 0.5;
+		return p;
+	},
+	squid_ink: (l, x, y, z, xa, ya, za, s) => new SquidInkParticle(l, x, y, z, xa, ya, za, [0, 0, 0], s),
+	glow_squid_ink: (l, x, y, z, xa, ya, za, s) => new SquidInkParticle(l, x, y, z, xa, ya, za, [0.2, 0.8, 0.6], s),
+	totem_of_undying: (l, x, y, z, xa, ya, za, s) => new TotemParticle(l, x, y, z, xa, ya, za, s),
+	pause_mob_growth: (l, x, y, z, xa, ya, za, s) => new SimpleVerticalParticle(l, x, y, z, xa, ya, za, s.random(), false),
+	reset_mob_growth: (l, x, y, z, xa, ya, za, s) => new SimpleVerticalParticle(l, x, y, z, xa, ya, za, s.random(), true),
+	trail: (l, x, y, z, xa, ya, za, s, o) => {
+		if (!o || !Array.isArray(o.target)) return null;
+		const p = new TrailParticle(l, x, y, z, xa, ya, za, o.target, colorOf(o.color ?? 0xffffff), s.random());
+		p.lifetime = o.duration || 1;
+		return p;
+	},
+	trial_spawner_detection: (l, x, y, z, xa, ya, za, s) => new TrialSpawnerDetectionParticle(l, x, y, z, xa, ya, za, 1.5, s),
+	trial_spawner_detection_ominous: (l, x, y, z, xa, ya, za, s) => new TrialSpawnerDetectionParticle(l, x, y, z, xa, ya, za, 1.5, s),
+	vibration: (l, x, y, z, xa, ya, za, s, o) => {
+		// the server resolves the destination (a block's centre or an entity) into "dest"
+		const target = o && (o.dest || (o.destination && Array.isArray(o.destination.pos) && o.destination.pos.map(v => v + 0.5)));
+		if (!target) return null;
+		return new VibrationSignalParticle(l, x, y, z, target, o.arrival_in_ticks || 1, s.random());
+	},
+	fishing: (l, x, y, z, xa, ya, za, s) => new WakeParticle(l, x, y, z, xa, ya, za, s),
+	sulfur_cube_goo: (l, x, y, z, xa, ya, za, s) => {
+		// BreakingItemParticle.SulfurCubeProvider: a piece of the goo sprite (the particle atlas)
+		const p = new BreakingItemParticle(l, x, y, z, s.first());
+		p.atlas = undefined;
+		return p;
+	},
+	firework: (l, x, y, z, xa, ya, za, s) => new FireworkSpark(l, x, y, z, xa, ya, za, s, l.engine.particles),
+	flash: (l, x, y, z, xa, ya, za, s) => new FireworkFlash(l, x, y, z, s.random()),
 	// DragonBreathParticle.Provider (PowerParticleOption)
 	dragon_breath: (l, x, y, z, xa, ya, za, s, o) => {
 		const p = new DragonBreathParticle(l, x, y, z, xa, ya, za, s);
@@ -1567,6 +2306,14 @@ const PROVIDERS = {
 		return p;
 	},
 };
+
+/** GlowParticle's providers: colour, speed and lifetime. */
+function glowSpeck(p, color, xd, yd, zd, lifetime) {
+	p.setColor(color[0], color[1], color[2]);
+	p.xd = xd; p.yd = yd; p.zd = zd;
+	p.lifetime = lifetime;
+	return p;
+}
 
 /** The providers of coloured spells: SpellParticle.InstantProvider (colour and power) and MobEffectProvider (colour and alpha). */
 function spell(p, options, instant) {
@@ -2031,6 +2778,14 @@ function particleOptions(raw) {
 	return options;
 }
 
+/** BlockUtil.unpackDifferenceInPosition: another block given by its offset (each packed in a byte, plus the radius). */
+function unpackDifference(x, y, z, packed, rx, ry, rz) {
+	return [x + (packed >> 16 & 255) - rx, y + (packed >> 8 & 255) - ry, z + (packed & 255) - rz];
+}
+
+/** Direction.values() steps: down, up, north, south, west, east. */
+const FACE_STEPS = [[0, -1, 0], [0, 1, 0], [0, 0, -1], [0, 0, 1], [-1, 0, 0], [1, 0, 0]];
+
 /** AreaEffectCloud.DEFAULT_PARTICLE: a white entity effect. */
 const WHITE_EFFECT = particleOptions({ color: -1 });
 
@@ -2281,6 +3036,7 @@ export class Particles {
 	tick(world, camera, weather, renderTick, entities, columns = null, gameTime = 0) {
 		// with particles off, blocks still tick for the sounds they make (when sounds are on)
 		const particlesOn = this.enabled && !!this.texture;
+		this.particlesOn = particlesOn;
 		if (!particlesOn && !this.onSound) return;
 		const level = this.levelFor(world, weather, columns);
 		this.camera = camera;
@@ -2461,6 +3217,10 @@ export class Particles {
 				case 'minecraft:area_effect_cloud':
 					if (e.cloud) this.cloudParticles(level, e);
 					break;
+				case 'minecraft:glow_squid':
+					// GlowSquid.aiStep: a glowing speck around it every tick
+					if (!e.dead) this.addFx(level, 'minecraft:glow', randomX(0.6), randomY(), randomZ(0.6), 0, 0, 0);
+					break;
 				case 'minecraft:sniffer': {
 					// Sniffer.emitDiggingParticles: while the nose is in the ground, pieces of the block under it
 					// and now and then the block's hit sound
@@ -2583,9 +3343,20 @@ export class Particles {
 	animateAt(level, cx, cy, cz, r) {
 		const x = cx + nextInt(r) - nextInt(r), y = cy + nextInt(r) - nextInt(r), z = cz + nextInt(r) - nextInt(r);
 		const info = level.info(x, y, z);
-		if (!info || info.f & FLAG_AIR) return;
-		animateBlock(level, blockName(info), info, x, y, z);
-		if (info.f & (FLAG_WATER | FLAG_LAVA)) animateFluid(level, info, x, y, z);
+		if (!info) return;
+		if (!(info.f & FLAG_AIR)) {
+			animateBlock(level, blockName(info), info, x, y, z);
+			if (info.f & (FLAG_WATER | FLAG_LAVA)) animateFluid(level, info, x, y, z);
+		}
+		// ClientLevel.doAnimateTick: the biome's ambient particles (the Nether's ash and spores) where there is room
+		if (!(info.f & FLAG_FULL_COLLISION) && this.particlesOn) {
+			const biome = level.world.biomeInfoAt ? level.world.biomeInfoAt(x, y, z) : null;
+			const ambient = biome && biome.ap;
+			if (!ambient) return;
+			for (const [type, probability, raw] of ambient) {
+				if (nextFloat() <= probability) this.addFx(level, type, x + nextDouble(), y + nextDouble(), z + nextDouble(), 0, 0, 0, particleOptions(raw));
+			}
+		}
 	}
 
 	/** ClientLevel.doAddParticle: nothing further than 32 blocks from the camera unless the type overrides the limit. */
@@ -2601,7 +3372,7 @@ export class Particles {
 
 	effect(level, fx) {
 		switch (fx[0]) {
-			case 'le': this.levelEvent(level, fx[1], fx[2], fx[3], fx[4], fx[5]); break;
+			case 'le': this.levelEvent(level, fx[1], fx[2], fx[3], fx[4], fx[5], fx[6]); break;
 			case 'ps': this.spawnParticles(level, fx[1], fx[2], fx[3], fx[4], fx[5], fx[6], fx[7], !!fx[8]); break;
 			case 'p': this.particlePacket(level, fx); break;
 			case 'ex': this.explosion(level, fx); break;
@@ -2611,7 +3382,7 @@ export class Particles {
 					this.add(level, 'minecraft:item', fx[i], fx[i + 1], fx[i + 2], fx[i + 3], fx[i + 4], fx[i + 5], { item: fx[1] });
 				}
 				break;
-			case 'ee': this.entityEffect(level, fx[1], fx[2], fx[3], fx[4], fx[5], fx[6]); break;
+			case 'ee': this.entityEffect(level, fx[1], fx[2], fx[3], fx[4], fx[5], fx[6], fx.slice(7)); break;
 			case 'be': this.blockEvent(level, fx); break;
 			case 'fw': this.fireworks(level, fx); break;
 			default: break;
@@ -2669,7 +3440,7 @@ export class Particles {
 	}
 
 	/** LevelEventHandler.levelEvent: the events that make particles. */
-	levelEvent(level, type, x, y, z, data) {
+	levelEvent(level, type, x, y, z, data, state) {
 		switch (type) {
 			case 1501:
 				for (let i = 0; i < 8; i++) this.addFx(level, 'minecraft:large_smoke', x + nextDouble(), y + 1.2, z + nextDouble(), 0, 0, 0);
@@ -2710,8 +3481,262 @@ export class Particles {
 			case 3000:
 				this.addFx(level, 'minecraft:explosion_emitter', x + 0.5, y + 0.5, z + 0.5, 0, 0, 0, null, true);
 				break;
+			case 2002:
+			case 2007:
+				this.potionSplash(level, type === 2007 ? 'minecraft:instant_effect' : 'minecraft:effect', x, y, z, data);
+				break;
+			case 2003: {
+				// an eye of ender breaking: its pieces and a ring of portal specks rushing in
+				const cx = x + 0.5, cz = z + 0.5;
+				for (let i = 0; i < 8; i++) {
+					this.addFx(level, 'minecraft:item', cx, y, cz, nextGaussian() * 0.15, nextDouble() * 0.2, nextGaussian() * 0.15, { item: 'minecraft:ender_eye' });
+				}
+				for (let angle = 0; angle < Math.PI * 2; angle += Math.PI / 20) {
+					const c = Math.cos(angle), s = Math.sin(angle);
+					this.addFx(level, 'minecraft:portal', cx + c * 5, y - 0.4, cz + s * 5, c * -5, 0, s * -5);
+					this.addFx(level, 'minecraft:portal', cx + c * 5, y - 0.4, cz + s * 5, c * -7, 0, s * -7);
+				}
+				break;
+			}
+			case 2006:
+				// a dragon fireball bursting into its breath
+				for (let i = 0; i < 200; i++) {
+					const dist = nextFloat() * 4, angle = nextFloat() * Math.PI * 2;
+					const vx = Math.cos(angle) * dist, vy = 0.01 + nextDouble() * 0.5, vz = Math.sin(angle) * dist;
+					this.addFx(level, 'minecraft:dragon_breath', x + vx * 0.1, y + 0.3, z + vz * 0.1, vx, vy, vz, { power: dist });
+				}
+				break;
+			case 2013:
+				this.smashAttack(level, x, y, z, data, state);
+				break;
+			case 2018: {
+				// an enderman teleporting: portal specks along the way, over its size
+				const [tx, ty, tz] = unpackDifference(x, y, z, data, 127, 127, 127);
+				for (let i = 0; i < 128; i++) {
+					const d = nextDouble();
+					const vx = (nextFloat() - 0.5) * 0.2, vy = (nextFloat() - 0.5) * 0.2, vz = (nextFloat() - 0.5) * 0.2;
+					this.addFx(level, 'minecraft:portal', lerp(d, tx, x) + (nextDouble() - 0.5) * 0.6 * 2, lerp(d, ty, y) + nextDouble() * 2.9,
+						lerp(d, tz, z) + (nextDouble() - 0.5) * 0.6 * 2, vx, vy, vz);
+				}
+				break;
+			}
+			case 2015:
+			case 2016:
+			case 2017: {
+				// a block teleporting (a dragon egg, a chorus fruit's teleport...)
+				const range = type === 2015 ? [16, 8, 16] : type === 2016 ? [8, 8, 8] : [127, 127, 127];
+				const [tx, ty, tz] = unpackDifference(x, y, z, data, range[0], range[1], range[2]);
+				for (let i = 0; i < 128; i++) {
+					const d = nextDouble();
+					const vx = (nextFloat() - 0.5) * 0.2, vy = (nextFloat() - 0.5) * 0.2, vz = (nextFloat() - 0.5) * 0.2;
+					this.addFx(level, 'minecraft:portal', lerp(d, tx, x) + (nextDouble() - 0.5) + 0.5, lerp(d, ty, y) + nextDouble() - 0.5,
+						lerp(d, tz, z) + (nextDouble() - 0.5) + 0.5, vx, vy, vz);
+				}
+				break;
+			}
+			case 2019:
+			case 2020:
+				// ClientLevel.addBreakingBlockEffects: someone mining the block, a piece off the face they hit
+				this.crack(level, x, y, z, clamp(data, 0, 5), state);
+				break;
+			case 3002:
+				// electric sparks along a lightning rod's axis, or all over a copper block
+				if (data >= 0 && data < 3) this.alongAxis(level, data, x, y, z, 0.125, 'minecraft:electric_spark', 10, 19);
+				else this.onBlockFaces(level, x, y, z, 'minecraft:electric_spark', 3, 5);
+				break;
+			case 3003:
+				this.onBlockFaces(level, x, y, z, 'minecraft:wax_on', 3, 5);
+				break;
+			case 3004:
+				this.onBlockFaces(level, x, y, z, 'minecraft:wax_off', 3, 5);
+				break;
+			case 3005:
+				this.onBlockFaces(level, x, y, z, 'minecraft:scrape', 3, 5);
+				break;
+			case 3009:
+				this.onBlockFaces(level, x, y, z, 'minecraft:egg_crack', 3, 6);
+				break;
+			case 3006:
+				this.sculkCharge(level, x, y, z, data);
+				break;
+			case 3007:
+				// a sculk shrieker's ten rings, five ticks apart
+				for (let i = 0; i < 10; i++) this.addFx(level, 'minecraft:shriek', x + 0.5, y + 0.5, z + 0.5, 0, 0, 0, { delay: i * 5 });
+				break;
+			case 3008:
+				// a brushed block done: its pieces
+				this.destroyBlock(level, x, y, z, data);
+				break;
+			case 1500: {
+				// ComposterBlock.handleFill: specks over the compost's surface
+				const info = level.info(x, y, z);
+				// the top of its shape in the middle (VoxelShape.max(Y, 0.5, 0.5))
+				let top = 0;
+				for (const b of (info && info.b) || []) if (b[0] <= 0.5 && b[3] >= 0.5 && b[2] <= 0.5 && b[5] >= 0.5) top = Math.max(top, b[4]);
+				const centerHeight = top + 0.03125;
+				for (let i = 0; i < 10; i++) {
+					this.addFx(level, 'minecraft:composter', x + 0.1875 + 0.625 * nextFloat(), y + centerHeight + nextFloat() * (1 - centerHeight), z + 0.1875 + 0.625 * nextFloat(),
+						nextGaussian() * 0.02, nextGaussian() * 0.02, nextGaussian() * 0.02);
+				}
+				break;
+			}
+			case 3011:
+			case 3012:
+			case 3021:
+				// TrialSpawner.addSpawnParticles (data: its flame, 0 normal, 1 ominous)
+				for (let i = 0; i < 20; i++) {
+					const px = x + 0.5 + (nextDouble() - 0.5) * 2, py = y + 0.5 + (nextDouble() - 0.5) * 2, pz = z + 0.5 + (nextDouble() - 0.5) * 2;
+					this.addFx(level, 'minecraft:smoke', px, py, pz, 0, 0, 0);
+					this.addFx(level, data === 1 ? 'minecraft:soul_fire_flame' : 'minecraft:small_flame', px, py, pz, 0, 0, 0);
+				}
+				break;
+			case 3013:
+			case 3019:
+			case 3020:
+				// TrialSpawner.addDetectPlayerParticles (3020 turning ominous: and addBecomeOminousParticles)
+				for (let i = 0; i < 30 + Math.min(type === 3020 ? 0 : data, 10) * 5; i++) {
+					const sx = (2 * nextFloat() - 1) * 0.65, sz = (2 * nextFloat() - 1) * 0.65;
+					this.addFx(level, type === 3013 ? 'minecraft:trial_spawner_detection' : 'minecraft:trial_spawner_detection_ominous',
+						x + 0.5 + sx, y + 0.1 + nextFloat() * 0.8, z + 0.5 + sz, 0, 0, 0);
+				}
+				if (type === 3020) {
+					for (let i = 0; i < 20; i++) {
+						const px = x + 0.5 + (nextDouble() - 0.5) * 2, py = y + 0.5 + (nextDouble() - 0.5) * 2, pz = z + 0.5 + (nextDouble() - 0.5) * 2;
+						const vx = nextGaussian() * 0.02, vy = nextGaussian() * 0.02, vz = nextGaussian() * 0.02;
+						this.addFx(level, 'minecraft:trial_omen', px, py, pz, vx, vy, vz);
+						this.addFx(level, 'minecraft:soul_fire_flame', px, py, pz, vx, vy, vz);
+					}
+				}
+				break;
+			case 3014:
+			case 3017:
+				// TrialSpawner.addEjectItemParticles
+				for (let i = 0; i < 20; i++) {
+					const px = x + 0.4 + nextDouble() * 0.2, py = y + 0.4 + nextDouble() * 0.2, pz = z + 0.4 + nextDouble() * 0.2;
+					const vx = nextGaussian() * 0.02, vy = nextGaussian() * 0.02, vz = nextGaussian() * 0.02;
+					this.addFx(level, 'minecraft:small_flame', px, py, pz, vx, vy, vz * 0.25);
+					this.addFx(level, 'minecraft:smoke', px, py, pz, vx, vy, vz);
+				}
+				break;
+			case 3018:
+				// a cobweb woven (weaving effect)
+				for (let i = 0; i < 10; i++) {
+					this.addFx(level, 'minecraft:poof', x + nextDouble(), y + nextDouble(), z + nextDouble(), nextGaussian() * 0.02, nextGaussian() * 0.02, nextGaussian() * 0.02);
+				}
+				break;
 			default:
 				break;
+		}
+	}
+
+	/**
+	 * ParticleEngine.crack: a piece of the block breaking off the face being mined (block: its state id, face:
+	 * Direction.values() index).
+	 */
+	crack(level, x, y, z, face, block) {
+		const info = level.info(x, y, z);
+		const stateId = block ?? (info ? info.id : undefined);
+		if (stateId === undefined || (info && info.f & FLAG_AIR)) return;
+		const boxes = (info && info.b && info.b.length) ? info.b : [[0, 0, 0, 1, 1, 1]];
+		const b = boxes.reduce((a, c) => [Math.min(a[0], c[0]), Math.min(a[1], c[1]), Math.min(a[2], c[2]), Math.max(a[3], c[3]), Math.max(a[4], c[4]), Math.max(a[5], c[5])]);
+		let px = x + nextDouble() * (b[3] - b[0] - 0.2) + 0.1 + b[0];
+		let py = y + nextDouble() * (b[4] - b[1] - 0.2) + 0.1 + b[1];
+		let pz = z + nextDouble() * (b[5] - b[2] - 0.2) + 0.1 + b[2];
+		switch (face) {
+			case 0: py = y + b[1] - 0.1; break;
+			case 1: py = y + b[4] + 0.1; break;
+			case 2: pz = z + b[2] - 0.1; break;
+			case 3: pz = z + b[5] + 0.1; break;
+			case 4: px = x + b[0] - 0.1; break;
+			default: px = x + b[3] + 0.1; break;
+		}
+		const p = terrain(level, px, py, pz, 0, 0, 0, { b: stateId });
+		if (!p || !this.enabled || this.particles.length >= MAX_PARTICLES) return;
+		p.setPower(0.2);
+		this.particles.push(p.scale(0.6));
+	}
+
+	/** LevelEventHandler.potionSplashParticles: the bottle's pieces and a hundred coloured swirls thrown out. */
+	potionSplash(level, type, x, y, z, color) {
+		const px = x + 0.5, py = y, pz = z + 0.5;
+		for (let i = 0; i < 8; i++) {
+			this.addFx(level, 'minecraft:item', px, py, pz, nextGaussian() * 0.15, nextDouble() * 0.2, nextGaussian() * 0.15, { item: 'minecraft:splash_potion' });
+		}
+		const r = (color >> 16 & 255) / 255, g = (color >> 8 & 255) / 255, b = (color & 255) / 255;
+		for (let i = 0; i < 100; i++) {
+			const dist = nextDouble() * 4, angle = nextDouble() * Math.PI * 2;
+			const vx = Math.cos(angle) * dist, vy = 0.01 + nextDouble() * 0.5, vz = Math.sin(angle) * dist;
+			const k = 0.75 + nextFloat() * 0.25;
+			this.addFx(level, type, px + vx * 0.1, py + 0.3, pz + vz * 0.1, vx, vy, vz, { rgb: [r * k, g * k, b * k], power: dist });
+		}
+	}
+
+	/** ParticleUtils.spawnParticleOnFace: on a face of the block, moving along it. */
+	onFace(level, x, y, z, face, type, speed, step, options = null) {
+		const [sx, sy, sz] = FACE_STEPS[face];
+		const rand = () => nextDouble() - 0.5;
+		const px = x + 0.5 + (sx === 0 ? rand() : sx * step);
+		const py = y + 0.5 + (sy === 0 ? rand() : sy * step);
+		const pz = z + 0.5 + (sz === 0 ? rand() : sz * step);
+		this.addFx(level, type, px, py, pz, sx === 0 ? speed[0] : 0, sy === 0 ? speed[1] : 0, sz === 0 ? speed[2] : 0, options);
+	}
+
+	/** ParticleUtils.spawnParticlesOnBlockFaces: a few on each of the six faces (UniformInt(min, max)). */
+	onBlockFaces(level, x, y, z, type, min, max) {
+		for (let face = 0; face < 6; face++) {
+			const count = min + nextInt(max - min + 1);
+			for (let i = 0; i < count; i++) this.onFace(level, x, y, z, face, type, [nextDouble() - 0.5, nextDouble() - 0.5, nextDouble() - 0.5], 0.55);
+		}
+	}
+
+	/** ParticleUtils.spawnParticlesAlongAxis */
+	alongAxis(level, axis, x, y, z, radius, type, min, max) {
+		const count = min + nextInt(max - min + 1);
+		const r = () => nextDouble() * 2 - 1;
+		for (let i = 0; i < count; i++) {
+			const px = x + 0.5 + r() * (axis === 0 ? 0.5 : radius);
+			const py = y + 0.5 + r() * (axis === 1 ? 0.5 : radius);
+			const pz = z + 0.5 + r() * (axis === 2 ? 0.5 : radius);
+			this.addFx(level, type, px, py, pz, axis === 0 ? r() : 0, axis === 1 ? r() : 0, axis === 2 ? r() : 0);
+		}
+	}
+
+	/** ParticleUtils.spawnSmashAttackParticles: a mace's smash, dust pillars around the block hit. */
+	smashAttack(level, x, y, z, count, state) {
+		if (state === undefined) return;
+		const cx = x + 0.5, cy = y + 1, cz = z + 0.5;
+		const options = { b: state };
+		for (let i = 0; i < count / 3; i++) {
+			this.addFx(level, 'minecraft:dust_pillar', cx + nextGaussian() / 2, cy, cz + nextGaussian() / 2, nextGaussian() * 0.2, nextGaussian() * 0.2, nextGaussian() * 0.2, options);
+		}
+		for (let i = 0; i < count / 1.5; i++) {
+			this.addFx(level, 'minecraft:dust_pillar', cx + 3.5 * Math.cos(i) + nextGaussian() / 2, cy, cz + 3.5 * Math.sin(i) + nextGaussian() / 2,
+				nextGaussian() * 0.05, nextGaussian() * 0.05, nextGaussian() * 0.05, options);
+		}
+	}
+
+	/** LevelEventHandler 3006: sculk spreading (a charge on its faces, or popping when it lands). */
+	sculkCharge(level, x, y, z, data) {
+		const count = data >> 6;
+		if (count > 0) {
+			const faces = data & 63;
+			const speed = () => [(nextDouble() * 2 - 1) * 0.005, (nextDouble() * 2 - 1) * 0.005, (nextDouble() * 2 - 1) * 0.005];
+			for (let face = 0; face < 6; face++) {
+				if (faces !== 0 && !(faces >> face & 1)) continue;
+				// a full block: charges on every face (upside down underneath); a vein: on its own faces
+				const roll = faces === 0 ? (face === 0 ? Math.PI : 0) : (face === 1 ? Math.PI : 0);
+				const step = faces === 0 ? (face < 2 ? 0.65 : 0.57) : 0.35;
+				const n = nextInt(count + 1);
+				for (let i = 0; i < n; i++) this.onFace(level, x, y, z, face, 'minecraft:sculk_charge', speed(), step, { roll });
+			}
+			return;
+		}
+		const info = level.info(x, y, z);
+		const solid = !!(info && info.f & FLAG_FULL_COLLISION);
+		const particleCount = solid ? 40 : 20, spread = solid ? 0.45 : 0.25;
+		for (let i = 0; i < particleCount; i++) {
+			const vx = 2 * nextFloat() - 1, vy = 2 * nextFloat() - 1, vz = 2 * nextFloat() - 1;
+			this.addFx(level, 'minecraft:sculk_charge_pop', x + 0.5 + vx * spread, y + 0.5 + vy * spread, z + 0.5 + vz * spread, vx * 0.07, vy * 0.07, vz * 0.07);
 		}
 	}
 
@@ -2824,7 +3849,7 @@ export class Particles {
 	 * The particles of handleEntityEvent: LivingEntity.makePoofParticles (death, Mob spawning), Animal love hearts,
 	 * taming hearts or smoke (TamableAnimal, AbstractHorse), Villager hearts, anger, happiness and splashes.
 	 */
-	entityEffect(level, kind, x, y, z, w, h) {
+	entityEffect(level, kind, x, y, z, w, h, extra = []) {
 		const randomX = scale => x + w * (2 * nextDouble() - 1) * scale;
 		const randomY = () => y + h * nextDouble();
 		const randomZ = scale => z + w * (2 * nextDouble() - 1) * scale;
@@ -2848,6 +3873,36 @@ export class Particles {
 			case 'angry': around('minecraft:angry_villager', 5, 1); break;
 			case 'happy': around('minecraft:happy_villager', 5, 1); break;
 			case 'splash': around('minecraft:splash', 5, 1); break;
+			case 'totem': {
+				// ParticleEngine.createTrackingEmitter(entity, TOTEM_OF_UNDYING, 30): sparks bursting from the middle for 30 ticks
+				const burst = at => {
+					for (let i = 0; i < 16; i++) {
+						const xa = nextFloat() * 2 - 1, ya = nextFloat() * 2 - 1, za = nextFloat() * 2 - 1;
+						if (xa * xa + ya * ya + za * za > 1) continue;
+						this.addFx(at, 'minecraft:totem_of_undying', x + w * xa / 4, y + h * (0.5 + ya / 4), z + w * za / 4, xa, ya + 0.2, za);
+					}
+				};
+				burst(level);
+				for (let t = 1; t < 30 && this.delayed.length < 256; t++) this.delayed.push({ t: this.renderTick + t, run: burst });
+				break;
+			}
+			case 'witch':
+				// Witch.handleEntityEvent 15: purple swirls over its head
+				for (let i = 0; i < nextInt(35) + 10; i++) {
+					this.addFx(level, 'minecraft:witch', x + nextGaussian() * 0.13, y + h + 0.5 + nextGaussian() * 0.13, z + nextGaussian() * 0.13, 0, 0, 0);
+				}
+				break;
+			case 'teleport': {
+				// LivingEntity.handleEntityEvent 46: portal specks from where it was to where it is
+				const [xo = x, yo = y, zo = z] = extra;
+				for (let i = 0; i < 128; i++) {
+					const d = i / 127;
+					const xa = (nextFloat() - 0.5) * 0.2, ya = (nextFloat() - 0.5) * 0.2, za = (nextFloat() - 0.5) * 0.2;
+					this.addFx(level, 'minecraft:portal', lerp(d, xo, x) + (nextDouble() - 0.5) * w * 2, lerp(d, yo, y) + nextDouble() * h,
+						lerp(d, zo, z) + (nextDouble() - 0.5) * w * 2, xa, ya, za);
+				}
+				break;
+			}
 			case 'fangs':
 				// EvokerFangs.tick (client): when lifeTicks gets to 14, eight ticks after the bite started
 				if (this.delayed.length < 64) {
@@ -2936,6 +3991,7 @@ export class Particles {
 		this.level = {
 			world, weather, columns,
 			info,
+			engine,
 			add(type, x, y, z, xa, ya, za, options) {
 				engine.add(this, type, x, y, z, xa, ya, za, options);
 			},
@@ -3068,7 +4124,7 @@ export class Particles {
 	render(frame, lightmap, camera, partialTick) {
 		if (!this.enabled || !this.texture || !this.particles.length) return;
 		const gl = this.gl;
-		const need = this.particles.length * 6 * FLOATS;
+		const need = this.particles.length * 12 * FLOATS;
 		if (this.data.length < need) this.data = new Float32Array(need * 1.5 | 0);
 		const d = this.data;
 		const v = frame.viewRotation;
@@ -3089,21 +4145,48 @@ export class Particles {
 				const px = lerp(partialTick, p.xo, p.x) - camera.x;
 				const py = lerp(partialTick, p.yo, p.y) - camera.y;
 				const pz = lerp(partialTick, p.zo, p.z) - camera.z;
+				if (p.beforeExtract) p.beforeExtract(partialTick);
 				const size = p.quadSizeAt(partialTick);
-				const roll = lerp(partialTick, p.oRoll, p.roll);
-				const c = Math.cos(roll), s = Math.sin(roll);
 				const [u0, v0, u1, v1] = p.sprite;
 				const light = p.light(partialTick);
-				const corner = (cx, cy, u, vv) => {
-					const lx = (cx * c - cy * s) * size, ly = (cx * s + cy * c) * size;
-					d[o++] = px + rx * lx + ux * ly; d[o++] = py + ry * lx + uy * ly; d[o++] = pz + rz * lx + uz * ly;
-					d[o++] = u; d[o++] = vv;
-					d[o++] = p.rCol; d[o++] = p.gCol; d[o++] = p.bCol; d[o++] = p.alpha;
-					d[o++] = light[0]; d[o++] = light[1];
+				// SingleQuadParticle.extractRotatedQuad: the quad's corners turned by its rotation
+				let qrx, qry, qrz, qux, quy, quz;
+				const quad = () => {
+					const corner = (cx, cy, u, vv) => {
+						const lx = cx * size, ly = cy * size;
+						d[o++] = px + qrx * lx + qux * ly; d[o++] = py + qry * lx + quy * ly; d[o++] = pz + qrz * lx + quz * ly;
+						d[o++] = u; d[o++] = vv;
+						d[o++] = p.rCol; d[o++] = p.gCol; d[o++] = p.bCol; d[o++] = p.alpha;
+						d[o++] = light[0]; d[o++] = light[1];
+					};
+					corner(1, -1, u1, v1); corner(1, 1, u1, v0); corner(-1, 1, u0, v0);
+					corner(1, -1, u1, v1); corner(-1, 1, u0, v0); corner(-1, -1, u0, v1);
+					group.count += 6;
 				};
-				corner(1, -1, u1, v1); corner(1, 1, u1, v0); corner(-1, 1, u0, v0);
-				corner(1, -1, u1, v1); corner(-1, 1, u0, v0); corner(-1, -1, u0, v1);
-				group.count += 6;
+				const rotations = p.rotations ? p.rotations(partialTick) : null;
+				if (rotations) {
+					// a particle turned its own way (ShriekParticle, VibrationSignalParticle): the quaternions' x and y axes
+					if (o + rotations.length * 66 > d.length) continue;
+					for (const [x, y, z, w] of rotations) {
+						const n = 1 / (x * x + y * y + z * z + w * w);
+						qrx = (w * w + x * x - y * y - z * z) * n; qry = 2 * (x * y + w * z) * n; qrz = 2 * (x * z - w * y) * n;
+						qux = 2 * (x * y - w * z) * n; quy = (w * w - x * x + y * y - z * z) * n; quz = 2 * (y * z + w * x) * n;
+						quad();
+					}
+					continue;
+				}
+				// FacingCameraMode: LOOKAT_XYZ faces the camera, LOOKAT_Y only turns about the vertical
+				let bx = rx, by = ry, bz = rz, tx = ux, ty = uy, tz = uz;
+				if (p.lookAtY) {
+					const len = Math.hypot(rx, rz) || 1;
+					bx = rx / len; by = 0; bz = rz / len;
+					tx = 0; ty = 1; tz = 0;
+				}
+				const roll = lerp(partialTick, p.oRoll, p.roll);
+				const c = Math.cos(roll), s = Math.sin(roll);
+				qrx = bx * c + tx * s; qry = by * c + ty * s; qrz = bz * c + tz * s;
+				qux = tx * c - bx * s; quy = ty * c - by * s; quz = tz * c - bz * s;
+				quad();
 			}
 		}
 		const p = this.program;

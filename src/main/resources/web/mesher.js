@@ -190,6 +190,8 @@ export function describeState(entry, parseProps, classifyColors) {
 		skip: entry.k || 0,
 		boxes: entry.b || [],
 		mapColor: entry.c || 0,
+		// FallingBlock.getDustColor (falling_dust)
+		dustColor: entry.dc,
 		tints: TINTS.get(name) || null,
 		leaves: shortName.endsWith('_leaves'),
 		decoration: (flags & F_NO_COLLISION) !== 0 && !(flags & (F_WATER | F_LAVA)) && !(entry.l > 0),

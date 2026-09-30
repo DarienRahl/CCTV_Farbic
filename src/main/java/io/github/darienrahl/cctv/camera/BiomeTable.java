@@ -1,14 +1,18 @@
 package io.github.darienrahl.cctv.camera;
 
 import java.lang.reflect.Field;
+import java.util.List;
 import java.util.Locale;
 
 import org.jspecify.annotations.Nullable;
 
 import net.minecraft.core.Registry;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.attribute.AmbientParticle;
+import net.minecraft.world.attribute.EnvironmentAttributes;
 import net.minecraft.world.level.biome.Biome;
 
 import io.github.darienrahl.cctv.web.Json;
@@ -29,14 +33,14 @@ final class BiomeTable {
 		Registry<Biome> registry = level.registryAccess().lookupOrThrow(Registries.BIOME);
 		String json = cachedJson;
 		if (registry != cachedRegistry || json == null) {
-			json = build(registry);
+			json = build(level, registry);
 			cachedJson = json;
 			cachedRegistry = registry;
 		}
 		return json;
 	}
 
-	private static String build(Registry<Biome> registry) {
+	private static String build(ServerLevel level, Registry<Biome> registry) {
 		Json json = new Json(8192);
 		json.beginObject();
 		for (Biome biome : registry) {
@@ -52,9 +56,36 @@ final class BiomeTable {
 			effects.grassColorOverride().ifPresent(color -> json.field("g", color & 0xFFFFFF));
 			effects.foliageColorOverride().ifPresent(color -> json.field("f", color & 0xFFFFFF));
 			json.field("m", effects.grassColorModifier().name().toLowerCase(Locale.ROOT));
+			writeAmbientParticles(json, level, biome);
 			json.endObject();
 		}
 		return json.endObject().toString();
+	}
+
+	/**
+	 * The biome's ambient particles (EnvironmentAttributes.AMBIENT_PARTICLES: the Nether's ash and spores), which
+	 * ClientLevel.doAnimateTick puffs in the air around the camera: [[particle, probability, options?]...].
+	 */
+	private static void writeAmbientParticles(Json json, ServerLevel level, Biome biome) {
+		List<AmbientParticle> particles;
+		try {
+			particles = biome.getAttributes().applyModifier(EnvironmentAttributes.AMBIENT_PARTICLES, List.of());
+		} catch (RuntimeException e) {
+			return;
+		}
+		if (particles == null || particles.isEmpty()) {
+			return;
+		}
+		json.name("ap").beginArray();
+		for (AmbientParticle particle : particles) {
+			json.beginArray().value(BuiltInRegistries.PARTICLE_TYPE.getKey(particle.particle().getType()).toString()).value(particle.probability(), 6);
+			String options = EffectEncoder.options(level, particle.particle(), id -> { });
+			if (options != null) {
+				json.raw(options);
+			}
+			json.endArray();
+		}
+		json.endArray();
 	}
 
 	/** Downfall is not exposed publicly; the game is unobfuscated, so the field can be read by name. */

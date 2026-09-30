@@ -413,6 +413,11 @@ def main():
         failures.append("sections carry no light/biome data")
     if not (stream.first.get("init") or {}).get("biomes"):
         failures.append("init carries no biome table")
+    # the Nether's ambient particles (EnvironmentAttributes.AMBIENT_PARTICLES) ride along with the biome table
+    deltas = ((stream.first.get("init") or {}).get("biomes") or {}).get("minecraft:basalt_deltas", {})
+    print("basalt deltas:", json.dumps(deltas), flush=True)
+    if not any(p[0] == "minecraft:white_ash" for p in deltas.get("ap", [])):
+        failures.append(f"the basalt deltas' white ash is missing from the biome table (got {deltas})")
 
     try:
         bundle = wait_for_assets()

@@ -27,6 +27,7 @@ import net.minecraft.world.level.EmptyBlockGetter;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.FireBlock;
+import net.minecraft.world.level.block.FallingBlock;
 import net.minecraft.world.level.block.HalfTransparentBlock;
 import net.minecraft.world.level.block.LeavesBlock;
 import net.minecraft.world.level.block.RenderShape;
@@ -264,6 +265,14 @@ final class BlockPalette {
 	 */
 	private static void writeParticleHints(Json json, BlockState state) {
 		Block block = state.getBlock();
+		if (block instanceof FallingBlock falling) {
+			// FallingDustParticle's colour (sand, gravel, concrete powder...)
+			try {
+				json.field("dc", falling.getDustColor(state, EmptyBlockGetter.INSTANCE, BlockPos.ZERO) & 0xFFFFFF);
+			} catch (RuntimeException ignored) {
+				// A modded falling block that needs a real level.
+			}
+		}
 		if (block instanceof LeavesBlock) {
 			try {
 				Float chance = null;

@@ -16,6 +16,7 @@ import net.minecraft.core.particles.ExplosionParticleInfo;
 import net.minecraft.core.particles.ParticleOptions;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.core.particles.SimpleParticleType;
+import net.minecraft.core.particles.VibrationParticleOption;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.protocol.game.ClientboundLevelParticlesPacket.RandomizationType;
 import net.minecraft.server.level.ServerLevel;
@@ -24,6 +25,7 @@ import net.minecraft.util.RandomSource;
 import net.minecraft.util.random.Weighted;
 import net.minecraft.util.random.WeightedList;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
@@ -54,7 +56,11 @@ import io.github.darienrahl.cctv.web.Json;
  */
 final class EffectEncoder {
 	/** Level events drawn by the viewer as they come (LevelEventHandler#levelEvent). */
-	private static final Set<Integer> LEVEL_EVENTS = Set.of(1501, 1502, 1503, 2000, 2001, 2004, 2008, 2009, 2010, 2014, 3000);
+	private static final Set<Integer> LEVEL_EVENTS = Set.of(1500, 1501, 1502, 1503, 2000, 2001, 2002, 2003, 2004, 2006, 2007, 2008, 2009,
+			2010, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 3000, 3002, 3003, 3004, 3005, 3006, 3007, 3008, 3009, 3011, 3012, 3013, 3014,
+			3017, 3018, 3019, 3020, 3021);
+	/** Level events whose particles are pieces of the block at the event (a mace's smash, someone mining a block). */
+	private static final Set<Integer> WITH_BLOCK = Set.of(2013, 2019, 2020);
 
 	private EffectEncoder() {
 	}
@@ -73,11 +79,17 @@ final class EffectEncoder {
 		if (!LEVEL_EVENTS.contains(type)) {
 			return null;
 		}
-		if (type == 2001 || type == 2014) {
+		if (type == 2001 || type == 2014 || type == 3008) {
 			// the broken block's state (Block.getId) goes into the viewer's palette for its particle texture
 			blockStates.accept(data);
 		}
-		return "[\"le\"," + type + "," + pos.getX() + "," + pos.getY() + "," + pos.getZ() + "," + data + "]";
+		String event = "[\"le\"," + type + "," + pos.getX() + "," + pos.getY() + "," + pos.getZ() + "," + data;
+		if (WITH_BLOCK.contains(type)) {
+			int state = Block.getId(level.getBlockState(pos));
+			blockStates.accept(state);
+			event += "," + state;
+		}
+		return event + "]";
 	}
 
 	/** BoneMealItem.addGrowthParticles, resolved with the block that was fertilised. */
@@ -184,6 +196,17 @@ final class EffectEncoder {
 		if (particle instanceof SimpleParticleType) {
 			return null;
 		}
+		if (particle instanceof VibrationParticleOption vibration) {
+			// where the vibration flies to, resolved here (the codec names an entity by its UUID)
+			Vec3 destination = vibration.getDestination().getPosition(level).orElse(null);
+			if (destination == null) {
+				return null;
+			}
+			return new Json(64).beginObject()
+					.name("dest").beginArray().value(destination.x, 3).value(destination.y, 3).value(destination.z, 3).endArray()
+					.field("arrival_in_ticks", vibration.getArrivalInTicks())
+					.endObject().toString();
+		}
 		return ParticleTypes.CODEC.encodeStart(level.registryAccess().createSerializationContext(JsonOps.INSTANCE), particle)
 				.result().map(Object::toString).orElse(null);
 	}
@@ -268,12 +291,25 @@ final class EffectEncoder {
 		if (kind == null && (event == 60 && entity instanceof LivingEntity || event == 20 && entity instanceof Mob)) {
 			kind = "poof";
 		}
+		if (kind == null && entity instanceof LivingEntity) {
+			// a totem of undying saving it (a TrackingEmitter of totem particles), teleporting (portal specks along the
+			// way from where it was), a witch's drinking and throwing (Witch.handleEntityEvent 15)
+			kind = switch (event) {
+				case 35 -> "totem";
+				case 46 -> "teleport";
+				case 15 -> entity.getType() == EntityType.WITCH ? "witch" : null;
+				default -> null;
+			};
+		}
 		if (kind == null) {
 			return null;
 		}
 		Json json = new Json(96);
 		json.beginArray().value("ee").value(kind).value(entity.getX(), 3).value(entity.getY(), 3).value(entity.getZ(), 3)
-				.value(entity.getBbWidth(), 3).value(entity.getBbHeight(), 3).endArray();
-		return json.toString();
+				.value(entity.getBbWidth(), 3).value(entity.getBbHeight(), 3);
+		if ("teleport".equals(kind)) {
+			json.value(entity.xo, 3).value(entity.yo, 3).value(entity.zo, 3);
+		}
+		return json.endArray().toString();
 	}
 }
