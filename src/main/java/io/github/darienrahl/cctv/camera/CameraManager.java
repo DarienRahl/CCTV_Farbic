@@ -210,7 +210,9 @@ public final class CameraManager implements CameraDirectory {
 			CameraSession session = entry.getValue();
 			boolean alive;
 			try {
+				long start = System.nanoTime();
 				alive = session.tick(findLevel(session.camera().dimension()), tick);
+				session.recordTickTime(System.nanoTime() - start);
 			} catch (RuntimeException | LinkageError e) {
 				// Never take the game server down: drop the session, its viewers reconnect to a fresh one.
 				Problems.report(logger, "camera " + session.camera().name(), e);

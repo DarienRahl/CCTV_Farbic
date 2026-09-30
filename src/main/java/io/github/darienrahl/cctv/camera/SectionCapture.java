@@ -6,6 +6,10 @@ import java.util.Map;
 
 import org.jspecify.annotations.Nullable;
 
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
 import net.minecraft.core.SectionPos;
@@ -40,9 +44,10 @@ final class SectionCapture {
 
 	private static final Map<Holder<Biome>, String> BIOME_NAMES = new IdentityHashMap<>();
 
-	int[] states;
-	byte[] sky;
-	byte[] block;
+	/** Null while the section is compacted (see {@link #compact}); read them through {@link #state} or after {@link #expand}. */
+	int @Nullable [] states;
+	byte @Nullable [] sky;
+	byte @Nullable [] block;
 	String[] biomePalette;
 	byte[] biomes;
 	/** Sorted distinct block state ids, for the palette sent before the section. */
@@ -137,6 +142,55 @@ final class SectionCapture {
 		return (byte) (level.dimensionType().hasSkyLight() ? 15 : 0);
 	}
 
+	/**
+	 * Keeps only the section's message (a few KB instead of about 25 for the arrays): far sections rarely change,
+	 * and when one does, {@link #expand} reads the arrays back from the message. Server thread.
+	 */
+	void compact(int sx, int sy, int sz) {
+		if (states == null || trivial) {
+			return;
+		}
+		json(sx, sy, sz);
+		states = null;
+		sky = null;
+		block = null;
+	}
+
+	/** The arrays of a compacted section, decoded from its message. */
+	void expand() {
+		if (states != null || json == null) {
+			return;
+		}
+		JsonObject message = JsonParser.parseString(json).getAsJsonObject();
+		JsonArray palette = message.getAsJsonArray("p");
+		int[] ids = new int[palette.size()];
+		for (int i = 0; i < ids.length; i++) {
+			ids[i] = palette.get(i).getAsInt();
+		}
+		int[] indices = Protocol.decodeRuns(message.get("r").getAsString());
+		int[] decoded = new int[VOLUME];
+		for (int i = 0; i < VOLUME; i++) {
+			decoded[i] = ids[indices[i]];
+		}
+		sky = message.has("sl") ? bytes(Protocol.decodeRuns(message.get("sl").getAsString())) : null;
+		block = message.has("bl") ? bytes(Protocol.decodeRuns(message.get("bl").getAsString())) : null;
+		states = decoded;
+	}
+
+	private static byte[] bytes(int[] values) {
+		byte[] out = new byte[values.length];
+		for (int i = 0; i < values.length; i++) {
+			out[i] = (byte) values[i];
+		}
+		return out;
+	}
+
+	/** The block state id at a block index (YZX order). */
+	int state(int index) {
+		expand();
+		return states[index];
+	}
+
 	private void updateTrivial() {
 		trivial = blockEntities == null && distinct.length == 1 && distinct[0] == AIR_ID && uniform(block, (byte) 0) && uniform(sky, defaultSky);
 	}
@@ -156,6 +210,7 @@ final class SectionCapture {
 		if (snapshot == null) {
 			return false;
 		}
+		expand();
 		byte[] newSky = unpack(snapshot.skyPacked(), snapshot.skyColumns(), snapshot.skyFill());
 		byte[] newBlock = unpack(snapshot.blockPacked(), null, (byte) 0);
 		if (Arrays.equals(newSky, sky) && Arrays.equals(newBlock, block)) {
@@ -168,7 +223,11 @@ final class SectionCapture {
 		return true;
 	}
 
-	boolean sameAs(SectionCapture other) {
+	boolean sameAs(SectionCapture other, int sx, int sy, int sz) {
+		if (states == null || other.states == null) {
+			// a compacted section: its message tells everything
+			return json(sx, sy, sz).equals(other.json(sx, sy, sz));
+		}
 		return Arrays.equals(states, other.states) && Arrays.equals(sky, other.sky) && Arrays.equals(block, other.block)
 				&& Arrays.equals(biomes, other.biomes) && Arrays.equals(biomePalette, other.biomePalette)
 				&& java.util.Objects.equals(blockEntities, other.blockEntities);
@@ -176,6 +235,7 @@ final class SectionCapture {
 
 	/** A block changed (server thread). {@link #distinct} may keep ids that are gone, which is harmless. */
 	void set(int index, int id) {
+		expand();
 		if (states[index] == id) {
 			return;
 		}

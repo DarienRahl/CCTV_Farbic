@@ -545,6 +545,7 @@ function frame(now) {
 	const dt = now - state.lastFrame;
 	state.lastFrame = now;
 	state.fps = lerp(state.fps, 1000 / Math.max(1, dt), 0.05);
+	const frameStart = performance.now();
 
 	const aspect = renderer.resize();
 	updateHud(now);
@@ -670,7 +671,8 @@ function frame(now) {
 		near: 0.05,
 		far,
 	});
-
+	// the page's own time per frame (CI budget; the GPU works on afterwards)
+	state.frameMs = state.frameMs ? lerp(state.frameMs, performance.now() - frameStart, 0.05) : performance.now() - frameStart;
 }
 
 loadViewerInfo().finally(() => {

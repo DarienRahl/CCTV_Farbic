@@ -5,7 +5,7 @@
   <a href="https://github.com/DarienRahl/CCTV_Farbic/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/DarienRahl/CCTV_Farbic?style=for-the-badge&amp;label=release&amp;color=5d8c3e"></a>
   <img alt="Minecraft 26.3" src="https://img.shields.io/badge/minecraft-26.3-866043?style=for-the-badge">
   <img alt="Fabric, server side only" src="https://img.shields.io/badge/fabric-server%20side%20only-8b8b8b?style=for-the-badge">
-  <a href="#roadmap"><img alt="Roadmap" src="https://img.shields.io/badge/roadmap-49%2F61%20done-80ff20?style=for-the-badge"></a>
+  <a href="#roadmap"><img alt="Roadmap" src="https://img.shields.io/badge/roadmap-51%2F61%20done-80ff20?style=for-the-badge"></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-555555?style=for-the-badge"></a>
 </p>
 <!-- badges:end -->
@@ -49,7 +49,7 @@ in a web browser: players, mobs, opening doors and placed blocks show up right a
 ## Roadmap
 
 <!-- roadmap:start -->
-<p align="center"><img src="docs/images/roadmap/banner.svg" width="100%" alt="CCTV roadmap: 49 of 61 done"></p>
+<p align="center"><img src="docs/images/roadmap/banner.svg" width="100%" alt="CCTV roadmap: 51 of 61 done"></p>
 
 What is done and what comes next, milestone by milestone (the full plan with its principles is in
 [docs/ROADMAP.md](docs/ROADMAP.md)).
@@ -132,18 +132,18 @@ What is done and what comes next, milestone by milestone (the full plan with its
 
 </details>
 
-<img src="docs/images/roadmap/1-4.svg" width="100%" alt="1.4 — performance: started, 2 of 7 done">
+<img src="docs/images/roadmap/1-4.svg" width="100%" alt="1.4 — performance: in progress - 1.4.0 is out, 4 of 7 done">
 
 <details>
-<summary><b>1.4 — performance</b> · started · 2 of 7 done</summary>
+<summary><b>1.4 — performance</b> · in progress - 1.4.0 is out · 4 of 7 done</summary>
 
 - [ ] Binary section messages instead of JSON with base64 (sections are already palette + run-length encoded and gzipped, so this saves roughly a quarter; lower priority)
 - [x] **Section cache in the browser** (IndexedDB): the viewer keeps the sections it got; after "init" it tells the server which ones it has (position and a hash of the message) and the server answers "keep" for the unchanged ones, so reopening a camera downloads only what changed (`?cache=0` turns it off)
-- [ ] Server memory: far sections kept only in encoded form, re-read when their chunk changes
+- [x] **Server memory**: far sections kept only as their message (a few KB instead of about 25), read back from it when a block or the light in them changes
 - [ ] Occlusion culling (see 1.3) and per-section culling inside merged regions
 - [ ] Entities: skinning on the GPU (bone matrices in a texture) instead of rebuilding vertices on the CPU every frame
 - [x] Video wall: frame rate cap (lower for small tiles), one pixel per CSS pixel, no rendering for tiles that are off screen or in a hidden tab
-- [ ] Budgets in CI: server milliseconds per camera tick, bytes per section, browser frame time
+- [x] **Budgets in CI**: server milliseconds per camera tick, bytes per section message, the page's time per frame (also in `/api/status`: tick time, sections sent, kept and compacted)
 
 </details>
 
@@ -301,6 +301,9 @@ every 5 ticks ──► environment attributes at the camera
 - The browser keeps the sections it received (IndexedDB, up to 60 000 sections). Reopening a camera,
   or another camera in the same dimension, downloads only the sections that changed since; the rest
   come from the browser's cache. `?cache=0` in the camera link turns this off.
+- Sections far from the camera are kept in memory only as the message the viewers get (a few KB each);
+  `GET /api/status` shows each camera's time per tick and how many sections it sent, kept from browsers'
+  caches and compacted.
 - Server cost per camera with viewers: a one-time copy of the sections (spread over ticks), the
   entity list in the camera's range every tick and a few to a few dozen KB/s per viewer (depending
   on the number of entities). A camera without viewers costs nothing (its cache is released after a

@@ -153,6 +153,34 @@ public final class Protocol {
 		return Base64.getEncoder().encodeToString(out.toByteArray());
 	}
 
+	/** The run-length fields read back ({@code r}, {@code sl}, {@code bl}): the value of each of the 4096 blocks. */
+	public static int[] decodeRuns(String base64) {
+		byte[] bytes = Base64.getDecoder().decode(base64);
+		int[] values = new int[SECTION_VOLUME];
+		int[] cursor = {0};
+		int i = 0;
+		while (cursor[0] < bytes.length && i < SECTION_VOLUME) {
+			int run = readVarInt(bytes, cursor);
+			int value = readVarInt(bytes, cursor);
+			int end = Math.min(SECTION_VOLUME, i + run);
+			java.util.Arrays.fill(values, i, end, value);
+			i = end;
+		}
+		return values;
+	}
+
+	private static int readVarInt(byte[] bytes, int[] cursor) {
+		int value = 0;
+		for (int shift = 0; cursor[0] < bytes.length && shift < 32; shift += 7) {
+			int b = bytes[cursor[0]++];
+			value |= (b & 0x7F) << shift;
+			if ((b & 0x80) == 0) {
+				break;
+			}
+		}
+		return value;
+	}
+
 	private static void writeVarInt(ByteArrayOutputStream out, int value) {
 		while ((value & ~0x7F) != 0) {
 			out.write((value & 0x7F) | 0x80);

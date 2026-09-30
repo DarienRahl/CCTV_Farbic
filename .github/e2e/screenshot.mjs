@@ -32,6 +32,7 @@ async function shoot(name, settings, camera = 'ci') {
 		boxed: window.cctv && window.cctv.entities.boxed ? [...window.cctv.entities.boxed] : [],
 		fallbackBlocks: window.cctv && window.cctv.world.fallbackBlocks ? [...window.cctv.world.fallbackBlocks] : [],
 		stats: document.getElementById('stats').textContent,
+		frameMs: window.cctv ? Math.round(window.cctv.state.frameMs * 10) / 10 : 0,
 	}));
 	console.log(name + ':', JSON.stringify(info));
 	await page.screenshot({ path: name + '.png' });
@@ -75,6 +76,12 @@ if (vanilla.boxed.length) {
 }
 if (vanilla.fallbackBlocks.length) {
 	console.error('blocks drawn as plain boxes (no model, or a block entity the viewer does not draw): ' + vanilla.fallbackBlocks.join(', '));
+	process.exit(1);
+}
+// Budget (docs/ROADMAP.md 1.4): the page's time per frame with software WebGL on the CI machine.
+const FRAME_MS_BUDGET = 250;
+if (vanilla.frameMs > FRAME_MS_BUDGET) {
+	console.error(`budget: a frame takes ${vanilla.frameMs} ms of the page's time (budget ${FRAME_MS_BUDGET})`);
 	process.exit(1);
 }
 if (vanilla.particles === 0) {

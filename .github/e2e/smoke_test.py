@@ -313,6 +313,9 @@ def main():
     time.sleep(4)
     # the worn wolf armour breaks (pieces of it fly and its break sound plays, LivingEntity.breakItem)
     rcon.command("damage @e[type=minecraft:wolf,nbt={equipment:{body:{id:\"minecraft:wolf_armor\"}}},limit=1] 30")
+    # a block changing next to the suspicious sand schedules its tick, which forgets the brushing side: set it
+    # once more right before the checks
+    rcon.command("data merge block 6 -60 0 {hit_direction:1}")
     time.sleep(2)
 
     print("events:", stream.events, flush=True)
@@ -474,6 +477,7 @@ def main():
     stream.close()
     failures += far_terrain_check(rcon)
     failures += cache_check()
+    failures += budget_check()
     failures += resubscribe_check()
 
     if failures:
@@ -572,6 +576,32 @@ def cache_check():
     if not first or len(kept) < len(first) * 0.8:
         return [f"cache: only {len(kept)} of {len(first)} cached sections were kept"]
     return []
+
+
+# Performance budgets (docs/ROADMAP.md 1.4): the server's milliseconds per camera tick (running average over
+# the last seconds) and the average size of a section message.
+TICK_MS_BUDGET = 5.0
+SECTION_BYTES_BUDGET = 8192
+
+
+def budget_check():
+    status = json.loads(urllib.request.urlopen(f"{WEB}/api/status", timeout=10).read().decode())
+    failures = []
+    for session in status.get("sessions", []):
+        sent = session.get("sectionsSent", 0)
+        per_section = session.get("sectionBytes", 0) / sent if sent else 0
+        print(f"budget: camera {session.get('camera')}: {session.get('tickMs')} ms per tick (max {session.get('tickMsMax')}),"
+              f" {sent} sections sent, {per_section:.0f} bytes each, {session.get('sectionsKept')} kept,"
+              f" {session.get('compacted')} of {session.get('sections')} kept compact", flush=True)
+        if session.get("camera") == "far" and session.get("ready", 0) > 0 and not session.get("compacted"):
+            failures.append("memory: the far camera's far sections were not compacted")
+        if session.get("camera") != "ci":
+            continue
+        if session.get("tickMs", 0) > TICK_MS_BUDGET:
+            failures.append(f"budget: camera ci takes {session['tickMs']} ms per tick (budget {TICK_MS_BUDGET})")
+        if per_section > SECTION_BYTES_BUDGET:
+            failures.append(f"budget: sections of camera ci are {per_section:.0f} bytes (budget {SECTION_BYTES_BUDGET})")
+    return failures
 
 
 def resubscribe_check():

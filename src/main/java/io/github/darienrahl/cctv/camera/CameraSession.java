@@ -55,6 +55,8 @@ final class CameraSession {
 	private static final int MAX_BACKLOG = 600;
 	/** How far ahead of its first missing section a viewer may receive sections that are already available. */
 	private static final int SYNC_WINDOW = 4096;
+	/** How often far sections are compacted (kept only as their message, see SectionCapture.compact). */
+	private static final int COMPACT_TICKS = 200;
 	/** How long a viewer that caches sections gets to say which ones it has before the download starts. */
 	private static final int CACHE_WAIT_TICKS = 60;
 	/** Unchanged cached sections confirmed per viewer and tick (they cost a few bytes each). */
@@ -338,6 +340,9 @@ final class CameraSession {
 		refreshLight(level, tick);
 		rescan(level);
 		syncViewers(tick);
+		if (tick % COMPACT_TICKS == 0) {
+			compactFarSections();
+		}
 
 		if (tick % config.entityUpdateTicks == 0) {
 			entityBlockStates.clear();
@@ -379,10 +384,32 @@ final class CameraSession {
 	}
 
 	/** Troubleshooting snapshot (web thread; plain reads of server-thread state, good enough for a status page). */
+	/** Milliseconds of the server thread per tick: a running average (about the last five seconds) and the most. */
+	private volatile double tickMs;
+	private volatile double tickMsMax;
+	/** Sections sent in full and their bytes, and sections confirmed from a browser's cache. */
+	private volatile long sectionsSent;
+	private volatile long sectionBytes;
+	private volatile long sectionsKept;
+
+	/** Server thread, after every tick: what the tick cost (budgets in CI, {@code /api/status}). */
+	void recordTickTime(long nanos) {
+		double ms = nanos / 1e6;
+		tickMs = tickMs == 0 ? ms : tickMs * 0.99 + ms * 0.01;
+		if (ms > tickMsMax) {
+			tickMsMax = ms;
+		}
+	}
+
 	synchronized void writeStatus(Json json) {
 		int[] counts = new int[Status.values().length];
+		int compacted = 0;
 		for (SectionEntry entry : order) {
 			counts[entry.status.ordinal()]++;
+			SectionCapture data = entry.data;
+			if (data != null && data.states == null) {
+				compacted++;
+			}
 		}
 		json.field("camera", camera.name())
 				.field("ticks", ticks)
@@ -398,7 +425,13 @@ final class CameraSession {
 				.field("empty", counts[Status.EMPTY.ordinal()])
 				.field("captureCursor", captureCursor)
 				.field("diskReads", diskReads)
-				.field("skipBuried", skipBuried);
+				.field("skipBuried", skipBuried)
+				.field("tickMs", tickMs, 3)
+				.field("tickMsMax", tickMsMax, 3)
+				.field("sectionsSent", sectionsSent)
+				.field("sectionBytes", sectionBytes)
+				.field("sectionsKept", sectionsKept)
+				.field("compacted", compacted);
 		json.name("viewers").beginArray();
 		for (ViewerState state : List.copyOf(viewers)) {
 			json.beginObject()
@@ -454,7 +487,7 @@ final class CameraSession {
 		if (entry.data == null) {
 			return;
 		}
-		if (entry.data.states[index] == id) {
+		if (entry.data.state(index) == id) {
 			// Same block, new block entity data (a sign was edited): read the section again.
 			if (state.hasBlockEntity()) {
 				blockEntityRefresh.add(entry);
@@ -463,7 +496,7 @@ final class CameraSession {
 		}
 
 		// A block entity appeared or went away (a banner placed, a sign broken): its details change with it.
-		if (state.hasBlockEntity() || Block.stateById(entry.data.states[index]).hasBlockEntity()) {
+		if (state.hasBlockEntity() || Block.stateById(entry.data.state(index)).hasBlockEntity()) {
 			blockEntityRefresh.add(entry);
 		}
 		entry.data.set(index, id);
@@ -805,11 +838,23 @@ final class CameraSession {
 				}
 			}
 
-			boolean changed = entry.data == null || !data.sameAs(entry.data);
+			boolean changed = entry.data == null || !data.sameAs(entry.data, entry.x, entry.y, entry.z);
 			entry.data = data;
 			entry.status = Status.READY;
 			if (changed) {
 				broadcastSection(entry);
+			}
+		}
+	}
+
+	/**
+	 * Far sections keep only their message: they are most of a camera's memory and rarely change (a change or
+	 * light update reads the arrays back from the message; a quiet section is compacted again later).
+	 */
+	private void compactFarSections() {
+		for (SectionEntry entry : farEntries) {
+			if (entry.data != null && entry.inFlight == 0 && !lightWatch.containsKey(entry)) {
+				entry.data.compact(entry.x, entry.y, entry.z);
 			}
 		}
 	}
@@ -1019,10 +1064,14 @@ final class CameraSession {
 			Long cachedHash = state.cached.remove(key(entry.x, entry.y, entry.z));
 			if (cachedHash != null && cachedHash == data.hash(entry.x, entry.y, entry.z)) {
 				state.keeps.add(entry);
+				sectionsKept++;
 				return true;
 			}
 		}
-		state.viewer.send("section", data.json(entry.x, entry.y, entry.z));
+		String json = data.json(entry.x, entry.y, entry.z);
+		state.viewer.send("section", json);
+		sectionsSent++;
+		sectionBytes += json.length();
 		return false;
 	}
 

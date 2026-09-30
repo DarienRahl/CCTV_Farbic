@@ -154,7 +154,7 @@ to the milestone it belongs to. The roadmap on the README page is drawn from thi
       biome blend setting
 - [ ] Camera in water, lava and powder snow: the game's overlays and fog
 
-## 1.4 — performance
+## 1.4 — performance (parts released: 1.4.0)
 
 - [ ] Binary section messages instead of JSON with base64 (sections are already palette +
       run-length encoded and gzipped, so this saves roughly a quarter; lower priority)
@@ -162,13 +162,15 @@ to the milestone it belongs to. The roadmap on the README page is drawn from thi
       tells the server which ones it has (position and a hash of the message) and the server answers
       "keep" for the unchanged ones, so reopening a camera downloads only what changed (`?cache=0` turns it
       off)
-- [ ] Server memory: far sections kept only in encoded form, re-read when their chunk changes
+- [x] **Server memory**: far sections kept only as their message (a few KB instead of about 25), read
+      back from it when a block or the light in them changes
 - [ ] Occlusion culling (see 1.3) and per-section culling inside merged regions
 - [ ] Entities: skinning on the GPU (bone matrices in a texture) instead of rebuilding vertices on
       the CPU every frame
 - [x] Video wall: frame rate cap (lower for small tiles), one pixel per CSS pixel, no rendering
       for tiles that are off screen or in a hidden tab
-- [ ] Budgets in CI: server milliseconds per camera tick, bytes per section, browser frame time
+- [x] **Budgets in CI**: server milliseconds per camera tick, bytes per section message, the page's time
+      per frame (also in `/api/status`: tick time, sections sent, kept and compacted)
 
 ## Later
 
