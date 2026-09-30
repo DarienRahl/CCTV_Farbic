@@ -93,6 +93,8 @@ net/minecraft/client/renderer/blockentity/AbstractSignRenderer
 net/minecraft/client/renderer/blockentity/StandingSignRenderer
 net/minecraft/client/renderer/blockentity/HangingSignRenderer
 net/minecraft/client/gui/font/providers/BitmapProvider
+net/minecraft/client/gui/font/providers/SpaceProvider
+net/minecraft/client/gui/font/FontManager
 net/minecraft/client/gui/font/glyphs/BakedSheetGlyph
 
 # keyframe animations (keyframes.js; the definitions themselves are read from the client jar)

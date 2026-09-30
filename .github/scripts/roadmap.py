@@ -4,7 +4,7 @@
 Draws original pixel art (no game textures are used): a dark dirt background like the game's option
 screens, stone buttons, inventory slots with item icons, experience bars and a pixel font. The
 pictures go to docs/images/roadmap/*.svg; the milestone lists and the badges are written between
-the markers in README.md.
+the markers in README.md. The README's "How it works" picture is drawn here too (how_it_works.py).
 
     python3 .github/scripts/roadmap.py          # regenerate after editing docs/ROADMAP.md
     python3 .github/scripts/roadmap.py --check  # exit 1 when README.md or a picture is out of date
@@ -454,8 +454,10 @@ def replace_between(text, name, body):
 
 
 def generate():
+    import how_it_works
+
     milestones = parse()
-    files = {IMAGES / "banner.svg": banner_svg(milestones)}
+    files = {IMAGES / "banner.svg": banner_svg(milestones), ROOT / "docs" / "images" / "how-it-works.svg": how_it_works.svg()}
     for i, m in enumerate(milestones):
         files[IMAGES / f"{m['slug']}.svg"] = milestone_svg(m, ICONS[i % len(ICONS)])
     readme = README.read_text(encoding="utf-8")

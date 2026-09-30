@@ -32,6 +32,7 @@ import io.github.darienrahl.cctv.CctvConfig;
 import io.github.darienrahl.cctv.assets.ClientAssets;
 import io.github.darienrahl.cctv.assets.GameSounds;
 import io.github.darienrahl.cctv.assets.ModMusic;
+import io.github.darienrahl.cctv.assets.WebFont;
 
 /**
  * Small HTTP server built on the JDK's {@code com.sun.net.httpserver}.
@@ -53,6 +54,7 @@ import io.github.darienrahl.cctv.assets.ModMusic;
  * GET /assets/entity/{path}.png  one entity texture
  * GET /assets/misc/{path}.png    one texture of textures/misc (entity shadow, enchantment glint)
  * GET /assets/font/{path}         the game's font (definitions .json, glyph sheets .png)
+ * GET /assets/font/minecraft[-bold].ttf the game's font as a web font for the pages (built from the sheets)
  * GET /assets/sounds.json         the game's sound events (sounds.json merged with resource packs)
  * GET /assets/sound/{ns}/{path}.ogg one sound file (resource packs, else the game's asset, cached)
  * GET /assets/music.json         song titles for the Now Playing toast, The Immersive Music Mod's playlists
@@ -81,6 +83,7 @@ public final class WebServer {
 	private final SkinProxy skins;
 	private final GameSounds sounds;
 	private final ModMusic music;
+	private final WebFont webFont;
 	private final Map<String, byte[]> resourceCache = new ConcurrentHashMap<>();
 	/** Optional directory to serve the web files from instead of the jar (for developing the viewer). */
 	private final Path devWebDir;
@@ -96,6 +99,7 @@ public final class WebServer {
 		this.skins = new SkinProxy(logger);
 		this.sounds = new GameSounds(assets, logger);
 		this.music = new ModMusic(assets, dataDir.toAbsolutePath().getParent());
+		this.webFont = new WebFont(assets);
 		String dev = System.getProperty("cctv.webDir");
 		this.devWebDir = dev == null || dev.isBlank() ? null : Path.of(dev);
 	}
@@ -151,12 +155,18 @@ public final class WebServer {
 			serveResource(exchange, path.substring("/static/".length()));
 			return;
 		}
+		if (path.equals("/assets/font/minecraft.ttf") || path.equals("/assets/font/minecraft-bold.ttf")) {
+			// Nor does the font (embedded viewers on other sites get no token cookie).
+			serveWebFont(exchange, path.contains("bold"));
+			return;
+		}
 
 		if (!authorize(exchange, query)) {
 			exchange.getResponseHeaders().add("Access-Control-Allow-Origin", "*");
 			sendText(exchange, 401, "text/html; charset=utf-8",
 					"<!doctype html><meta charset=utf-8><title>CCTV</title>"
-					+ "<body style=\"font-family:sans-serif;background:#111;color:#ddd;padding:2em\">"
+					+ "<style>@font-face{font-family:Minecraft;src:url(/assets/font/minecraft.ttf)}</style>"
+					+ "<body style=\"font:16px/1.25 Minecraft,sans-serif;background:#111;color:#ddd;padding:2em\">"
 					+ "<h1>401</h1><p>Missing or wrong access token. Open the link with <code>?token=...</code>.</p>");
 			return;
 		}
@@ -526,6 +536,20 @@ public final class WebServer {
 		} else {
 			sendBytes(exchange, 200, type, new GZIPInputStream(new ByteArrayInputStream(gzipped)).readAllBytes());
 		}
+	}
+
+	/** The pages' text in the game's font (style.css); before the assets are ready the browser keeps its own. */
+	private void serveWebFont(HttpExchange exchange, boolean bold) throws IOException {
+		Headers headers = exchange.getResponseHeaders();
+		headers.add("Access-Control-Allow-Origin", "*");
+		byte[] ttf = webFont.ttf(bold);
+		if (ttf == null) {
+			headers.add("Cache-Control", "no-store");
+			sendText(exchange, assets.state() == ClientAssets.State.LOADING ? 503 : 404, "text/plain", "Not available");
+			return;
+		}
+		headers.add("Cache-Control", "max-age=86400");
+		sendGzipped(exchange, "font/ttf", ttf);
 	}
 
 	private void serveResource(HttpExchange exchange, String file) throws IOException {

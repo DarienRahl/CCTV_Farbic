@@ -10,7 +10,7 @@
   <a href="https://github.com/DarienRahl/CCTV_Farbic/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/DarienRahl/CCTV_Farbic?style=for-the-badge&amp;label=release&amp;color=5d8c3e"></a>
   <img alt="Minecraft 26.3" src="https://img.shields.io/badge/minecraft-26.3-866043?style=for-the-badge">
   <img alt="Fabric, server side only" src="https://img.shields.io/badge/fabric-server%20side%20only-8b8b8b?style=for-the-badge">
-  <a href="#roadmap"><img alt="Roadmap" src="https://img.shields.io/badge/roadmap-73%2F74%20done-80ff20?style=for-the-badge"></a>
+  <a href="#roadmap"><img alt="Roadmap" src="https://img.shields.io/badge/roadmap-74%2F75%20done-80ff20?style=for-the-badge"></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-555555?style=for-the-badge"></a>
 </p>
 <!-- badges:end -->
@@ -30,9 +30,10 @@
   <a href="#faq">FAQ</a>
 </p>
 
-Place a camera in the world with `/cctv create lobby`, open `http://your-server:8100/cam/lobby` and watch the
-live picture: players walking, mobs with their animations, doors opening, blocks being placed, rain and sunsets —
-20 updates a second, in any browser, on any device.
+Place a camera with `/cctv create lobby`, open `http://your-server:8100/cam/lobby` and watch it live — 20 updates
+a second, in any browser, on any device. Blocks, mobs, particles, the sky and the game's font are drawn like
+Minecraft 26.3 from its own `client.jar`, with 3D sounds and background music, shaders and post effects, a video
+wall, recordings and timelapses, and your worlds' custom paintings, discs and resource packs.
 
 ## What you get
 
@@ -125,9 +126,18 @@ connection. A camera nobody watches costs nothing.
 <td colspan="2"><img src="docs/images/screenshots/effects.jpg" width="100%" alt="The same scene with the 11 built-in post effects: cinematic, film noir, thermal camera, night vision, VHS tape, dome camera, tilt-shift, comic book, retro, dreamy glow and vivid"><br>
 <sub><b>Built-in post effects</b> — Settings › Post effect, or a default for everybody in the config.</sub></td>
 </tr>
+<tr>
+<td colspan="2"><img src="docs/images/screenshots/ui.jpg" width="100%" alt="The viewer with its settings open and the Now Playing toast of a song, all written in the game's font"><br>
+<sub><b>The game's font everywhere</b> — the HUD, buttons and settings, and the Now Playing toast of the background music.</sub></td>
+</tr>
+<tr>
+<td colspan="2"><img src="docs/images/screenshots/list.jpg" width="100%" alt="The camera list page in the game's font"><br>
+<sub><b>Camera list</b> — every camera of the server, or all of them at once as a video wall.</sub></td>
+</tr>
 </table>
 
-<sub>All pictures are screenshots of the viewer taken by CI from a real 26.3 server.</sub>
+<sub>All pictures are screenshots of the viewer taken by CI from a real 26.3 server running the latest release
+(the <code>screenshots</code> workflow).</sub>
 
 ## Quick start
 
@@ -181,7 +191,7 @@ at once as a video wall.
 ## Roadmap
 
 <!-- roadmap:start -->
-<p align="center"><img src="docs/images/roadmap/banner.svg" width="100%" alt="CCTV roadmap: 73 of 74 done"></p>
+<p align="center"><img src="docs/images/roadmap/banner.svg" width="100%" alt="CCTV roadmap: 74 of 75 done"></p>
 
 What is done and what comes next, milestone by milestone (the full plan with its principles is in
 [docs/ROADMAP.md](docs/ROADMAP.md)).
@@ -219,10 +229,10 @@ What is done and what comes next, milestone by milestone (the full plan with its
 
 </details>
 
-<img src="docs/images/roadmap/1-3.svg" width="100%" alt="1.3 — 1:1 picture: in progress - 1.3.4 is out, 49 of 49 done">
+<img src="docs/images/roadmap/1-3.svg" width="100%" alt="1.3 — 1:1 picture: in progress - 1.3.4 is out, 50 of 50 done">
 
 <details open>
-<summary><b>1.3 — 1:1 picture</b> · in progress - 1.3.4 is out · 49 of 49 done</summary>
+<summary><b>1.3 — 1:1 picture</b> · in progress - 1.3.4 is out · 50 of 50 done</summary>
 
 - [x] **Reference renders in CI**: a Fabric client game test (`src/gametest`, run under a virtual display with Mesa's software Vulkan) builds a scene in single player and takes the game's own picture from a spectator's eyes, a camera is put at the same eyes and the viewer takes its picture; both are published side by side with a difference score in the job summary and the `reference-renders` artifact
 - [x] **Signs and hanging signs** with their text in the game font (text sent by the server; boards and beds are block models in 26.3 and were already drawn)
@@ -246,6 +256,7 @@ What is done and what comes next, milestone by milestone (the full plan with its
 - [x] The sniffer searching and digging: its sniffs, the digging sound (SnifferSoundInstance) and the pieces and hit sounds of the block under its nose (Sniffer.emitDiggingParticles)
 - [x] Background music (MusicManager: the place's BackgroundMusic, underwater and boss music, the game's pauses and the Music Frequency option)
 - [x] **Now Playing toast** like the game's NowPlayingToast: the song's title in the game's font on the toast sprite, with the animated music notes changing colour, sliding in from the top left for five seconds; the jukebox's rainbow "Now Playing" line in the game's font above where the hotbar would be
+- [x] **The pages in the game's font**: a web font the server builds from the game's glyph sheets (bold like the game's bold, resource packs included) for the camera list, the buttons, the settings and the HUD, whose lines sit on translucent grey boxes like the debug screen
 - [x] **The Immersive Music Mod** (TIMM) on the server: its biome and End playlists, its fading when the camera's biome has none of the playing song, and its structure music (villages, ancient cities, strongholds... found by the server around the camera like the mod does for players), with its song names on the toast
 - [x] **Particles** from `particles/*.json` and their textures: torch, candle and campfire flames and smoke, lava pops, drips, portal, falling leaves, spore blossoms, fireflies
 - [x] **Particles from the server**: broken blocks (pieces of the block's texture), explosions and their smoke, the particles the server sends (`ClientboundLevelParticlesPacket`: crits, sweeps, hearts, dust...), level events (dispenser smoke, bone meal, lava fizz), death and spawn poofs, love hearts, villager moods and potion effect swirls
@@ -381,6 +392,9 @@ block above the head at the game's scale, with the translucent background, lit l
 dimmed for sneaking players. They follow the game's rules (players within 64 blocks, 32 when
 sneaking; mobs whose custom name is set to always show) and are only drawn for entities the camera
 can really see. "Mob labels" adds tags for every other mob (its custom name or its type).
+The pages themselves — the camera list, the HUD, the buttons and the settings — are written in the same font:
+the server builds a web font from the game's glyph sheets (and a bold one like the game's bold), so resource
+packs that change the font change the pages too.
 
 ### Shaders, post effects and sky boxes
 
@@ -447,38 +461,7 @@ few seconds after the camera's biome stops having the song, and the song of a st
 
 ## How it works
 
-```mermaid
-flowchart LR
-    subgraph server["Minecraft server (Fabric, no GPU)"]
-        world["Loaded chunks<br/>entities · block changes<br/>light · weather · sounds"]
-        disk["Region files<br/>(unloaded terrain)"]
-        jar["client.jar + resource packs<br/>textures · models · sounds"]
-        session["Camera session<br/>sections in the view cone"]
-        world --> session
-        disk --> session
-    end
-    subgraph browser["Browser (WebGL2)"]
-        mesher["Web Workers<br/>section meshes like the game"]
-        gpu["GPU<br/>lightmap · fog · sky · mobs · particles"]
-        cache[("IndexedDB<br/>section cache")]
-        mesher --> gpu
-        cache --> mesher
-    end
-    session -- "Server-Sent Events<br/>20× per second" --> mesher
-    jar -- "HTTP, cached" --> gpu
-```
-
-```
-Server (no GPU)                                      Browser (WebGL2)
-────────────────────────                             ──────────────────────────────
-main thread: copy of sections (palette, light) ─┐
-worker threads: decoding, JSON, region files    ├─► Web Workers: section meshes like SectionCompiler
-block change (mixin) ──► "blocks" right away    │     (models from client.jar, AO, biomes, fluids)
-every tick ──► entities (position, walk         └─► GPU: section regions, 26.3 lightmap, fog,
-               animation, variants, equipment…)       sky, clouds, weather, End, mob models
-every 5 ticks ──► environment attributes at the camera
-               (sky, fog, light, sun, rain, End flashes)
-```
+<p align="center"><img src="docs/images/how-it-works.svg" width="100%" alt="How CCTV works: the Minecraft server reads the world (loaded chunks and region files, no GPU); a camera session sends only the sections the camera sees, with light, mobs, weather and sounds, as server-sent events 20 times a second; the browser meshes the blocks in web workers and draws them with WebGL2 like the game, with textures, models, sounds and the font from client.jar and resource packs"></p>
 
 - Data flows over **Server-Sent Events** (plain HTTP, works through proxies and nginx).
 - The server never loads chunks: it reads loaded ones and takes the rest from the saved files (the
@@ -516,6 +499,9 @@ All endpoints support CORS and `?token=` (when a token is set).
 | `GET /assets/misc/{path}.png` | Textures of `textures/misc` (the entity shadow) |
 | `GET /assets/painting/{name}.png` | Paintings (`{namespace}:{name}` for the paintings of data packs) |
 | `GET /assets/font/{path}` | The game's font (`default.json`, glyph sheets such as `ascii.png`) |
+| `GET /assets/font/minecraft.ttf`, `minecraft-bold.ttf` | The game's font as a web font, built from its glyph sheets (the pages use it) |
+| `GET /assets/music.json` | Song titles for the Now Playing toast; The Immersive Music Mod's playlists |
+| `GET /assets/gui/{path}.png` | GUI sprites (the Now Playing toast) |
 | `GET /api/viewer` | Viewer defaults, list of shaders and sky boxes |
 | `GET /custom/shaders/{name}.glsl`, `/custom/skyboxes/...` | Shader and sky box files from `config/cctv` |
 | `GET /skin/{uuid}?name=` | Player skin (PNG, `X-Skin-Model` header) |

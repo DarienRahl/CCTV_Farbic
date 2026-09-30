@@ -1,4 +1,26 @@
+/*
+ * The game's font on every page, built by the server from the glyph sheets the client draws text with
+ * (/assets/font/minecraft.ttf; bold like the game's bold). An em is 8 of the game's pixels, so the sizes here are
+ * multiples of 8px and the text is as sharp as in the game; characters it has no glyph for use the next font.
+ */
+@font-face {
+	font-family: "Minecraft";
+	src: url("/assets/font/minecraft.ttf") format("truetype");
+	font-weight: 400;
+	font-display: swap;
+}
+
+@font-face {
+	font-family: "Minecraft";
+	src: url("/assets/font/minecraft-bold.ttf") format("truetype");
+	font-weight: 700;
+	font-display: swap;
+}
+
 :root {
+	--font: "Minecraft", ui-monospace, "Cascadia Mono", Consolas, monospace;
+	/* Font.drawInBatch's shadow: one pixel down and right, a quarter as bright as white text */
+	--mc-shadow: 0.125em 0.125em 0 #3f3f3f;
 	--bg: #0b0d10;
 	--panel: #14181d;
 	--panel-2: #1b2027;
@@ -20,12 +42,13 @@ html, body {
 	height: 100%;
 	background: var(--bg);
 	color: var(--text);
-	font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+	font: 16px/1.25 var(--font);
+	font-synthesis: none;
+	-webkit-font-smoothing: none;
 }
 
 button, .button {
 	font: inherit;
-	font-size: 13px;
 	color: var(--text);
 	background: var(--panel-2);
 	border: 1px solid var(--border);
@@ -101,7 +124,6 @@ body[data-mode="night"] #view {
 	border: 1px solid var(--border);
 	border-radius: 10px;
 	box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
-	font-size: 13px;
 	z-index: 5;
 }
 
@@ -178,17 +200,31 @@ body.no-signal #noise {
 
 .hud {
 	position: absolute;
-	font: 600 15px/1.35 ui-monospace, "Cascadia Mono", Consolas, monospace;
-	color: var(--hud);
-	text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9), 0 0 6px rgba(0, 0, 0, 0.5);
+	font: 16px/1.125 var(--font);
+	color: #e0e0e0;
 	pointer-events: none;
-	letter-spacing: 0.04em;
 }
 
-.hud .sub {
-	font-size: 12px;
-	font-weight: 500;
-	opacity: 0.85;
+/* each line like the game's debug screen (F3): its text on a translucent grey box, readable on any picture */
+.hud > *,
+.hud.bottom-right,
+.hud.bottom-center {
+	width: fit-content;
+	padding: 0.0625em 0.125em 0;
+	background: rgba(80, 80, 80, 0.56);
+}
+
+.hud.top-right > * {
+	margin-left: auto;
+}
+
+.hud > :empty,
+.hud:empty {
+	display: none;
+}
+
+.hud .cam {
+	color: #fff;
 }
 
 .top-left { top: 12px; left: 14px; }
@@ -198,8 +234,8 @@ body.no-signal #noise {
 #gui {
 	position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; image-rendering: pixelated;
 }
-.bottom-center { bottom: 12px; left: 50%; transform: translateX(-50%); font-size: 12px; font-weight: 500; opacity: 0.85; }
-.bottom-right { bottom: 12px; right: 14px; font-size: 11px; font-weight: 500; opacity: 0.75; }
+.bottom-center { bottom: 12px; left: 50%; transform: translateX(-50%); opacity: 0.85; }
+.bottom-right { bottom: 12px; right: 14px; opacity: 0.75; }
 
 .cam {
 	display: flex;
@@ -242,9 +278,8 @@ body.no-signal #noise {
 	transform: translate(-50%, -50%);
 	width: min(360px, 70%);
 	text-align: center;
-	font: 500 13px ui-monospace, Consolas, monospace;
 	color: var(--hud);
-	text-shadow: 0 1px 2px #000;
+	text-shadow: var(--mc-shadow);
 	pointer-events: none;
 }
 
@@ -272,7 +307,7 @@ body.no-signal #noise {
 	background: rgba(0, 0, 0, 0.7);
 	border: 1px solid var(--border);
 	border-radius: 8px;
-	font-size: 15px;
+	text-shadow: var(--mc-shadow);
 }
 
 #toolbar {
@@ -293,8 +328,9 @@ body.embed .bottom-right {
 	display: none;
 }
 
-body.embed .hud {
-	font-size: 12px;
+body.embed .hud .sub,
+body.embed .bottom-left {
+	font-size: 8px;
 }
 
 body.clean .hud,
@@ -307,9 +343,6 @@ body.clean #noise {
 	display: none !important;
 }
 
-body.embed .hud .sub {
-	font-size: 10px;
-}
 
 /* ---------- camera list ---------- */
 
@@ -329,8 +362,8 @@ body.index header {
 
 body.index h1 {
 	margin: 0;
-	font-size: 22px;
-	letter-spacing: 0.02em;
+	font-size: 32px;
+	text-shadow: var(--mc-shadow);
 	display: flex;
 	align-items: center;
 	gap: 10px;
@@ -362,12 +395,11 @@ body.index header .spacer {
 
 .card .name {
 	font-weight: 700;
-	font-size: 16px;
 	margin-bottom: 6px;
+	text-shadow: var(--mc-shadow);
 }
 
 .card .meta {
-	font: 12px/1.5 ui-monospace, Consolas, monospace;
 	color: var(--muted);
 }
 
@@ -411,7 +443,8 @@ body.index header .spacer {
 		height: auto;
 	}
 
-	.hud {
-		font-size: 12px;
+	.hud .sub,
+	.bottom-right {
+		font-size: 8px;
 	}
 }

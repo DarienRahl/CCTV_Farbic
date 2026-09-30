@@ -1,0 +1,91 @@
+# The README's pictures (docs/images/screenshots): starts a real dedicated server with the mod from the branch
+# it runs on, builds the smoke test's scene, takes the cameras' pictures in headless Chromium and commits them.
+# The release workflow runs it after publishing a release; it can also be run from the Actions tab.
+
+name: screenshots
+on:
+  workflow_dispatch:
+    inputs:
+      commit:
+        description: Commit the new pictures to the branch
+        type: boolean
+        default: true
+  workflow_call:
+    inputs:
+      commit:
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+jobs:
+  screenshots:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: checkout repository
+        uses: actions/checkout@v6
+      - name: setup jdk
+        uses: actions/setup-java@v5
+        with:
+          java-version: '25'
+          distribution: 'microsoft'
+      - name: prepare dedicated server
+        run: |
+          mkdir -p run
+          echo "eula=true" > run/eula.txt
+          cat > run/server.properties <<'PROPS'
+          enable-rcon=true
+          rcon.password=cctv-ci
+          rcon.port=25575
+          online-mode=false
+          level-type=minecraft\:flat
+          generate-structures=false
+          spawn-protection=0
+          view-distance=4
+          simulation-distance=4
+          PROPS
+      - name: start server with the mod
+        run: |
+          chmod +x ./gradlew
+          nohup ./gradlew runServer --no-daemon > server.log 2>&1 &
+      - name: build the scene (smoke test)
+        run: python3 .github/e2e/smoke_test.py
+      - name: take the pictures
+        working-directory: .github/e2e
+        run: |
+          npm install --no-save --no-package-lock playwright@1 > /dev/null
+          npx playwright install --with-deps chromium > /dev/null 2>&1
+          node readme_shots.mjs shots
+      - name: put the pictures together
+        run: |
+          pip install --quiet pillow
+          python3 .github/e2e/readme_images.py .github/e2e/shots docs/images/screenshots
+      - name: stop server
+        if: always()
+        run: |
+          python3 .github/e2e/smoke_test.py --stop || true
+          sleep 10
+      - name: upload pictures
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: screenshots
+          path: |
+            docs/images/screenshots/
+            .github/e2e/shots/*.png
+            server.log
+      - name: commit the pictures
+        if: inputs.commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/images/screenshots
+          if git diff --cached --quiet; then
+            echo "the pictures did not change"
+            exit 0
+          fi
+          version=$(grep '^version=' gradle.properties | cut -d= -f2)
+          git commit -m "Screenshots of CCTV $version"
+          git push

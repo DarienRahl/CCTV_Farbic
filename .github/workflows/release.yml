@@ -70,3 +70,11 @@ jobs:
               echo "Updated notes of $tag"
             fi
           done
+
+  # the README's pictures of the version just released (committed to the branch it was released from)
+  screenshots:
+    needs: release
+    if: github.ref_type == 'branch'
+    uses: ./.github/workflows/screenshots.yml
+    with:
+      commit: true

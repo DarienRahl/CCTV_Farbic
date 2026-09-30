@@ -416,6 +416,17 @@ def main():
     except Exception as e:
         failures.append(f"Now Playing assets unavailable: {e}")
 
+    # the pages' web font, built from the game's glyph sheets (served without a token)
+    try:
+        for name in ("minecraft.ttf", "minecraft-bold.ttf"):
+            with urllib.request.urlopen(f"{WEB}/assets/font/{name}", timeout=60) as response:
+                ttf = response.read()
+            print("web font", name, len(ttf), "bytes", flush=True)
+            if not ttf.startswith(b"\x00\x01\x00\x00") or len(ttf) < 20000:
+                failures.append(f"{name} is not a TrueType font ({len(ttf)} bytes)")
+    except Exception as e:
+        failures.append(f"web font unavailable: {e}")
+
     try:
         models = wait_for_models()
         layers = models.get("layers", {})

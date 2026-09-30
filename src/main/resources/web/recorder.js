@@ -121,21 +121,24 @@ export class Recorder {
 		const g = out.getContext('2d');
 		g.drawImage(this.canvas, 0, 0);
 		const label = this.options.label();
-		const size = Math.max(12, Math.round(height / 36));
+		// the game's font (style.css) at a whole number of its pixels, with its shadow one pixel down and right
+		const size = Math.max(16, Math.round(height / 36 / 8) * 8);
+		const pixel = size / 8;
 		g.save();
 		g.textBaseline = 'top';
-		g.shadowColor = 'rgba(0, 0, 0, 0.9)';
-		g.shadowBlur = size / 4;
-		g.shadowOffsetY = 1;
+		g.shadowColor = '#3f3f3f';
+		g.shadowBlur = 0;
+		g.shadowOffsetX = pixel;
+		g.shadowOffsetY = pixel;
 		const lines = (list, align, x) => {
 			g.textAlign = align;
 			let y = size * 0.8;
 			list.forEach((text, i) => {
 				const small = i > 0;
-				g.font = `${small ? 500 : 600} ${small ? Math.round(size * 0.8) : size}px ui-monospace, Consolas, monospace`;
-				g.fillStyle = small ? 'rgba(255, 255, 255, 0.85)' : '#fff';
+				g.font = `${small ? 400 : 700} ${size}px Minecraft, ui-monospace, Consolas, monospace`;
+				g.fillStyle = small ? '#c6c6c6' : '#fff';
 				g.fillText(text, x, y);
-				y += (small ? size * 0.8 : size) * 1.35;
+				y += size * 1.25;
 			});
 		};
 		lines(label.left || [], 'left', size);
