@@ -45,11 +45,18 @@ sheet.paste(viewer, (width, 0))
 sheet.paste(difference, (width * 2, 0))
 sheet.save(os.path.join(directory, "reference.png"))
 
-jpeg = io.BytesIO()
-sheet.resize((width * 3 // 2, height // 2)).save(jpeg, "JPEG", quality=70)
-encoded = base64.b64encode(jpeg.getvalue()).decode()
-for i in range(0, len(encoded), 4000):
-    print("SHOT:reference:" + encoded[i:i + 4000])
+def shot(name, image, quality):
+    jpeg = io.BytesIO()
+    image.save(jpeg, "JPEG", quality=quality)
+    encoded = base64.b64encode(jpeg.getvalue()).decode()
+    for i in range(0, len(encoded), 4000):
+        print(f"SHOT:{name}:" + encoded[i:i + 4000])
+
+
+shot("reference", sheet.resize((width * 3 // 2, height // 2)), 70)
+# both pictures at full size too, for a closer look from the log
+shot("game", game, 85)
+shot("viewer", viewer, 85)
 
 summary = os.environ.get("GITHUB_STEP_SUMMARY")
 if summary:

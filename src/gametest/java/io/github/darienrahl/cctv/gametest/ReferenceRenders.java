@@ -80,7 +80,15 @@ public class ReferenceRenders implements FabricClientGameTest {
 		// the viewer's defaults: a 70 degree field of view, 96 blocks (6 chunks) of terrain
 		context.runOnClient(client -> {
 			client.options.fov().set(70);
+			// a spectator always flies, which widens the game's view by 10 %; a camera has no such effect
+			client.options.fovEffectScale().set(0.0);
 			client.options.renderDistance().set(6);
+			// the game's own settings the viewer is compared under
+			System.out.println("reference renders, game options: graphics " + client.options.graphicsPreset().get()
+					+ ", clouds " + client.options.cloudStatus().get() + " to " + client.options.cloudRange().get()
+					+ ", gamma " + client.options.gamma().get() + ", smooth lighting " + client.options.ambientOcclusion().get()
+					+ ", biome blend " + client.options.biomeBlendRadius().get() + ", mipmaps " + client.options.mipmapLevels().get()
+					+ ", entity shadows " + client.options.entityShadows().get());
 		});
 		try (TestSingleplayerContext singleplayer = context.worldBuilder().create()) {
 			TestServerContext server = singleplayer.getServer();
