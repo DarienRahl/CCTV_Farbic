@@ -86,10 +86,10 @@ What is done and what comes next, milestone by milestone (the full plan with its
 
 </details>
 
-<img src="docs/images/roadmap/1-3.svg" width="100%" alt="1.3 — 1:1 picture: in progress - 1.3.1 is out, 28 of 35 done">
+<img src="docs/images/roadmap/1-3.svg" width="100%" alt="1.3 — 1:1 picture: in progress - 1.3.2 is out, 28 of 35 done">
 
 <details open>
-<summary><b>1.3 — 1:1 picture</b> · in progress - 1.3.1 is out · 28 of 35 done</summary>
+<summary><b>1.3 — 1:1 picture</b> · in progress - 1.3.2 is out · 28 of 35 done</summary>
 
 - [ ] **Reference renders in CI**: a Fabric client game test builds the CI scene in single player, takes a screenshot from the camera position with the game, and the viewer takes one from the same camera; both are published side by side with a difference score
 - [x] **Signs and hanging signs** with their text in the game font (text sent by the server; boards and beds are block models in 26.3 and were already drawn)
