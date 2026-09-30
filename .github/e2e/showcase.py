@@ -115,6 +115,9 @@ def build(rcon):
                  'text:[{text:"CCTV ",color:"gold",bold:true},{text:"PARTY",color:"light_purple",bold:true}],'
                  'transformation:{translation:[0f,0f,0f],left_rotation:[0f,0f,0f,1f],scale:[1.6f,1.6f,1.6f],'
                  'right_rotation:[0f,0f,0f,1f]}}')
+    # the smoke machine: dragon's breath lying on the dance floor behind the DJ (AreaEffectCloud's particles)
+    rcon.command(f'summon minecraft:area_effect_cloud {X + 0.5} {Y} {Z + 7.5} {{Radius:2.5f,Duration:6000,'
+                 'custom_particle:{type:"minecraft:dragon_breath"}}')
     # the happy ghast, out of sight on the left until it flies over, pigs on its back
     rcon.command(f'summon minecraft:happy_ghast {X - 26} {Y + 7} {Z + 15} {{NoAI:1b,NoGravity:1b,Tags:["show_ghast"],'
                  'Rotation:[-90f,0f],equipment:{body:{id:"minecraft:pink_harness",count:1}},'

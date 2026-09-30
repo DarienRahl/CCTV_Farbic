@@ -69,6 +69,7 @@ own code and read from its `client.jar`.
 All mob models with their variants, armour and equipment, the game's keyframe animations, entity events,
 shadows and name tags in the game's font — and the holograms, mannequins and shelves servers decorate with.
 Players draw bows, raise shields, wear hats and carry parrots, with their team colours over their heads.
+Minecarts ride their rails, stacks pile up on the ground and the world border glows as you come near.
 
 </td>
 <td valign="top">
