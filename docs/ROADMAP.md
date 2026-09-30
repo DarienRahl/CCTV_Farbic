@@ -134,7 +134,8 @@ to the milestone it belongs to. The roadmap on the README page is drawn from thi
 - [x] **Item pieces** (BreakingItemParticle): food and potions while something eats or drinks (Consumable), tools
       and armour that break, with their break sound; snowball, slime and cobweb pieces
 - [x] Sulfur bubbles rising through the water over potent sulfur (SulfurBubbleParticle) with the noxious gas sound
-- [ ] Geysers of potent sulfur: noxious gas clouds and the eruption plumes with their sounds (PotentSulfurBlockEntity)
+- [x] Geysers of potent sulfur: noxious gas over wet and dormant sulfur, the eruption plumes, their foot and
+      puffs with the eruption sounds (PotentSulfurBlockEntity's client tickers, the Geyser and NoxiousGas particles)
 - [x] Fire on burning entities (FlameFeatureRenderer, invisible ones too); invisible mobs show
       their equipment
 - [x] Capes (from the player's Mojang profile, swinging like ClientAvatarState's cloak), elytra

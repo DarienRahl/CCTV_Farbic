@@ -237,6 +237,143 @@ class SmokeParticle extends QuadParticle {
 	}
 }
 
+/** BaseAshSmokeParticle with all its settings (the geysers' particles and the noxious gas). */
+class AshSmokeParticle extends QuadParticle {
+	constructor(level, x, y, z, mx, my, mz, xa, ya, za, scale, sprites, colorRandom, maxLifetime, gravity, physics) {
+		super(level, x, y, z, 0, 0, 0, sprites.first());
+		this.friction = 0.96;
+		this.gravity = gravity;
+		this.speedUpWhenYMotionIsBlocked = true;
+		this.sprites = sprites;
+		this.xd = this.xd * mx + xa;
+		this.yd = this.yd * my + ya;
+		this.zd = this.zd * mz + za;
+		const col = nextFloat() * colorRandom;
+		this.rCol = this.gCol = this.bCol = col;
+		this.quadSize *= 0.75 * scale;
+		this.lifetime = Math.max(1, Math.trunc(maxLifetime / (nextFloat() * 0.8 + 0.2) * scale));
+		this.setSpriteFromAge(sprites);
+		this.hasPhysics = physics;
+	}
+
+	quadSizeAt(a) {
+		return this.quadSize * clamp((this.age + a) / this.lifetime * 32, 0, 1);
+	}
+
+	tick() {
+		super.tick();
+		this.setSpriteFromAge(this.sprites);
+	}
+}
+
+/** NoxiousGasParticle: a white translucent puff over the water of potent sulfur, fading in its second half. */
+class NoxiousGasParticle extends AshSmokeParticle {
+	constructor(level, x, y, z, xa, ya, za, scale, sprites) {
+		super(level, x, y, z, 0.1, 0.1, 0.1, xa, ya, za, scale, sprites, 0.3, 5, -0.02, true);
+		this.rCol = this.gCol = this.bCol = 1;
+		this.lifetime = Math.trunc(6 / (nextFloat() * 0.5 + 0.5) * scale);
+		this.fadeOut = this.lifetime / 2;
+		this.translucent = true;
+	}
+
+	tick() {
+		super.tick();
+		if (this.age > this.fadeOut) this.alpha = (this.lifetime - (this.age - this.fadeOut)) / this.lifetime;
+	}
+}
+
+/** GeyserBaseParticle (geyser_base, geyser_poof): the burst of spray at the foot of an erupting geyser. */
+class GeyserBaseParticle extends AshSmokeParticle {
+	constructor(level, x, y, z, xa, ya, za, waterBlocks, burstBase, sprites) {
+		const burst = burstBase + 0.25 * waterBlocks;
+		super(level, x, y, z, burst, burst, burst, xa, ya, za, 3 + 0.125 * waterBlocks, sprites, 0, 0, 0, true);
+		this.friction = 0.725;
+		this.rCol = this.gCol = this.bCol = 1;
+		this.yd = Math.abs(this.yd);
+		this.lifetime = Math.trunc(25 * (0.8 + 0.2 * nextFloat()));
+	}
+}
+
+/** GeyserPlumeParticle: the column of spray, shot up about five blocks per block of water and slowing near the top. */
+class GeyserPlumeParticle extends QuadParticle {
+	constructor(level, x, y, z, xa, ya, za, waterBlocks, sprites) {
+		super(level, x, y, z, xa, ya, za, sprites.first());
+		const plume = 5 * Math.max(1, waterBlocks);
+		this.hasPhysics = true;
+		this.speedUpWhenYMotionIsBlocked = true;
+		this.lifetime = plume * 5;
+		this.yd = 0;
+		this.startY = y;
+		this.maxY = y + plume - 1;
+		this.sprayX = (nextFloat() - 0.5) * 0.2;
+		this.sprayZ = (nextFloat() - 0.5) * 0.2;
+		this.friction = 1;
+		this.propulsion = (waterBlocks === 1 ? 1.5 : 1) * plume * 1.45;
+		this.gravity = -this.propulsion;
+		const size = this.quadSize * 0.75;
+		this.minSize = size * (2 + plume / 8);
+		this.maxSize = size * (3 + plume / 8);
+		this.quadSize = this.minSize;
+		this.sprites = sprites;
+		this.setSpriteFromAge(sprites);
+		this.done = false;
+	}
+
+	tick() {
+		super.tick();
+		if (!this.done && (this.yd < 0 || this.y > this.maxY || this.y === this.yo)) {
+			this.lifetime = Math.min(this.lifetime, this.age + 5);
+			this.friction = 0;
+			this.done = true;
+		}
+		const linear = clamp((this.y - this.startY) / (this.maxY - this.startY), 0, 1);
+		this.gravity = this.propulsion * linear ** 3 * 0.12;
+		this.xd = linear * this.sprayX;
+		this.zd = linear * this.sprayZ;
+		this.setSpriteFromAge(this.sprites);
+		this.quadSize = this.minSize + linear * (this.maxSize - this.minSize);
+	}
+}
+
+/** GeyserEruptionParticle (geyser): invisible, for a second it feeds the base, the plume and the poofs. */
+class GeyserEruptionParticle extends Particle {
+	constructor(level, x, y, z, xa, ya, za, waterBlocks) {
+		super(level, x, y, z);
+		this.xa = xa; this.ya = ya; this.za = za;
+		this.waterBlocks = waterBlocks;
+		this.lifetime = 20;
+	}
+
+	tick() {
+		super.tick();
+		const add = (type, burst) => this.level.add(type, this.x, this.y, this.z, this.xa, this.ya, this.za, { waterBlocks: this.waterBlocks, burst });
+		if (this.age % 2 === 0) for (let i = 0; i < 2; i++) add('minecraft:geyser_base', 1.5);
+		for (let i = 0; i < this.waterBlocks + 2; i++) add('minecraft:geyser_plume');
+		if (this.age % 10 === 0) for (let i = 0; i < 20; i++) add('minecraft:geyser_poof', 2);
+	}
+}
+
+/** NoxiousGasCloudParticle: invisible, puffs of gas every other tick where the gas reaches from its source. */
+class NoxiousGasCloudParticle extends Particle {
+	constructor(level, x, y, z) {
+		super(level, x, y, z);
+		this.lifetime = 20;
+	}
+
+	tick() {
+		super.tick();
+		if (this.age % 2 !== 0) return;
+		const sx = Math.floor(this.x), sy = Math.floor(this.y), sz = Math.floor(this.z);
+		let dx = nextFloat() - 0.5, dz = nextFloat() - 0.5;
+		const length = Math.hypot(dx, dz) || 1;
+		const distance = nextFloat() * 3;
+		dx = dx / length * distance;
+		dz = dz / length * distance;
+		const px = sx + 0.5 + dx, py = sy + 0.5 - 0.25, pz = sz + 0.5 + dz;
+		if (noxiousGasReaches(this.level, sx, sy, sz, px, py, pz)) this.level.add('minecraft:noxious_gas', px, py, pz, 0, 0, 0);
+	}
+}
+
 class LavaParticle extends QuadParticle {
 	constructor(level, x, y, z, sprite) {
 		super(level, x, y, z, 0, 0, 0, sprite);
@@ -1190,7 +1327,8 @@ class BreakingItemParticle extends QuadParticle {
 }
 
 /** Particles drawn with the block atlas or not at all, which have no sprite set of their own. */
-const NO_SPRITES = new Set(['block', 'block_crumble', 'dust_pillar', 'explosion_emitter', 'item', 'item_snowball', 'item_slime', 'item_cobweb']);
+const NO_SPRITES = new Set(['block', 'block_crumble', 'dust_pillar', 'explosion_emitter', 'item', 'item_snowball', 'item_slime', 'item_cobweb',
+	'geyser', 'noxious_gas_cloud']);
 /** ParticleType.getOverrideLimiter: drawn however far from the camera. */
 const OVERRIDE_LIMITER = new Set(['explosion', 'explosion_emitter', 'elder_guardian', 'sonic_boom', 'gust', 'gust_emitter_large', 'gust_emitter_small']);
 /** BlockBehaviour.Properties.noTerrainParticles and the moving piston: no pieces when broken. */
@@ -1265,6 +1403,13 @@ const PROVIDERS = {
 	portal: (l, x, y, z, xa, ya, za, s) => new PortalParticle(l, x, y, z, xa, ya, za, s.random()),
 	reverse_portal: (l, x, y, z, xa, ya, za, s) => new ReversePortalParticle(l, x, y, z, xa, ya, za, s.random()),
 	bubble: (l, x, y, z, xa, ya, za, s) => new BubbleParticle(l, x, y, z, xa, ya, za, s.random(), false),
+	noxious_gas: (l, x, y, z, xa, ya, za, s) => new NoxiousGasParticle(l, x, y, z, xa, ya, za, 3, s),
+	noxious_gas_cloud: (l, x, y, z) => new NoxiousGasCloudParticle(l, x, y, z),
+	geyser: (l, x, y, z, xa, ya, za, s, o) => new GeyserEruptionParticle(l, x, y, z, xa, ya, za, waterBlocksOf(o)),
+	geyser_base: (l, x, y, z, xa, ya, za, s, o) => geyserBase(l, x, y, z, xa, ya, za, o, 1.5, s),
+	geyser_poof: (l, x, y, z, xa, ya, za, s, o) => geyserBase(l, x, y, z, xa, ya, za, o, 2, s),
+	geyser_plume: (l, x, y, z, xa, ya, za, s, o) => new GeyserPlumeParticle(l, x + (nextFloat() - 0.5) * 0.2, y + nextFloat(),
+		z + (nextFloat() - 0.5) * 0.2, xa, ya, za, waterBlocksOf(o), s),
 	// SulfurBubbleParticle.Provider passes its first two speeds on as the sideways ones
 	sulfur_bubbles: (l, x, y, z, xa, ya, za, s) => new SulfurBubbleParticle(l, x, y, z, xa, ya, s.random()),
 	bubble_column_up: (l, x, y, z, xa, ya, za, s) => new BubbleParticle(l, x, y, z, xa, ya, za, s.random(), true),
@@ -1439,6 +1584,50 @@ function weatherColumn(columns, x, z) {
 /** Block.isFaceSturdy for the face towards a direction, approximated by a full collision box. */
 const sturdy = info => !!(info && info.f & FLAG_FULL_COLLISION);
 const isAir = info => !info || !!(info.f & FLAG_AIR);
+/** GeyserParticleOptions.waterBlocks (from the client's own geysers, or the codec's "water_blocks") */
+const waterBlocksOf = o => Math.max(1, Number(o && (o.waterBlocks ?? o.water_blocks)) || 1);
+
+/** GeyserBaseParticle.Provider: a little off the given point */
+function geyserBase(level, x, y, z, xa, ya, za, o, burst, sprites) {
+	return new GeyserBaseParticle(level, x + (nextFloat() - 0.5) * 0.5, y + (nextFloat() - 0.5) * 0.5 + 0.2, z + (nextFloat() - 0.5) * 0.5,
+		xa, ya, za, waterBlocksOf(o), o && o.burst !== undefined ? o.burst : burst, sprites);
+}
+
+const isWaterSource = at => !!(at && at.f & FLAG_WATER && !(at.lv > 0 && at.lv < 8));
+
+/** PotentSulfurBlockEntity.isGeyserPassableBlock: air, water or a block without collision */
+const geyserPassable = at => isAir(at) || at.n === 'minecraft:water' || !!(at.f & FLAG_NO_COLLISION) || !(at.b && at.b.length);
+
+/** PotentSulfurBlockEntity.findNoxiousGasSourceBlock: the first block over the water above the sulfur, or null */
+function noxiousGasSource(level, x, y, z) {
+	for (let yy = y + 1; yy <= y + 5; yy++) {
+		const at = level.info(x, yy, z);
+		if (!isWaterSource(at) || (at.n !== 'minecraft:water' && !geyserPassable(at))) {
+			return isAir(at) || geyserPassable(at) ? yy : null;
+		}
+	}
+	return null;
+}
+
+/** PotentSulfurBlockEntity.canBeReachedByNoxiousGas: open, within 3 blocks, over water that sees the source's water */
+function noxiousGasReaches(level, sx, sy, sz, px, py, pz) {
+	if (!geyserPassable(level.info(Math.floor(px), Math.floor(py), Math.floor(pz)))) return false;
+	if ((px - sx - 0.5) ** 2 + (py - sy - 0.5) ** 2 + (pz - sz - 0.5) ** 2 > 9) return false;
+	if (!isWaterSource(level.info(Math.floor(px), Math.floor(py - 1), Math.floor(pz)))) return false;
+	// Level.clip with the blocks' collision shapes from under the source to under the point
+	const ax = sx + 0.5, ay = sy - 0.5, az = sz + 0.5, bx = px, by = py - 1, bz = pz;
+	const steps = Math.ceil(Math.hypot(bx - ax, by - ay, bz - az) * 8);
+	for (let i = 1; i < steps; i++) {
+		const t = i / steps;
+		const x = ax + (bx - ax) * t, y = ay + (by - ay) * t, z = az + (bz - az) * t;
+		const at = level.info(Math.floor(x), Math.floor(y), Math.floor(z));
+		if (!at || at.f & FLAG_NO_COLLISION) continue;
+		const fx = x - Math.floor(x), fy = y - Math.floor(y), fz = z - Math.floor(z);
+		for (const b of at.b || []) if (fx >= b[0] && fx <= b[3] && fy >= b[1] && fy <= b[4] && fz >= b[2] && fz <= b[5]) return false;
+	}
+	return true;
+}
+
 /** BlockState.is(tag) for the tags the server lists with the block (BlockPalette.viewerTags). */
 const hasTag = (info, tag) => !!(info && info.tg && info.tg.includes(tag));
 
@@ -1963,6 +2152,9 @@ export class Particles {
 		this.renderTick = 0;
 		/** Pandas that were sneezing in the last tick (Panda.afterSneeze when it stops) */
 		this.sneezing = new Set();
+		/** PotentSulfurBlockEntity.eruptionTick by block ("x,y,z") */
+		this.eruptions = new Map();
+		this.gameTime = 0;
 	}
 
 	/** Sprite sets from particles/*.json and one atlas of textures/particle (from the asset bundle). */
@@ -2038,6 +2230,8 @@ export class Particles {
 		this.camera = camera;
 		this.tickWeatherEffects(level, camera, weather, columns, gameTime);
 		if (renderTick !== undefined) this.renderTick = renderTick;
+		this.gameTime = Math.floor(gameTime);
+		if (this.eruptions.size > 256) this.eruptions.clear();
 		if (this.delayed.length) {
 			const due = this.delayed.filter(d => d.t <= this.renderTick);
 			this.delayed = this.delayed.filter(d => d.t > this.renderTick);
@@ -2086,6 +2280,10 @@ export class Particles {
 			}
 			const p = props(info);
 			const name = blockName(info);
+			if (name === 'potent_sulfur') {
+				this.geyserTick(level, x, y, z, p, this.gameTime);
+				continue;
+			}
 			if (name === 'trial_spawner' || name === 'vault') {
 				// TrialSpawner.tickClient / VaultBlockEntity.Client.playIdleSounds (a vault with its item on show)
 				const on = name === 'vault' ? p.vault_state === 'active' || p.vault_state === 'unlocking'
@@ -2101,6 +2299,30 @@ export class Particles {
 			if (nextFloat() < 0.11) {
 				for (let i = 0; i < nextInt(2) + 2; i++) campfireSmoke(level, x, y, z, p.signal_fire === 'true', false);
 			}
+		}
+	}
+
+	/**
+	 * PotentSulfurBlockEntity's client tickers: noxious gas clouds over wet and dormant sulfur every second, plumes
+	 * every second and the eruption sound every two from erupting and continuous geysers (counted from the
+	 * eruption's start, the block event that begins it, else from when the viewer first saw the block).
+	 */
+	geyserTick(level, x, y, z, p, gameTime) {
+		const state = Object.values(p).find(v => v === 'wet' || v === 'dormant' || v === 'erupting' || v === 'continuous');
+		if (!state) return;
+		const source = noxiousGasSource(level, x, y, z);
+		if (source === null) return;
+		if (state === 'wet' || state === 'dormant') {
+			if (gameTime % 20 === 0) this.add(level, 'minecraft:noxious_gas_cloud', x + 0.5, source + 0.5, z + 0.5, 0, 0, 0);
+			return;
+		}
+		const key = x + ',' + y + ',' + z;
+		if (!this.eruptions.has(key)) this.eruptions.set(key, gameTime);
+		const time = gameTime - this.eruptions.get(key);
+		if (time % 20 === 0) this.add(level, 'minecraft:geyser', x + 0.5, source, z + 0.5, 0, 0, 0, { waterBlocks: source - y - 1 });
+		if (time % 40 === 0) {
+			level.sound(state === 'continuous' ? 'minecraft:block.potent_sulfur.geyser_continuous_eruption_active'
+				: 'minecraft:block.potent_sulfur.geyser_eruption_active', x + 0.5, source + 0.5, z + 0.5, 'block', 1, 1);
 		}
 	}
 
@@ -2345,6 +2567,11 @@ export class Particles {
 	 * head instruments are not tuned), coloured by its note.
 	 */
 	blockEvent(level, [, x, y, z, block]) {
+		if (block === 'minecraft:potent_sulfur') {
+			// PotentSulfurBlock.triggerEvent: the eruption starts now
+			this.eruptions.set(x + ',' + y + ',' + z, this.gameTime);
+			return;
+		}
 		if (block !== 'minecraft:note_block') return;
 		const info = level.info(x, y, z);
 		const p = info ? props(info) : {};

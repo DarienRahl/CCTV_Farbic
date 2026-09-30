@@ -152,7 +152,7 @@ export class World {
 			this.entries.push(entry);
 			this.raw[entry.id] = entry;
 			this.infos[entry.id] = describeState(entry, parseProps, blockFaceColors);
-			if (/^minecraft:((soul_)?campfire|spawner|trial_spawner|vault)$/.test(entry.n || '')) this.tickerIds.add(entry.id);
+			if (/^minecraft:((soul_)?campfire|spawner|trial_spawner|vault|potent_sulfur)$/.test(entry.n || '')) this.tickerIds.add(entry.id);
 		}
 		this.broadcast({ type: 'palette', entries });
 	}

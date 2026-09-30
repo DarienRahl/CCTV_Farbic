@@ -337,3 +337,9 @@ net/minecraft/client/resources/sounds/SnifferSoundInstance
 # sulfur bubbles (particles.js SulfurBubbleParticle, animateBlock potent_sulfur)
 net/minecraft/client/particle/SulfurBubbleParticle
 net/minecraft/world/level/block/PotentSulfurBlock
+net/minecraft/world/level/block/entity/PotentSulfurBlockEntity
+net/minecraft/client/particle/NoxiousGasParticle
+net/minecraft/client/particle/NoxiousGasCloudParticle
+net/minecraft/client/particle/GeyserEruptionParticle
+net/minecraft/client/particle/GeyserBaseParticle
+net/minecraft/client/particle/GeyserPlumeParticle
