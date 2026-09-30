@@ -663,6 +663,25 @@ function sulfurLit(e) {
 	return fuse > 0 && tntLit(fuse);
 }
 
+/**
+ * The renderers with a CustomHeadLayer and its transforms (y offset of items, of skulls, horizontal and vertical
+ * scale): the default for humanoid mobs (those with armour), villagers', piglins' and sulfur cubes' own.
+ */
+const VILLAGER_HEAD = { y: -0.1171875, skullY: -0.07421875, h: 1, v: 1 };
+const PIGLIN_HEAD = { y: 0, skullY: 0, h: 1.0019531, v: 1 };
+const CUSTOM_HEADS = {
+	default: { y: 0, skullY: 0, h: 1, v: 1 },
+	villager: VILLAGER_HEAD, zombie_villager: VILLAGER_HEAD,
+	piglin: PIGLIN_HEAD, piglin_brute: PIGLIN_HEAD, zombified_piglin: PIGLIN_HEAD,
+	sulfur_cube: { y: 0, skullY: 0.625, h: 0.84210527, v: 0.84210527, cutout: true },
+	wandering_trader: { y: 0, skullY: 0, h: 1, v: 1 }, copper_golem: { y: 0, skullY: 0, h: 1, v: 1 },
+	vindicator: { y: 0, skullY: 0, h: 1, v: 1 }, evoker: { y: 0, skullY: 0, h: 1, v: 1 },
+	pillager: { y: 0, skullY: 0, h: 1, v: 1 }, illusioner: { y: 0, skullY: 0, h: 1, v: 1 },
+};
+
+/** LivingEntityRenderer.sleepDirectionToRotation: the bed's direction as a yaw. */
+const SLEEP_ROTATION = { south: 90, west: 0, north: 270, east: 180 };
+
 /** PlayerModel.bodyParts, in the order getRandomBodyPart picks from. */
 const STUCK_BODY_PARTS = ['head', 'body', 'left_arm', 'right_arm', 'left_leg', 'right_leg'];
 
@@ -1732,25 +1751,41 @@ export class EntityRenderer {
 		if (avatar && (e.sneak || e.pose === 'crouching')) translate(m, 0, -2 / 16 * (e.scale || 1), 0);
 		const entityScale = e.scale || 1;
 		scale(m, entityScale);
-		const body = e.body ?? e.yaw ?? 0;
+		let body = e.body ?? e.yaw ?? 0;
+		const d = e.d || {};
+		// LivingEntityRenderer.isShaking: frozen in powder snow, and the renderers' own (converting zombies, piglins
+		// and hoglins, skeletons turning into strays, a cold strider)
+		if (d.frozen || d.converting || (d.shaking && def.anim === 'skeleton') || (type === 'strider' && d.cold)) {
+			body += Math.cos(Math.floor(age) * 3.25) * Math.PI * 0.4;
+		}
+		// LivingEntityRenderer.getFlipDegrees (spiders, silverfish and endermites roll onto their backs)
+		const flip = def.flip || 90;
 		if (def.squid) {
 			translate(m, 0, e.baby ? 0.25 : 0.5, 0);
 			rotate(m, 1, (180 - body) * DEG);
 			translate(m, 0, e.baby ? -0.6 : -1.2, 0);
 		} else if (e.pose !== 'sleeping') {
 			rotate(m, 1, (180 - body) * DEG);
-			if (avatar) this.avatarRotations(e, m, world, anim);
 		}
+		// AvatarRenderer.isEntityUpsideDown: players and mannequins only while they show their cape
+		const upsideDown = (e.name === 'Dinnerbone' || e.name === 'Grumm') && (!avatar || e.parts === undefined || !!(e.parts & 1));
 		if (e.dead && e.deathTime > 0) {
 			const fall = Math.min(1, Math.sqrt(Math.max(0, (e.deathTime - 1) / 20 * 1.6)));
-			rotate(m, 2, fall * 90 * DEG);
+			rotate(m, 2, fall * flip * DEG);
+		} else if (e.spin) {
+			// a riptide trident's spin
+			rotate(m, 0, (-90 - (e.pitch || 0)) * DEG);
+			rotate(m, 1, age * -75 * DEG);
 		} else if (e.pose === 'sleeping') {
-			rotate(m, 2, 90 * DEG);
+			// the bed's direction (sleepDirectionToRotation), else the body's
+			rotate(m, 1, (e.bed ? SLEEP_ROTATION[e.bed] ?? 0 : body) * DEG);
+			rotate(m, 2, flip * DEG);
 			rotate(m, 1, 270 * DEG);
-		} else if (e.name === 'Dinnerbone' || e.name === 'Grumm') {
+		} else if (upsideDown) {
 			translate(m, 0, ((e.h || 1) + 0.1) / entityScale, 0);
 			rotate(m, 2, Math.PI);
 		}
+		if (avatar && e.pose !== 'sleeping') this.avatarRotations(e, m, world, anim);
 		if (def.walkRoll && anim.walkSpeed >= 0.01) {
 			// IronGolemRenderer.setupRotations: the golem rocks from side to side while walking.
 			const wave = (Math.abs((anim.walk + 6) % 13 - 6.5) - 3.25) / 3.25;
@@ -1860,16 +1895,27 @@ export class EntityRenderer {
 				this.emitItem(mesh, bm, sulfurLit(e) ? { ...style, overlay: [0, 1] } : style);
 			}
 		}
+		// CustomHeadLayer: a skull or any item worn on the head
+		const headTransforms = CUSTOM_HEADS[type] || (def.armor ? CUSTOM_HEADS.default : null);
+		if (headTransforms && (e.skull || e.helm)) this.drawCustomHead(e, base, m, style, headTransforms);
+		if (def.player && (e.shoulderL || e.shoulderR)) this.drawShoulderParrots(e, m, style, anim);
+		if (def.player && e.spin) this.drawSpinAttack(m, style, age);
 		// ArrowLayer, BeeStingerLayer
 		if (def.player && e.arrows) this.drawStuckInBody(e, base, m, style, 'minecraft:arrow#main', 'projectiles/arrow', e.arrows, false);
 		if (def.player && e.stingers) this.drawStuckInBody(e, base, m, style, 'minecraft:bee_stinger#main', 'bee/bee_stinger', e.stingers, true);
 
-		// Held items (ItemInHandLayer).
-		if (e.hand && base.parts.right_arm && base.parts.right_arm.visible) {
-			this.drawHeld(base, m, 'right_arm', e.handModel || e.hand, e.foil & FOIL_HAND ? { ...style, glint: GLINT_ITEM } : style, 1, e.handPatterns, e.handP);
+		// Held items (ItemInHandLayer): the main hand's in the right hand, or the left of a left-handed mob or player
+		const held = [
+			{ item: e.handModel || e.hand, foil: e.foil & FOIL_HAND, patterns: e.handPatterns, props: e.handP },
+			{ item: e.offhandModel || e.offhand, foil: e.foil & FOIL_OFFHAND, patterns: e.offhandPatterns, props: e.offhandP },
+		];
+		if (e.mainArm === 'left') held.reverse();
+		const [inRight, inLeft] = held;
+		if (inRight.item && base.parts.right_arm && base.parts.right_arm.visible) {
+			this.drawHeld(base, m, 'right_arm', inRight.item, inRight.foil ? { ...style, glint: GLINT_ITEM } : style, 1, inRight.patterns, inRight.props, e.armR === 'block');
 		}
-		if (e.offhand && base.parts.left_arm && base.parts.left_arm.visible) {
-			this.drawHeld(base, m, 'left_arm', e.offhandModel || e.offhand, e.foil & FOIL_OFFHAND ? { ...style, glint: GLINT_ITEM } : style, -1, e.offhandPatterns, e.offhandP);
+		if (inLeft.item && base.parts.left_arm && base.parts.left_arm.visible) {
+			this.drawHeld(base, m, 'left_arm', inLeft.item, inLeft.foil ? { ...style, glint: GLINT_ITEM } : style, -1, inLeft.patterns, inLeft.props, e.armL === 'block');
 		}
 
 		// CarriedBlockLayer: the block an enderman holds in front of it
@@ -2091,7 +2137,82 @@ export class EntityRenderer {
 		return mesh;
 	}
 
-	/** AvatarRenderer.setupRotations: players lie down while swimming, crawling and gliding with elytra. */
+	/**
+	 * CustomHeadLayer: a skull or head worn on the head, 1.1875 times its block size (a player head with its owner's
+	 * skin), or any other item there in its "head" display transform, both scaled and moved by the renderer's
+	 * transforms (villagers, piglins and sulfur cubes have their own).
+	 */
+	drawCustomHead(e, base, m, style, t) {
+		const hm = Float32Array.from(m);
+		scale(hm, t.h, t.v, t.h);
+		// HeadedModel.translateToHead (a sulfur cube's head is its cube)
+		const pm = partMatrix(base, base.parts.head ? 'head' : 'cube', hm);
+		if (!pm) return;
+		scale(pm, 16);
+		if (e.skull) {
+			const kind = SPECIAL_HEADS[e.skull.t] || SPECIAL_HEADS.skeleton;
+			const model = this.library.get('minecraft:' + kind[0] + '#main');
+			const owner = e.skull.t === 'player' && (e.skull.id || e.skull.name);
+			const texture = owner ? this.skin(e.skull.id || 'name:' + e.skull.name, e.skull.name).texture : this.texture(kind[1]);
+			if (!model || !texture) return;
+			model.reset();
+			translate(pm, 0, t.skullY, 0);
+			scale(pm, 1.1875);
+			const start = this.sink.mark();
+			emitModel(this.sink, model, pm, style);
+			// a player's skin as a translucent (the renderer's cutout for sulfur cubes), the other skulls cutout
+			this.batch(texture, owner && !t.cutout ? MODE_TRANSLUCENT : MODE_CUTOUT, start, true);
+			return;
+		}
+		const mesh = this.itemMesh(e.helmModel || e.helm, e.helmP, 'head');
+		if (!mesh) return;
+		translate(pm, 0, -0.25 + t.y, 0);
+		rotate(pm, 1, Math.PI);
+		scale(pm, 0.625, -0.625, -0.625);
+		this.applyDisplay(pm, this.displayTransform(e.helm, 'head', {}, mesh.modelId), false);
+		this.emitItem(mesh, pm, e.foil & FOIL_ARMOR ? { ...style, glint: GLINT_ITEM } : style, e.helmPatterns);
+	}
+
+	/**
+	 * ParrotOnShoulderLayer: the parrots a player carries, sitting on their shoulders in the ON_SHOULDER pose and
+	 * looking where the player looks.
+	 */
+	drawShoulderParrots(e, m, style, anim) {
+		const model = this.library.get('minecraft:parrot#main');
+		if (!model) return;
+		const parrot = { type: 'minecraft:parrot', d: {} };
+		const pose = describeMob(parrot);
+		if (!pose || !pose.anim) return;
+		const crouching = !!(e.sneak || e.pose === 'crouching');
+		for (const [variant, left] of [[e.shoulderL, true], [e.shoulderR, false]]) {
+			if (!variant) continue;
+			const texture = this.texture('parrot/parrot_' + variant.replace(/^gray$/, 'grey'));
+			if (!texture) continue;
+			model.reset();
+			pose.anim(model.parts, { ...anim, shoulder: true, party: false, isBase: true }, parrot);
+			const pm = Float32Array.from(m);
+			translate(pm, left ? 0.4 : -0.4, crouching ? -1.3 : -1.5, 0);
+			const start = this.sink.mark();
+			emitModel(this.sink, model, pm, style);
+			this.batch(texture, MODE_CUTOUT, start, true);
+		}
+	}
+
+	/** SpinAttackEffectLayer: the two whirls around a player spinning with a riptide trident, turning each its own way. */
+	drawSpinAttack(m, style, age) {
+		const model = this.library.get('minecraft:spin_attack#main');
+		const texture = this.texture('trident/trident_riptide');
+		if (!model || !texture) return;
+		model.reset();
+		for (let i = 0; i < 2; i++) {
+			const box = model.parts['box' + i];
+			if (box) box.yRot = wrapDegrees(age * -(45 + (i + 1) * 5)) * DEG;
+		}
+		const start = this.sink.mark();
+		emitModel(this.sink, model, m, style);
+		this.batch(texture, MODE_NOCULL, start, false);
+	}
+
 	/**
 	 * StuckInBodyLayer: arrows or bee stingers stuck in a player or mannequin, each in a body part and one of its
 	 * cubes picked by a random seeded with the entity's id (so they stay where they are), pointing out of it; an
@@ -2135,11 +2256,12 @@ export class EntityRenderer {
 		this.batch(texture, MODE_CUTOUT, start, true);
 	}
 
+	/** AvatarRenderer.setupRotations: players lie down while swimming, crawling and gliding with elytra. */
 	avatarRotations(e, m, world, anim) {
 		const pitch = e.pitch || 0;
 		if (e.pose === 'fall_flying') {
 			const t = e.flyingTicks || 0;
-			rotate(m, 0, Math.min(1, t * t / 100) * (-90 - pitch) * DEG);
+			if (!e.spin) rotate(m, 0, Math.min(1, t * t / 100) * (-90 - pitch) * DEG);
 		} else if (anim.swimAmount > 0) {
 			const info = world.infoAt(Math.floor(e.x), Math.floor(e.y + 0.5), Math.floor(e.z));
 			const inWater = !!(info && info.water);
@@ -2864,8 +2986,8 @@ export class EntityRenderer {
 		const colon = id.indexOf(':');
 		let current = modelId || id.slice(0, colon) + ':item/' + id.slice(colon + 1);
 		if (!models[current]) current = id.slice(0, colon) + ':block/' + id.slice(colon + 1);
-		// a special model takes its display transforms from its "base" model
-		const special = this.specialItem(id);
+		// a special model takes its display transforms from its "base" model (unless a model is asked for)
+		const special = modelId ? null : this.specialItem(id);
 		if (special && special.base) current = special.base.includes(':') ? special.base : 'minecraft:' + special.base;
 		for (let depth = 0; current && depth < 16; depth++) {
 			const model = models[current];
@@ -2888,7 +3010,7 @@ export class EntityRenderer {
 		translate(m, -0.5, -0.5, -0.5);
 	}
 
-	drawHeld(model, m, arm, item, style, side, patterns, props = null) {
+	drawHeld(model, m, arm, item, style, side, patterns, props = null, blocking = false) {
 		const shield = isShield(item);
 		const mesh = shield ? null : this.itemMesh(item, props, side > 0 ? 'thirdperson_righthand' : 'thirdperson_lefthand');
 		if (!mesh && !shield) return;
@@ -2900,7 +3022,7 @@ export class EntityRenderer {
 		rotate(pm, 1, 180 * DEG);
 		translate(pm, side / 16, 0.125, -0.625);
 		const slot = side > 0 ? 'thirdperson_righthand' : 'thirdperson_lefthand';
-		if (shield) return this.drawShield(pm, slot, style, patterns);
+		if (shield) return this.drawShield(pm, slot, style, patterns, blocking);
 		const fallback = mesh.kind === 'block'
 			? { rotation: [75, 45, 0], translation: [0, 2.5, 0], scale: [0.375, 0.375, 0.375] }
 			: { rotation: [0, 0, 0], translation: [0, 3, 1], scale: [0.55, 0.55, 0.55] };
@@ -2914,13 +3036,16 @@ export class EntityRenderer {
 	 * the handle and plate with the base texture, then like BannerRenderer.submitPatterns the base colour and
 	 * every pattern layer (entity/shield/<pattern>) over the plate in their dye colours.
 	 */
-	drawShield(m, slot, style, patterns) {
+	drawShield(m, slot, style, patterns, blocking = false) {
 		const model = this.library.get('minecraft:shield#main');
 		if (!model || !model.parts.plate) return;
-		this.applyDisplay(m, this.displayTransform('minecraft:shield', slot, SHIELD_DISPLAY[slot] || {}), slot.endsWith('lefthand'));
+		// items/shield.json: the shield_blocking model's transforms while it is raised
+		const modelId = blocking ? 'minecraft:item/shield_blocking' : null;
+		this.applyDisplay(m, this.displayTransform('minecraft:shield', slot, SHIELD_DISPLAY[slot] || {}, modelId), slot.endsWith('lefthand'));
 		scale(m, 1, -1, -1);
 		const hasPatterns = !!patterns && (!!patterns.b || !!(patterns.p && patterns.p.length));
-		const base = this.texture(hasPatterns ? 'shield/base' : 'shield/base_nopattern');
+		// the plate (Sheets.SHIELD_BASE / SHIELD_BASE_NO_PATTERN)
+		const base = this.texture(hasPatterns ? 'shield/shield_base' : 'shield/shield_base_nopattern');
 		if (!base) return;
 		model.reset();
 		let start = this.sink.mark();
@@ -4301,10 +4426,13 @@ export class EntityRenderer {
 			// Players and mobs whose custom name is always visible, like in the game; every mob with "mob labels".
 			const named = type === 'player' || (!!e.name && !!e.nameVisible);
 			if (named ? !this.showLabels : !this.showMobLabels) continue;
+			// LivingEntityRenderer.shouldShowName: not when its team never shows name tags, nor while it is ridden
+			if (named && (e.tagHidden || (e.d && e.d.ridden))) continue;
 			const height = e.h || 1;
 			const dx = e.x - eye[0], dy = e.y + height - eye[1], dz = e.z - eye[2];
 			const distance = Math.hypot(dx, dy, dz);
-			const limit = !named ? 32 : type === 'player' && e.sneak ? 32 : 64;
+			// the name_tag_distance attribute, 32 blocks for a sneaking player
+			const limit = !named ? 32 : Math.min(e.tagDist ?? 64, type === 'player' && e.sneak ? 32 : Infinity);
 			if (distance >= limit || distance > frame.fogEnd) continue;
 			const rx = e.x - o[0] - cam[0], ry = e.y + height - o[1] - cam[1], rz = e.z - o[2] - cam[2];
 			if (!frame.frustum(rx, ry + 0.6, rz, 2)) continue;
@@ -4313,8 +4441,11 @@ export class EntityRenderer {
 			tags.push({
 				pos: [rx, ry, rz],
 				text: e.name || (this.names && this.names[type]) || titleCase(type),
-				// EntityRenderer.extractNameTags: the text under the name (a mannequin's description) within 10 blocks
-				below: named && e.desc && distance < 10 ? e.desc : null,
+				// the display name's colours and formatting (a team's colour, prefix and suffix, a coloured name)
+				pieces: named && e.nameStyle ? e.nameStyle : null,
+				// EntityRenderer.extractNameTags: the text under the name (a mannequin's description, the scoreboard's
+				// below_name objective) within the below_name_distance attribute (10 blocks)
+				below: named && (e.desc ?? e.below) && distance < (e.belowDist ?? 10) ? e.desc ?? e.below : null,
 				discrete: type === 'player' && !!(e.sneak || e.pose === 'crouching'),
 				light: this.lightFor(e, world),
 			});

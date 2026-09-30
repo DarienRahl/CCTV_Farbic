@@ -112,9 +112,35 @@ final class DisplayEncoder {
 	/** The text as styled pieces (Component.visit), with the line width, opacity, background and flags. */
 	private static void writeText(Json json, Display display) {
 		Component text = get(display, Display.TextDisplay.class, "DATA_TEXT_ID");
-		json.name("tx").beginObject().name("s").beginArray();
+		json.name("tx").beginObject().name("s");
+		writePieces(json, text, MAX_TEXT);
+		Integer width = get(display, Display.TextDisplay.class, "DATA_LINE_WIDTH_ID");
+		if (width != null && width != 200) {
+			json.field("w", width);
+		}
+		Byte opacity = get(display, Display.TextDisplay.class, "DATA_TEXT_OPACITY_ID");
+		if (opacity != null && opacity != -1) {
+			json.field("o", opacity);
+		}
+		Integer background = get(display, Display.TextDisplay.class, "DATA_BACKGROUND_COLOR_ID");
+		if (background != null && background != 0x40000000) {
+			json.field("bg", background);
+		}
+		Byte flags = get(display, Display.TextDisplay.class, "DATA_STYLE_FLAGS_ID");
+		if (flags != null && flags != 0) {
+			json.field("f", flags);
+		}
+		json.endObject();
+	}
+
+	/**
+	 * A text component as styled pieces (Component.visit): {@code [[text, rgb or -1, flags (1 bold, 2 italic,
+	 * 4 underlined, 8 strikethrough, 16 obfuscated), font?], ...]}, at most {@code max} characters.
+	 */
+	static void writePieces(Json json, @Nullable Component text, int max) {
+		json.beginArray();
 		if (text != null) {
-			int[] left = {MAX_TEXT};
+			int[] left = {max};
 			text.visit((style, piece) -> {
 				if (left[0] <= 0) {
 					return Optional.of(Boolean.TRUE);
@@ -133,23 +159,19 @@ final class DisplayEncoder {
 			}, Style.EMPTY);
 		}
 		json.endArray();
-		Integer width = get(display, Display.TextDisplay.class, "DATA_LINE_WIDTH_ID");
-		if (width != null && width != 200) {
-			json.field("w", width);
-		}
-		Byte opacity = get(display, Display.TextDisplay.class, "DATA_TEXT_OPACITY_ID");
-		if (opacity != null && opacity != -1) {
-			json.field("o", opacity);
-		}
-		Integer background = get(display, Display.TextDisplay.class, "DATA_BACKGROUND_COLOR_ID");
-		if (background != null && background != 0x40000000) {
-			json.field("bg", background);
-		}
-		Byte flags = get(display, Display.TextDisplay.class, "DATA_STYLE_FLAGS_ID");
-		if (flags != null && flags != 0) {
-			json.field("f", flags);
-		}
-		json.endObject();
+	}
+
+	/** Whether a text has any colour or formatting (so a plain string does not do). */
+	static boolean isStyled(Component text) {
+		boolean[] styled = {false};
+		text.visit((style, piece) -> {
+			if (!piece.isEmpty() && (style.getColor() != null || flags(style) != 0)) {
+				styled[0] = true;
+				return Optional.of(Boolean.TRUE);
+			}
+			return Optional.empty();
+		}, Style.EMPTY);
+		return styled[0];
 	}
 
 	private static int flags(Style style) {

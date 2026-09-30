@@ -309,11 +309,12 @@ export class TextRenderer {
 			// EntityRenderer.submitNameDisplay: the text under the name first, then the name one line (9 * 1.15
 			// pixels of 0.025) higher
 			if (tag.below) this.nameTag(tag, tag.below, 0, right, up);
-			this.nameTag(tag, tag.text, tag.below ? 9 * 1.15 * NAME_TAG_SCALE : 0, right, up);
+			this.nameTag(tag, tag.text, tag.below ? 9 * 1.15 * NAME_TAG_SCALE : 0, right, up, tag.pieces);
 		}
 	}
 
-	nameTag(tag, text, raise, right, up) {
+	nameTag(tag, text, raise, right, up, pieces = null) {
+		if (pieces) return this.styledNameTag(tag, raise, right, up, pieces);
 		// Attachment + 0.5 up, deadmau5 one line higher; scale(0.025, -0.025, 0.025).
 		const o = [tag.pos[0], tag.pos[1] + 0.5 + raise, tag.pos[2]];
 		const transform = (fx, fy) => [
@@ -329,6 +330,38 @@ export class TextRenderer {
 			// lightCoordsWithEmission(light, 2) for the solid text.
 			this.add(transform, text, x, y, WHITE, [Math.max(tag.light[0], 32), tag.light[1]], 'normal');
 			this.add(transform, text, x, y, SEE_THROUGH_TEXT, tag.light, 'see_through', BACKGROUND);
+		}
+	}
+
+	/**
+	 * A name tag of styled pieces ([text, rgb or -1, flags]): one background under the whole line, each piece in
+	 * its colour (keeping the pass's alpha, like Font's StringRenderOutput), bold and italic.
+	 */
+	styledNameTag(tag, raise, right, up, pieces) {
+		const o = [tag.pos[0], tag.pos[1] + 0.5 + raise, tag.pos[2]];
+		const transform = (fx, fy) => [
+			o[0] + (right[0] * fx - up[0] * fy) * NAME_TAG_SCALE,
+			o[1] + (right[1] * fx - up[1] * fy) * NAME_TAG_SCALE,
+			o[2] + (right[2] * fx - up[2] * fy) * NAME_TAG_SCALE,
+		];
+		const y = tag.text === 'deadmau5' ? -10 : 0;
+		const width = pieces.reduce((sum, piece) => sum + this.styledWidth(piece[0], !!(piece[2] & 1)), 0);
+		const x = -width / 2;
+		const draw = (color, light, mode) => {
+			let px = x;
+			for (const [text, value, flags] of pieces) {
+				const c = value >= 0 ? [(value >> 16 & 255) / 255, (value >> 8 & 255) / 255, (value & 255) / 255, color[3]] : color;
+				this.add(transform, text, px, y, c, light, mode, null, { bold: !!(flags & 1), italic: !!(flags & 2) });
+				px += this.styledWidth(text, !!(flags & 1));
+			}
+		};
+		if (tag.discrete) {
+			this.rect(transform, x - 1, y - 1, x + width, y + 9, BACKGROUND, tag.light, 'normal');
+			draw(SEE_THROUGH_TEXT, tag.light, 'normal');
+		} else {
+			draw(WHITE, [Math.max(tag.light[0], 32), tag.light[1]], 'normal');
+			this.rect(transform, x - 1, y - 1, x + width, y + 9, BACKGROUND, tag.light, 'see_through');
+			draw(SEE_THROUGH_TEXT, tag.light, 'see_through');
 		}
 	}
 

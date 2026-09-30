@@ -370,3 +370,18 @@ net/minecraft/client/renderer/entity/layers/StuckInBodyLayer
 net/minecraft/client/renderer/entity/layers/ArrowLayer
 net/minecraft/client/renderer/entity/layers/BeeStingerLayer
 net/minecraft/client/resources/DefaultPlayerSkin
+# players and what they carry (entities.js drawCustomHead, drawShoulderParrots, drawSpinAttack; mobs.js avatarArms)
+net/minecraft/client/renderer/entity/layers/CustomHeadLayer
+net/minecraft/client/renderer/entity/layers/ParrotOnShoulderLayer
+net/minecraft/client/renderer/entity/layers/SpinAttackEffectLayer
+net/minecraft/client/model/effects/SpinAttackEffectModel
+net/minecraft/client/renderer/entity/layers/Deadmau5EarsLayer
+net/minecraft/client/renderer/entity/HumanoidMobRenderer
+net/minecraft/client/renderer/entity/VillagerRenderer
+net/minecraft/client/renderer/entity/PiglinRenderer
+# sulfur cubes (entities.js def.sulfur, EntityEncoder writeContainedBlock)
+net/minecraft/client/renderer/entity/SulfurCubeRenderer
+net/minecraft/client/renderer/entity/AbstractCubeMobRenderer
+net/minecraft/client/renderer/entity/layers/SulfurCubeInnerLayer
+net/minecraft/client/renderer/entity/TntRenderer
+net/minecraft/client/renderer/entity/MobRenderer

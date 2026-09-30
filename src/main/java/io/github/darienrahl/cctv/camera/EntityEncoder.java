@@ -27,8 +27,10 @@ import net.minecraft.core.particles.ColorParticleOption;
 import net.minecraft.core.particles.ParticleOptions;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
+import net.minecraft.tags.ItemTags;
 import net.minecraft.util.StringRepresentable;
 import net.minecraft.util.Util;
+import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.AnimationState;
 import net.minecraft.world.entity.Avatar;
 import net.minecraft.world.effect.MobEffectInstance;
@@ -41,6 +43,7 @@ import net.minecraft.world.entity.Leashable;
 import net.minecraft.world.entity.LightningBolt;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Pose;
+import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.decoration.ItemFrame;
 import net.minecraft.world.entity.decoration.Mannequin;
 import net.minecraft.world.entity.item.ItemEntity;
@@ -78,6 +81,7 @@ import net.minecraft.world.level.saveddata.maps.MapDecoration;
 import net.minecraft.world.level.saveddata.maps.MapId;
 import net.minecraft.world.level.saveddata.maps.MapItemSavedData;
 import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.scores.Team;
 
 import io.github.darienrahl.cctv.web.Json;
 
@@ -173,6 +177,10 @@ final class EntityEncoder {
 			{"getVillagerData", "villager"},
 			{"isShaking", "shaking"},
 			{"isFullyFrozen", "frozen"},
+			// zombies drowning into drowned, zombie villagers being cured, piglins and hoglins in the overworld
+			// (the renderers' isShaking)
+			{"isUnderWaterConverting", "converting"},
+			{"isConverting", "converting"},
 			{"isDrinkingPotion", "drinking"},
 			{"getIcon", "icon"},
 			{"getRotation", "rotation"},
@@ -334,6 +342,18 @@ final class EntityEncoder {
 			if (living.isSwinging()) {
 				json.field("swing", true);
 			}
+			if (living.isSleeping() && living.getBedOrientation() != null) {
+				// the bed's direction, which a sleeper lies along (LivingEntityRenderer.setupRotations)
+				json.field("bed", living.getBedOrientation().getSerializedName());
+			}
+			if (living.getMainArm() == HumanoidArm.LEFT) {
+				// left-handed (Mob.isLeftHanded, a player's setting): the main hand's item is in the left hand
+				json.field("mainArm", "left");
+			}
+			if (living.isAutoSpinAttack()) {
+				// a riptide trident's spin (LivingEntityRenderer.setupRotations, SpinAttackEffectLayer)
+				json.field("spin", true);
+			}
 			writeItem(json, "hand", living.getMainHandItem());
 			writeItem(json, "offhand", living.getOffhandItem());
 			writePatterns(json, "handPatterns", living.getMainHandItem());
@@ -341,6 +361,7 @@ final class EntityEncoder {
 			writeItem(json, "saddle", living.getItemBySlot(EquipmentSlot.SADDLE));
 			writeItem(json, "bodyArmor", living.getItemBySlot(EquipmentSlot.BODY));
 			writeArmor(json, living);
+			writeHeadItem(json, living);
 			writeEquipment(json, living);
 			writeEffectParticles(json, living);
 			foil = foil(living.getMainHandItem(), FOIL_HAND) | foil(living.getOffhandItem(), FOIL_OFFHAND)
@@ -353,9 +374,15 @@ final class EntityEncoder {
 		if (entity instanceof Avatar avatar) {
 			writeAvatar(json, avatar);
 		}
+		if (entity instanceof LivingEntity living) {
+			writeNameTag(json, living);
+		}
 		if (entity instanceof Player player) {
 			json.field("name", player.getGameProfile().name())
 					.field("uuid", player.getUUID().toString());
+			// ParrotOnShoulderLayer
+			player.getShoulderParrotLeft().ifPresent(variant -> json.field("shoulderL", variant.getSerializedName()));
+			player.getShoulderParrotRight().ifPresent(variant -> json.field("shoulderR", variant.getSerializedName()));
 		} else if (entity.hasCustomName() && entity.getCustomName() != null) {
 			json.field("name", entity.getCustomName().getString());
 			if (entity.isCustomNameVisible()) {
@@ -607,6 +634,7 @@ final class EntityEncoder {
 		if (parts != all) {
 			json.field("parts", parts);
 		}
+		writeArmPoses(json, avatar);
 		if (avatar.getArrowCount() > 0) {
 			json.field("arrows", avatar.getArrowCount());
 		}
@@ -616,6 +644,104 @@ final class EntityEncoder {
 		if (avatar instanceof Mannequin mannequin) {
 			writeMannequin(json, mannequin);
 		}
+	}
+
+	/**
+	 * How the name tag of a player or named mob looks and when it shows (LivingEntityRenderer.shouldShowName,
+	 * EntityRenderer.extractNameTags): {@code "nameStyle"} the display name as styled pieces when it has colours
+	 * or formatting (a team's colour, prefix and suffix, a coloured custom name), {@code "tagHidden"} when its team
+	 * never shows name tags, {@code "below"} the text under it (the scoreboard's below_name objective), and
+	 * {@code "tagDist"}, {@code "belowDist"} the distances they show within when not the default ones.
+	 */
+	private static void writeNameTag(Json json, LivingEntity living) {
+		boolean named = living instanceof Player || living.hasCustomName();
+		if (!named) {
+			return;
+		}
+		Component display = living.getDisplayName();
+		String plain = living instanceof Player player ? player.getGameProfile().name()
+				: living.getCustomName() != null ? living.getCustomName().getString() : "";
+		if (display != null && (DisplayEncoder.isStyled(display) || !display.getString().equals(plain))) {
+			json.name("nameStyle");
+			DisplayEncoder.writePieces(json, display, 256);
+		}
+		Team team = living.getTeam();
+		if (team != null && team.getNameTagVisibility() == Team.Visibility.NEVER) {
+			json.field("tagHidden", true);
+		}
+		Component below = living.belowNameDisplay();
+		if (below != null && !(living instanceof Mannequin)) {
+			json.field("below", below.getString());
+		}
+		double tagDistance = living.getAttributeValue(Attributes.NAME_TAG_DISTANCE);
+		if (tagDistance != 64.0) {
+			json.field("tagDist", tagDistance, 2);
+		}
+		double belowDistance = living.getAttributeValue(Attributes.BELOW_NAME_DISTANCE);
+		if (belowDistance != 10.0) {
+			json.field("belowDist", belowDistance, 2);
+		}
+	}
+
+	/** HumanoidModel.ArmPose that take both arms (isTwoHanded). */
+	private static final Set<String> TWO_HANDED = Set.of("bow_and_arrow", "crossbow_charge", "crossbow_hold");
+
+	/**
+	 * The arm poses of a player or mannequin like AvatarRenderer.getArmPose ({@code "armR"}, {@code "armL"}: item,
+	 * block, bow_and_arrow, throw_trident, crossbow_charge, crossbow_hold, spyglass, toot_horn, brush, spear; empty
+	 * arms are left out) and the item being used: {@code "useHand"} (main or off), {@code "useTicks"} and for a
+	 * crossbow {@code "chargeTicks"}.
+	 */
+	private static void writeArmPoses(Json json, Avatar avatar) {
+		String main = armPose(avatar, InteractionHand.MAIN_HAND);
+		String off = armPose(avatar, InteractionHand.OFF_HAND);
+		if (TWO_HANDED.contains(main)) {
+			off = avatar.getOffhandItem().isEmpty() ? "empty" : "item";
+		}
+		boolean leftHanded = avatar.getMainArm() == HumanoidArm.LEFT;
+		String right = leftHanded ? off : main;
+		String left = leftHanded ? main : off;
+		if (!right.equals("empty")) {
+			json.field("armR", right);
+		}
+		if (!left.equals("empty")) {
+			json.field("armL", left);
+		}
+		if (avatar.isUsingItem()) {
+			json.field("useHand", avatar.getUsedItemHand() == InteractionHand.MAIN_HAND ? "main" : "off")
+					.field("useTicks", avatar.getTicksUsingItem());
+			ItemStack used = avatar.getUseItem();
+			if (used.is(Items.CROSSBOW)) {
+				json.field("chargeTicks", CrossbowItem.getChargeDuration(used, avatar));
+			}
+		}
+	}
+
+	private static String armPose(Avatar avatar, InteractionHand hand) {
+		ItemStack item = avatar.getItemInHand(hand);
+		if (item.isEmpty()) {
+			return "empty";
+		}
+		if (!avatar.isSwinging() && item.is(Items.CROSSBOW) && CrossbowItem.isCharged(item)) {
+			return "crossbow_hold";
+		}
+		if (avatar.getUsedItemHand() == hand && avatar.getUseItemRemainingTicks() > 0) {
+			String pose = switch (item.getUseAnimation().name()) {
+				case "BLOCK" -> "block";
+				case "BOW" -> "bow_and_arrow";
+				case "TRIDENT" -> "throw_trident";
+				case "CROSSBOW" -> "crossbow_charge";
+				case "SPYGLASS" -> "spyglass";
+				case "TOOT_HORN" -> "toot_horn";
+				case "BRUSH" -> "brush";
+				case "SPEAR" -> "spear";
+				default -> null;
+			};
+			if (pose != null) {
+				return pose;
+			}
+		}
+		return item.is(ItemTags.SPEARS) ? "spear" : "item";
 	}
 
 	/**
@@ -841,6 +967,41 @@ final class EntityEncoder {
 			json.value(item);
 		}
 		json.endArray();
+	}
+
+	/**
+	 * What CustomHeadLayer draws on the head (LivingEntityRenderer.extractRenderState): a skull or head block as
+	 * {@code "skull": {t: SkullBlock.Type, id, name: the owner of a player head}}, or any other item that is not
+	 * armour for the head (a carved pumpkin, a banner, a data pack's hat) as {@code "helm"} with its model,
+	 * properties and patterns like an entity's item.
+	 */
+	private static void writeHeadItem(Json json, LivingEntity living) {
+		ItemStack stack = living.getItemBySlot(EquipmentSlot.HEAD);
+		if (stack.isEmpty()) {
+			return;
+		}
+		Equippable equippable = stack.get(DataComponents.EQUIPPABLE);
+		if (equippable != null && equippable.assetId().isPresent() && equippable.slot() == EquipmentSlot.HEAD) {
+			return;
+		}
+		if (stack.getItem() instanceof BlockItem item && item.getBlock() instanceof AbstractSkullBlock skull) {
+			json.name("skull").beginObject().field("t", skull.getType().getSerializedName());
+			ResolvableProfile owner = stack.get(DataComponents.PROFILE);
+			if (owner != null) {
+				GameProfile profile = owner.partialProfile();
+				if (profile.id() != null && !profile.id().equals(Util.NIL_UUID)) {
+					json.field("id", profile.id().toString());
+				}
+				String name = owner.name().orElse(profile.name());
+				if (name != null && !name.isEmpty()) {
+					json.field("name", name);
+				}
+			}
+			json.endObject();
+			return;
+		}
+		writeItem(json, "helm", stack);
+		writePatterns(json, "helmPatterns", stack);
 	}
 
 	private static final String WOLF = "minecraft:wolf";

@@ -10,7 +10,7 @@
   <a href="https://github.com/DarienRahl/CCTV_Farbic/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/DarienRahl/CCTV_Farbic?style=for-the-badge&amp;label=release&amp;color=5d8c3e"></a>
   <img alt="Minecraft 26.3" src="https://img.shields.io/badge/minecraft-26.3-866043?style=for-the-badge">
   <img alt="Fabric, server side only" src="https://img.shields.io/badge/fabric-server%20side%20only-8b8b8b?style=for-the-badge">
-  <a href="#roadmap"><img alt="Roadmap" src="https://img.shields.io/badge/roadmap-81%2F82%20done-80ff20?style=for-the-badge"></a>
+  <a href="#roadmap"><img alt="Roadmap" src="https://img.shields.io/badge/roadmap-89%2F90%20done-80ff20?style=for-the-badge"></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-555555?style=for-the-badge"></a>
 </p>
 <!-- badges:end -->
@@ -197,7 +197,7 @@ at once as a video wall.
 ## Roadmap
 
 <!-- roadmap:start -->
-<p align="center"><img src="docs/images/roadmap/banner.svg" width="100%" alt="CCTV roadmap: 81 of 82 done"></p>
+<p align="center"><img src="docs/images/roadmap/banner.svg" width="100%" alt="CCTV roadmap: 89 of 90 done"></p>
 
 What is done and what comes next, milestone by milestone (the full plan with its principles is in
 [docs/ROADMAP.md](docs/ROADMAP.md)).
@@ -320,6 +320,22 @@ What is done and what comes next, milestone by milestone (the full plan with its
 - [x] **Arrows and bee stingers stuck in players and mannequins** (StuckInBodyLayer): in the same body parts and places as in the game, from the same random seeded with the entity's id
 - [x] Players drawn at the player renderer's scale (0.9375, they were a little too big); items whose model changes with the date (the Christmas chest) pick it by the viewer's clock
 - [x] **Sulfur cubes** like SulfurCubeRenderer: their size, the small model of babies, the inner cube, the block they hold drawn inside them, and a primed cube swelling and flashing like TNT; slimes, magma cubes and sulfur cubes squash when they land and stretch when they jump; TNT swells like the game's; babies cast the smaller shadow of their age scale
+
+</details>
+
+<img src="docs/images/roadmap/1-6.svg" width="100%" alt="1.6 — players and what they carry: started, 8 of 8 done">
+
+<details>
+<summary><b>1.6 — players and what they carry</b> · started · 8 of 8 done</summary>
+
+- [x] **Parrots on players' shoulders** (ParrotOnShoulderLayer), sitting and looking where the player looks
+- [x] **Heads and hats** (CustomHeadLayer): skulls and player heads with their owner's skin, carved pumpkins, banners and data packs' hats worn by players, mannequins, armour stands, humanoid mobs, villagers, illagers, piglins, copper golems and sulfur cubes, each at its renderer's place and size
+- [x] **Items in use**: players and mannequins draw bows, charge and aim crossbows, raise shields (the blocking shield model), look through spyglasses, blow goat horns, brush and throw tridents with the game's arm poses (HumanoidModel), and their swing moves the arms and body like setupAttackAnimation
+- [x] **Left-handed players and mobs**: the main hand's item in the left hand, the swing and the poses with the left arm
+- [x] A riptide trident's spin (the player turning and SpinAttackEffectLayer's whirls) and deadmau5's ears
+- [x] Shaking like the game: mobs frozen in powder snow, zombies, piglins and hoglins turning into something else, skeletons becoming strays and cold striders; sleepers lie along their bed; spiders, silverfish and endermites turn onto their backs when they die; Dinnerbone players only turn over while showing their cape
+- [x] Shields without patterns were not drawn: the shield's plate uses the game's 26.3 textures
+- [x] **Name tags like the game's**: the display name's colours and formatting (a team's colour, prefix and suffix, coloured custom names), the scoreboard's below_name objective under players' names, teams that hide name tags, no tag on a mob that is ridden, and the name_tag_distance and below_name_distance attributes
 
 </details>
 

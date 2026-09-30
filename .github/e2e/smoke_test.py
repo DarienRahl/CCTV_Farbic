@@ -77,6 +77,7 @@ class StreamReader(threading.Thread):
         self.displays = {}
         self.mannequin = None
         self.sulfur_cube = None
+        self.worn_heads = {}
         self.foil = set()
         self.glowing = set()
         self.leashed = set()
@@ -128,6 +129,8 @@ class StreamReader(threading.Thread):
                                     self.mannequin = e
                                 if e["type"] == "minecraft:sulfur_cube":
                                     self.sulfur_cube = e
+                                if e.get("helm") or e.get("skull"):
+                                    self.worn_heads[e["type"]] = e
                                 if e["type"] in ("minecraft:text_display", "minecraft:block_display", "minecraft:item_display"):
                                     self.displays.setdefault(e["type"], []).append(e)
                                     del self.displays[e["type"]][:-3]
@@ -319,6 +322,11 @@ def main():
     rcon.command('setblock -2 -60 6 minecraft:oak_shelf[facing=north]{Items:[{Slot:0b,id:"minecraft:diamond",count:1},'
                  '{Slot:2b,id:"minecraft:apple",count:1}]}')
     rcon.command('summon minecraft:mannequin 1.5 -60 4.5 {profile:"Notch",description:"Shopkeeper",Rotation:[180f,0f]}')
+    # CustomHeadLayer and left-handed mobs: a left-handed zombie in a carved pumpkin, an armour stand with Notch's head
+    rcon.command('summon minecraft:zombie 6 -60 6 {NoAI:1b,LeftHanded:1b,PersistenceRequired:1b,equipment:{'
+                 'head:{id:"minecraft:carved_pumpkin",count:1},mainhand:{id:"minecraft:iron_sword",count:1}}}')
+    rcon.command('summon minecraft:armor_stand -1 -60 6 {equipment:{head:{id:"minecraft:player_head",count:1,'
+                 'components:{"minecraft:profile":"Notch"}}}}')
     # a sulfur cube holding a block of TNT (drawn inside it, SulfurCubeInnerLayer)
     rcon.command('summon minecraft:sulfur_cube 5 -60 -2 {NoAI:1b,equipment:{body:{id:"minecraft:tnt",count:1}}}')
 
@@ -538,6 +546,13 @@ def main():
     mannequin = stream.mannequin or {}
     if mannequin.get("profile", {}).get("name") != "Notch" or mannequin.get("desc") != "Shopkeeper":
         failures.append(f"the mannequin was not streamed with its profile and description (got {stream.mannequin})")
+    print("worn heads:", json.dumps(stream.worn_heads), flush=True)
+    zombie = stream.worn_heads.get("minecraft:zombie", {})
+    if zombie.get("helm") != "minecraft:carved_pumpkin" or zombie.get("mainArm") != "left":
+        failures.append(f"the left-handed zombie in a carved pumpkin was not streamed (got {zombie})")
+    stand = stream.worn_heads.get("minecraft:armor_stand", {})
+    if stand.get("skull", {}).get("t") != "player" or stand.get("skull", {}).get("name") != "Notch":
+        failures.append(f"the armour stand's player head was not streamed with its owner (got {stand})")
     print("sulfur cube:", json.dumps(stream.sulfur_cube), flush=True)
     if "cb" not in (stream.sulfur_cube or {}):
         failures.append(f"the block held by the sulfur cube was not streamed (got {stream.sulfur_cube})")

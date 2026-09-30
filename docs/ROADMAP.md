@@ -239,6 +239,26 @@ to the milestone it belongs to. The roadmap on the README page is drawn from thi
       sulfur cubes squash when they land and stretch when they jump; TNT swells like the game's; babies cast
       the smaller shadow of their age scale
 
+## 1.6 — players and what they carry
+
+- [x] **Parrots on players' shoulders** (ParrotOnShoulderLayer), sitting and looking where the player looks
+- [x] **Heads and hats** (CustomHeadLayer): skulls and player heads with their owner's skin, carved pumpkins,
+      banners and data packs' hats worn by players, mannequins, armour stands, humanoid mobs, villagers, illagers,
+      piglins, copper golems and sulfur cubes, each at its renderer's place and size
+- [x] **Items in use**: players and mannequins draw bows, charge and aim crossbows, raise shields (the blocking
+      shield model), look through spyglasses, blow goat horns, brush and throw tridents with the game's arm poses
+      (HumanoidModel), and their swing moves the arms and body like setupAttackAnimation
+- [x] **Left-handed players and mobs**: the main hand's item in the left hand, the swing and the poses with the
+      left arm
+- [x] A riptide trident's spin (the player turning and SpinAttackEffectLayer's whirls) and deadmau5's ears
+- [x] Shaking like the game: mobs frozen in powder snow, zombies, piglins and hoglins turning into something else,
+      skeletons becoming strays and cold striders; sleepers lie along their bed; spiders, silverfish and
+      endermites turn onto their backs when they die; Dinnerbone players only turn over while showing their cape
+- [x] Shields without patterns were not drawn: the shield's plate uses the game's 26.3 textures
+- [x] **Name tags like the game's**: the display name's colours and formatting (a team's colour, prefix and suffix,
+      coloured custom names), the scoreboard's below_name objective under players' names, teams that hide name
+      tags, no tag on a mob that is ridden, and the name_tag_distance and below_name_distance attributes
+
 ## Later
 
 - [x] **Recording and timelapse** of a camera in the browser: a video with the game's sounds, or one picture

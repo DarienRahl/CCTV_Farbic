@@ -74,9 +74,14 @@ function humanoid(p, a, e) {
 		if (p.right_leg) { p.right_leg.xRot = -1.4137167; p.right_leg.yRot = PI / 10; p.right_leg.zRot = 0.07853982; }
 		if (p.left_leg) { p.left_leg.xRot = -1.4137167; p.left_leg.yRot = -PI / 10; p.left_leg.zRot = -0.07853982; }
 	}
-	if (e.hand && p.right_arm) p.right_arm.xRot = p.right_arm.xRot * 0.5 - PI / 10;
-	if (e.offhand && p.left_arm) p.left_arm.xRot = p.left_arm.xRot * 0.5 - PI / 10;
-	if (a.attack > 0 && p.right_arm && p.body) {
+	if (isAvatar(e)) {
+		avatarArms(p, a, e);
+	} else {
+		const [inRight, inLeft] = e.mainArm === 'left' ? [e.offhand, e.hand] : [e.hand, e.offhand];
+		if (inRight && p.right_arm) p.right_arm.xRot = p.right_arm.xRot * 0.5 - PI / 10;
+		if (inLeft && p.left_arm) p.left_arm.xRot = p.left_arm.xRot * 0.5 - PI / 10;
+	}
+	if (a.attack > 0 && p.right_arm && p.body && !isAvatar(e)) {
 		const t = a.attack;
 		p.body.yRot = sin(Math.sqrt(t) * PI * 2) * 0.2;
 		p.right_arm.yRot += p.body.yRot;
@@ -92,7 +97,14 @@ function humanoid(p, a, e) {
 		if (p.left_leg) p.left_leg.z += 4;
 		if (p.head) p.head.y += 4.2;
 	}
-	bobArms(p, a.age);
+	// AnimationUtils.bobModelPart, not for an arm holding a spyglass to the eye
+	if (e.armR === 'spyglass' || e.armL === 'spyglass') {
+		const age = a.age;
+		if (p.right_arm && e.armR !== 'spyglass') { p.right_arm.zRot += cos(age * 0.09) * 0.05 + 0.05; p.right_arm.xRot += sin(age * 0.067) * 0.05; }
+		if (p.left_arm && e.armL !== 'spyglass') { p.left_arm.zRot -= cos(age * 0.09) * 0.05 + 0.05; p.left_arm.xRot -= sin(age * 0.067) * 0.05; }
+	} else {
+		bobArms(p, a.age);
+	}
 	if (p.head) {
 		if (e.pose === 'fall_flying') p.head.xRot = -PI / 4;
 		else if (a.swimAmount > 0) p.head.xRot = lerp(a.swimAmount, p.head.xRot, -PI / 4);
@@ -296,26 +308,115 @@ function swingWeaponDown(p, side, attackTime, age) {
 	bobArms(p, age);
 }
 
-/** AnimationUtils.animateCrossbowHold (right-handed) */
-function crossbowHold(p) {
+/** AnimationUtils.animateCrossbowHold: the crossbow in the right (or left) hand, the other arm steadying it. */
+function crossbowHold(p, right = true) {
 	const R = p.right_arm, L = p.left_arm, head = p.head;
 	if (!R || !L || !head) return;
-	R.yRot = -0.3 + head.yRot;
-	L.yRot = 0.6 + head.yRot;
-	R.xRot = -PI / 2 + head.xRot + 0.1;
-	L.xRot = -1.5 + head.xRot;
+	const [main, off] = right ? [R, L] : [L, R];
+	main.yRot = (right ? -0.3 : 0.3) + head.yRot;
+	off.yRot = (right ? 0.6 : -0.6) + head.yRot;
+	main.xRot = -PI / 2 + head.xRot + 0.1;
+	off.xRot = -1.5 + head.xRot;
 }
 
-/** AnimationUtils.animateCrossbowCharge (right-handed) */
-function crossbowCharge(p, maxCharge, ticksUsing) {
+/** AnimationUtils.animateCrossbowCharge: pulling the string back with the other hand. */
+function crossbowCharge(p, maxCharge, ticksUsing, right = true) {
 	const R = p.right_arm, L = p.left_arm;
 	if (!R || !L) return;
-	R.yRot = -0.8;
-	R.xRot = -0.97079635;
-	L.xRot = R.xRot;
+	const [main, off] = right ? [R, L] : [L, R];
+	main.yRot = right ? -0.8 : 0.8;
+	main.xRot = -0.97079635;
+	off.xRot = main.xRot;
 	const alpha = clamp(ticksUsing, 0, maxCharge) / maxCharge;
-	L.yRot = lerp(alpha, 0.4, 0.85);
-	L.xRot = lerp(alpha, L.xRot, -PI / 2);
+	off.yRot = lerp(alpha, 0.4, 0.85) * (right ? 1 : -1);
+	off.xRot = lerp(alpha, off.xRot, -PI / 2);
+}
+
+/** HumanoidModel.ArmPose: poses holding with both arms (isTwoHanded), and those that also pose the other arm. */
+const TWO_HANDED = new Set(['bow_and_arrow', 'crossbow_charge', 'crossbow_hold']);
+const affectsOffhand = pose => TWO_HANDED.has(pose) || pose === 'throw_trident';
+
+/** HumanoidModel.poseRightArm / poseLeftArm for a player or mannequin (the server sends the poses, entities "armR"/"armL"). */
+function poseArm(p, e, side, pose) {
+	const R = p.right_arm, L = p.left_arm, head = p.head;
+	const arm = side === 'right' ? R : L;
+	if (!R || !L || !head) return;
+	const s = side === 'right' ? 1 : -1;
+	switch (pose) {
+		case 'item':
+		case 'spear':
+			arm.xRot = arm.xRot * 0.5 - PI / 10;
+			arm.yRot = 0;
+			break;
+		case 'block':
+			arm.xRot = arm.xRot * 0.5 - 0.9424779 + clamp(head.xRot, -PI * 4 / 9, 0.43633232);
+			arm.yRot = -s * 30 * DEG + clamp(head.yRot, -PI / 6, PI / 6);
+			break;
+		case 'bow_and_arrow':
+			R.yRot = -0.1 + head.yRot - (side === 'left' ? 0.4 : 0);
+			L.yRot = 0.1 + head.yRot + (side === 'right' ? 0.4 : 0);
+			R.xRot = -PI / 2 + head.xRot;
+			L.xRot = -PI / 2 + head.xRot;
+			break;
+		case 'throw_trident':
+			arm.xRot = arm.xRot * 0.5 - PI;
+			arm.yRot = 0;
+			break;
+		case 'crossbow_charge':
+			crossbowCharge(p, Number(e.chargeTicks) || 25, Number(e.useTicks) || 0, side === 'right');
+			break;
+		case 'crossbow_hold':
+			crossbowHold(p, side === 'right');
+			break;
+		case 'spyglass':
+			arm.xRot = clamp(head.xRot - 1.9198622 - (e.sneak || e.pose === 'crouching' ? PI / 12 : 0), -2.4, 3.3);
+			arm.yRot = head.yRot - s * PI / 12;
+			break;
+		case 'toot_horn':
+			arm.xRot = clamp(head.xRot, -1.2, 1.2) - 1.4835298;
+			arm.yRot = head.yRot - s * PI / 6;
+			break;
+		case 'brush':
+			arm.xRot = arm.xRot * 0.5 - PI / 5;
+			arm.yRot = 0;
+			break;
+		default:
+			arm.yRot = 0;
+	}
+}
+
+/**
+ * HumanoidModel.setupAnim for players and mannequins: the arm of the item in use (or the off hand, unless the main
+ * hand holds with both) is posed first, and the other only if that pose leaves it; then setupAttackAnimation's
+ * whack with the main arm.
+ */
+function avatarArms(p, a, e) {
+	const main = e.mainArm === 'left' ? 'left' : 'right', other = main === 'left' ? 'right' : 'left';
+	const pose = { right: e.armR || 'empty', left: e.armL || 'empty' };
+	const first = e.useHand ? (e.useHand === 'main' ? main : other) : (TWO_HANDED.has(pose[other]) ? main : other);
+	const second = first === 'right' ? 'left' : 'right';
+	poseArm(p, e, first, pose[first]);
+	if (!affectsOffhand(pose[first])) poseArm(p, e, second, pose[second]);
+	const R = p.right_arm, L = p.left_arm, body = p.body, head = p.head;
+	const t = a.attack;
+	if (t > 0 && R && L && body) {
+		body.yRot = sin(Math.sqrt(t) * PI * 2) * 0.2 * (main === 'left' ? -1 : 1);
+		const ageScale = e.ageScale ?? 1;
+		R.z = sin(body.yRot) * 5 * ageScale;
+		R.x = -cos(body.yRot) * 5 * ageScale;
+		L.z = -sin(body.yRot) * 5 * ageScale;
+		L.x = cos(body.yRot) * 5 * ageScale;
+		R.yRot += body.yRot;
+		L.yRot += body.yRot;
+		L.xRot += body.yRot;
+		// SwingAnimationType.WHACK
+		const arm = main === 'left' ? L : R;
+		const aa = sin((1 - (1 - t) ** 4) * PI);
+		const bb = sin(t * PI) * -((head ? head.xRot : 0) - 0.7) * 0.75;
+		arm.xRot -= aa * 1.2 + bb;
+		arm.yRot += body.yRot * 2;
+		arm.zRot += sin(t * PI) * -0.4;
+	}
 }
 
 const ANIMS = {
@@ -865,14 +966,15 @@ const ANIMS = {
 	},
 	/**
 	 * ParrotModel.setupAnim with its poses (ParrotModel.getPose): PARTY next to a jukebox playing a song
-	 * (entities.js partyParrot), SITTING, FLYING while off the ground, else STANDING; ParrotRenderer's flap angle
+	 * (entities.js partyParrot), SITTING, FLYING while off the ground, else STANDING, and ON_SHOULDER for the parrots
+	 * players carry (ParrotOnShoulderLayer, a.shoulder); ParrotRenderer's flap angle
 	 * is (sin(flap) + 1) * flapSpeed of Parrot.calculateFlapping.
 	 */
 	parrot(p, a, e) {
 		const { head, body, tail, left_wing: lw, right_wing: rw, left_leg: ll, right_leg: rl } = p;
 		if (!head || !body || !tail || !lw || !rw || !ll || !rl) return;
 		const d = e.d || {};
-		const pose = a.party ? 'party' : d.sitting ? 'sitting' : !d.onGround ? 'flying' : 'standing';
+		const pose = a.shoulder ? 'on_shoulder' : a.party ? 'party' : d.sitting ? 'sitting' : !d.onGround ? 'flying' : 'standing';
 		const flapAngle = (sin(Number(d.flap) || 0) + 1) * (Number(d.flapSpeed) || 0);
 		// prepare
 		if (pose === 'flying') {
@@ -902,7 +1004,7 @@ const ANIMS = {
 			ll.xRot += cos(w) * 1.4 * s;
 			rl.xRot += cos(w + PI) * 1.4 * s;
 		}
-		if (pose === 'standing' || pose === 'flying') {
+		if (pose === 'standing' || pose === 'flying' || pose === 'on_shoulder') {
 			const bob = flapAngle * 0.3;
 			head.y += bob;
 			tail.xRot += cos(w) * 0.3 * s;
@@ -1827,7 +1929,7 @@ const MOBS = {
 		layer: e => (e.baby ? 'cat_baby#main' : 'cat#main'), texture: e => 'cat/cat_' + variant(e, 'tabby') + baby(e), shadow: 0.4, anim: 'cat',
 		layers: [{ layer: e => (e.baby ? 'cat_baby#collar' : 'cat#collar'), texture: e => 'cat/cat_collar' + baby(e), when: e => e.d && e.d.tame, color: e => dyeRgb(e.d.collar || 'red') }],
 	},
-	cave_spider: { layer: 'cave_spider#main', texture: 'spider/cave_spider', shadow: 0.56, anim: 'spider', layers: [{ layer: 'cave_spider#main', texture: 'spider/spider_eyes', mode: 'eyes' }] },
+	cave_spider: { flip: 180, layer: 'cave_spider#main', texture: 'spider/cave_spider', shadow: 0.56, anim: 'spider', layers: [{ layer: 'cave_spider#main', texture: 'spider/spider_eyes', mode: 'eyes' }] },
 	chicken: {
 		layer: e => (e.baby ? 'chicken_baby#main' : variant(e, 'temperate') === 'cold' ? 'cold_chicken#main' : 'chicken#main'),
 		texture: e => 'chicken/chicken_' + variant(e, 'temperate') + baby(e), shadow: 0.3, anim: 'chicken',
@@ -1853,7 +1955,7 @@ const MOBS = {
 	end_crystal: { special: 'endCrystal' },
 	ender_dragon: { layer: 'ender_dragon#main', texture: 'enderdragon/dragon', shadow: 0.5, anim: 'dragon', dragon: true, layers: [{ layer: 'ender_dragon#main', texture: 'enderdragon/dragon_eyes', mode: 'eyes' }] },
 	enderman: { layer: 'enderman#main', texture: 'enderman/enderman', shadow: 0.5, anim: 'enderman', creepyShake: true, carries: true, layers: [{ layer: 'enderman#main', texture: 'enderman/enderman_eyes', mode: 'eyes' }] },
-	endermite: { layer: 'endermite#main', texture: 'endermite/endermite', shadow: 0.3, anim: 'crawler' },
+	endermite: { flip: 180, layer: 'endermite#main', texture: 'endermite/endermite', shadow: 0.3, anim: 'crawler' },
 	evoker: { layer: 'evoker#main', texture: 'illager/evoker', shadow: 0.5, anim: 'illager' },
 	evoker_fangs: { layer: 'evoker_fangs#main', texture: 'illager/evoker_fangs', shadow: 0, anim: 'none', living: false },
 	fox: {
@@ -1958,13 +2060,13 @@ const MOBS = {
 	shulker: {
 		layer: 'shulker#main', texture: e => (e.d && e.d.color ? 'shulker/shulker_' + strip(e.d.color) : 'shulker/shulker'), shadow: 0, anim: 'shulker', shulker: true,
 	},
-	silverfish: { layer: 'silverfish#main', texture: 'silverfish/silverfish', shadow: 0.3, anim: 'crawler' },
+	silverfish: { flip: 180, layer: 'silverfish#main', texture: 'silverfish/silverfish', shadow: 0.3, anim: 'crawler' },
 	skeleton: { layer: 'skeleton#main', texture: 'skeleton/skeleton', shadow: 0.5, anim: 'skeleton', armor: 'skeleton' },
 	skeleton_horse: { layer: e => (e.baby ? 'skeleton_horse_baby#main' : 'skeleton_horse#main'), texture: e => 'horse/horse_skeleton' + baby(e), shadow: 0.75, anim: 'horse', body: e => (e.baby ? [] : bodyLayers(e, 'horse_body', 'undead_horse_armor#main')), saddle: ['skeleton_horse#saddle', 'equipment/skeleton_horse_saddle/saddle'] },
 	slime: { layer: 'slime#main', texture: 'slime/slime', shadow: cubeShadow, anim: 'none', slime: true, layers: [{ layer: 'slime#outer', texture: 'slime/slime', mode: 'translucent' }] },
 	sniffer: { layer: e => (e.baby ? 'sniffer_baby#main' : 'sniffer#main'), texture: e => (e.baby ? 'sniffer/snifflet' : 'sniffer/sniffer'), shadow: 1.1, anim: 'sniffer' },
 	snow_golem: { layer: 'snow_golem#main', texture: 'snow_golem/snow_golem', shadow: 0.5, anim: 'snowGolem' },
-	spider: { layer: 'spider#main', texture: 'spider/spider', shadow: 0.8, anim: 'spider', layers: [{ layer: 'spider#main', texture: 'spider/spider_eyes', mode: 'eyes' }] },
+	spider: { flip: 180, layer: 'spider#main', texture: 'spider/spider', shadow: 0.8, anim: 'spider', layers: [{ layer: 'spider#main', texture: 'spider/spider_eyes', mode: 'eyes' }] },
 	squid: { layer: e => (e.baby ? 'squid_baby#main' : 'squid#main'), texture: e => 'squid/squid' + baby(e), shadow: 0.7, anim: 'squid', squid: true },
 	stray: { layer: 'stray#main', texture: 'skeleton/stray', shadow: 0.5, anim: 'skeleton', armor: 'stray', layers: [{ layer: 'stray#outer', texture: 'skeleton/stray_overlay' }] },
 	strider: {
@@ -2161,6 +2263,8 @@ export function describeMob(e) {
 	if (def.player) {
 		const slim = e.slim;
 		add(slim ? 'player_slim#main' : 'player#main', e.skinTexture || { skin: e.uuid }, {});
+		// Deadmau5EarsLayer: the ears of the player called deadmau5, from their skin
+		if (type === 'player' && e.name === 'deadmau5') add('player#ears', { skin: e.uuid }, {});
 	} else if (def.villager) {
 		const zombie = def.villager === 'zombie_villager';
 		const folder = def.villager;
