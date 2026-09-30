@@ -217,7 +217,7 @@ void main() {
 class SegmentBuffer {
 	constructor(renderer) {
 		this.renderer = renderer;
-		this.segments = []; // {key, offset, bytes, order}
+		this.segments = []; // {key, offset, bytes, order, first, quads, centre}
 		this.vbo = null;
 		this.vao = null;
 		this.quads = 0;
@@ -231,7 +231,7 @@ class SegmentBuffer {
 			if (!updates.has(s.key)) next.push({ ...s, from: 'old' });
 		}
 		for (const [key, u] of updates) {
-			if (u.data && u.data.byteLength > 0) next.push({ key, bytes: u.data.byteLength, order: u.order, data: u.data });
+			if (u.data && u.data.byteLength > 0) next.push({ key, bytes: u.data.byteLength, order: u.order, data: u.data, centre: this.renderer.sectionCentre(key) });
 		}
 		next.sort((a, b) => a.order - b.order);
 		let total = 0;
@@ -252,6 +252,8 @@ class SegmentBuffer {
 			if (s.from === 'old') gl.copyBufferSubData(gl.COPY_READ_BUFFER, gl.COPY_WRITE_BUFFER, s.offset, offset, s.bytes);
 			else gl.bufferSubData(gl.COPY_WRITE_BUFFER, offset, new Uint8Array(s.data));
 			s.offset = offset;
+			s.first = offset / STRIDE / 4;
+			s.quads = s.bytes / STRIDE / 4;
 			delete s.data;
 			delete s.from;
 			offset += s.bytes;
@@ -306,6 +308,7 @@ export class Renderer {
 		if (!gl) throw new Error('WebGL2 is not available in this browser');
 		this.gl = gl;
 		this.floatTargets = !!gl.getExtension('EXT_color_buffer_float');
+		this.multiDraw = gl.getExtension('WEBGL_multi_draw');
 		this.programs = {};
 		this.terrain = this.terrainProgram(false);
 		this.shadowProgram = program(gl, SHADOW_VS, SHADOW_FS);
@@ -327,6 +330,8 @@ export class Renderer {
 		this.occlusionAt = 0;
 		this.occlusionStamp = 0;
 		this.occlusionEnabled = true;
+		this.sectionCulling = true; // sections of merged regions culled one by one
+		this.culledSections = 0;
 		this.camera = [0, 0, 0];
 		this.lightmap = gl.createTexture();
 		gl.bindTexture(gl.TEXTURE_2D, this.lightmap);
@@ -495,6 +500,14 @@ export class Renderer {
 		this.origin = origin;
 	}
 
+	/** A section's centre relative to the render origin, for culling the sections of merged regions one by one. */
+	sectionCentre(key) {
+		const c = this.sectionCoords.get(key);
+		if (!c) return null;
+		const o = this.origin || [0, 0, 0];
+		return [c[0] * 16 + 8 - o[0], c[1] * 16 + 8 - o[1], c[2] * 16 + 8 - o[2]];
+	}
+
 	/** The dimension's height (from "init"), for the occlusion graph's view area. */
 	setWorldHeight(minY, height) {
 		this.worldSections = [Math.floor(minY / 16), Math.floor((minY + height - 1) / 16)];
@@ -579,10 +592,60 @@ export class Renderer {
 		return width / height;
 	}
 
-	drawUnit(buffer) {
+	/**
+	 * Draws a unit's buffer; for a merged region with a frame only the sections that are in the frustum, inside the
+	 * render distance and reached by the occlusion graph, as the game culls each section on its own. Returns the
+	 * number of quads drawn.
+	 */
+	drawUnit(buffer, frame = null) {
 		const gl = this.gl;
 		gl.bindVertexArray(buffer.vao);
-		gl.drawElements(gl.TRIANGLES, buffer.quads * 6, gl.UNSIGNED_INT, 0);
+		if (!frame || buffer.segments.length < 2) {
+			gl.drawElements(gl.TRIANGLES, buffer.quads * 6, gl.UNSIGNED_INT, 0);
+			return buffer.quads;
+		}
+		// consecutive visible sections are one run of quads
+		if (!this.runCounts || this.runCounts.length < buffer.segments.length) {
+			this.runCounts = new Int32Array(Math.max(64, buffer.segments.length));
+			this.runOffsets = new Int32Array(this.runCounts.length);
+		}
+		const counts = this.runCounts, offsets = this.runOffsets;
+		let runs = 0, drawn = 0, end = -1;
+		for (const s of buffer.segments) {
+			if (!this.sectionVisible(s, frame)) {
+				this.culledSections++;
+				continue;
+			}
+			if (s.first !== end) {
+				offsets[runs] = s.first * 24;
+				counts[runs++] = 0;
+			}
+			counts[runs - 1] += s.quads * 6;
+			end = s.first + s.quads;
+			drawn += s.quads;
+		}
+		if (runs === 0) return 0;
+		if (this.multiDraw) {
+			this.multiDraw.multiDrawElementsWEBGL(gl.TRIANGLES, counts, 0, gl.UNSIGNED_INT, offsets, 0, runs);
+		} else {
+			for (let i = 0; i < runs; i++) gl.drawElements(gl.TRIANGLES, counts[i], gl.UNSIGNED_INT, offsets[i]);
+		}
+		return drawn;
+	}
+
+	/** One section of a merged region: in the frustum, in the render distance and reached by the occlusion graph. */
+	sectionVisible(segment, frame) {
+		const c = segment.centre;
+		if (!c) return true;
+		const cam = frame.camPos;
+		const dx = c[0] - cam[0], dy = c[1] - cam[1], dz = c[2] - cam[2];
+		if (!frame.frustum(dx, dy, dz, 14)) return false;
+		if (Math.hypot(dx, dy, dz) - 14 > frame.fog.rdEnd + 16) return false;
+		const graph = this.occlusion;
+		if (!graph) return true;
+		const k = this.sectionCoords.get(segment.key);
+		const i = k ? graph.index(k[0], k[1], k[2]) : -1;
+		return i < 0 || graph.reached[i] === 1;
 	}
 
 	/** The sun (or the moon at night) as seen from the camera, for shadows and lighting. */
@@ -677,11 +740,11 @@ export class Renderer {
 		gl.enable(gl.CULL_FACE);
 		gl.cullFace(gl.BACK);
 		let quads = 0;
+		this.culledSections = 0;
 		for (const unit of visible) {
 			if (unit.opaque.quads === 0) continue;
 			gl.uniform1f(u.uVisibility, Math.min(1, (frame.now - unit.born) / FADE_MS));
-			this.drawUnit(unit.opaque);
-			quads += unit.opaque.quads;
+			quads += this.drawUnit(unit.opaque, this.sectionCulling ? frame : null);
 		}
 
 		if (hooks.entities) hooks.entities('opaque', shadow);
@@ -700,8 +763,7 @@ export class Renderer {
 			const unit = visible[i];
 			if (unit.translucent.quads === 0) continue;
 			gl.uniform1f(u.uVisibility, Math.min(1, (frame.now - unit.born) / FADE_MS));
-			this.drawUnit(unit.translucent);
-			quads += unit.translucent.quads;
+			quads += this.drawUnit(unit.translucent, this.sectionCulling ? frame : null);
 		}
 		gl.depthMask(true);
 		gl.disable(gl.BLEND);
@@ -709,7 +771,7 @@ export class Renderer {
 
 		if (hooks.translucent) hooks.translucent(shadow);
 
-		this.stats = { units: this.units.size, drawn: visible.length, occluded, quads };
+		this.stats = { units: this.units.size, drawn: visible.length, occluded, culledSections: this.culledSections, quads };
 		return shadow;
 	}
 

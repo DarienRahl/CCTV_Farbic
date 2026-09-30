@@ -55,8 +55,10 @@ try {
 	throw e;
 }
 const gl = renderer.gl;
-// ?occlusion=0 draws every section in the frustum (SectionOcclusionGraph off, for comparisons)
+// ?occlusion=0 draws every section of the units in the frustum (SectionOcclusionGraph and per-section culling
+// off, for comparisons)
 renderer.occlusionEnabled = params.get('occlusion') !== '0';
+renderer.sectionCulling = renderer.occlusionEnabled;
 const environment = new Environment();
 const sky = new SkyRenderer(gl);
 const clouds = new CloudRenderer(gl);

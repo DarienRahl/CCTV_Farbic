@@ -189,7 +189,9 @@ to the milestone it belongs to. The roadmap on the README page is drawn from thi
       off)
 - [x] **Server memory**: far sections kept only as their message (a few KB instead of about 25), read
       back from it when a block or the light in them changes
-- [ ] Per-section culling inside merged far regions (the occlusion graph now skips whole regions)
+- [x] **Per-section culling inside merged far regions**: each section of a merged region is checked against the
+      frustum, the render distance and the occlusion graph and only the visible runs of sections are drawn
+      (one multi-draw call per region with `WEBGL_multi_draw`)
 - [ ] Entities: skinning on the GPU (bone matrices in a texture) instead of rebuilding vertices on
       the CPU every frame
 - [x] Video wall: frame rate cap (lower for small tiles), one pixel per CSS pixel, no rendering
