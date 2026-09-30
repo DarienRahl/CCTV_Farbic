@@ -27,7 +27,6 @@ import net.minecraft.world.entity.AnimationState;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.entity.Crackiness;
 import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.HumanoidArm;
 import net.minecraft.world.entity.Leashable;
@@ -544,6 +543,8 @@ final class EntityEncoder {
 		json.endArray();
 	}
 
+	private static final String WOLF = "minecraft:wolf";
+
 	/** The slots EquipmentLayerRenderer draws: the armour (as in "armor") and the body (horse armour, carpets...). */
 	private static final EquipmentSlot[] EQUIPMENT = {EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET,
 			EquipmentSlot.BODY};
@@ -577,7 +578,7 @@ final class EntityEncoder {
 				continue;
 			}
 			json.beginObject().field("a", stack.get(DataComponents.EQUIPPABLE).assetId().get().identifier().toString());
-			if (EQUIPMENT[i] == EquipmentSlot.BODY && living.getType() == EntityType.WOLF) {
+			if (EQUIPMENT[i] == EquipmentSlot.BODY && WOLF.equals(BuiltInRegistries.ENTITY_TYPE.getKey(living.getType()).toString())) {
 				// WolfArmorLayer.maybeRenderCracks
 				Crackiness.Level cracks = Crackiness.WOLF_ARMOR.byDamage(stack);
 				if (cracks != Crackiness.Level.NONE) {
