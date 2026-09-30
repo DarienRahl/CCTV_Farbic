@@ -160,6 +160,14 @@ to the milestone it belongs to. The roadmap on the README page is drawn from thi
 - [x] **Glowing outlines** (the Glowing effect and tag: the entity outline target and the game's entity_outline
       post chain, in the team colour, seen through walls) and the **names of map markers** on framed maps
       (MapRenderer)
+- [x] **Paintings like PaintingRenderer** (the picture, the wooden back and edges, each block lit by its own
+      light) and **music discs** (LevelEventHandler.playJukeboxSong with Gui.setNowPlaying's rainbow
+      "Now Playing"; songs already playing are picked up from JukeboxSongPlayer)
+- [x] **The world's own packs**: data packs with assets, the world's `resources.zip` and the server resource
+      pack are used like the game does, so custom paintings, discs, blocks, items and sounds show up
+- [x] Mob animations checked against the 26.3 models (felines, bees, chickens, polar bears, turtles, fish,
+      dolphins, endermites, silverfish, vexes, allays, striders)
+- [x] Your own field of view (30–110°), distance fog modes and 11 built-in post effects
 - [ ] Terrain: the game's chunk occlusion culling (visibility graph), remaining fluid edge cases, the
       biome blend setting
 - [x] **Camera in water, lava and powder snow**: the underwater overlay (ScreenEffectRenderer, as bright as the

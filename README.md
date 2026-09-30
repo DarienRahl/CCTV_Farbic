@@ -1,17 +1,146 @@
-# CCTV – live cameras for a Minecraft server (Fabric 26.3)
+<h1 align="center">CCTV for Minecraft</h1>
+
+<p align="center">
+  <b>Live security cameras for your Fabric 26.3 server — watched in any web browser, drawn like the game itself.</b><br>
+  <sub>Server-side only · no client mod · no bot account · no GPU on the server</sub>
+</p>
 
 <!-- badges:start -->
 <p align="center">
   <a href="https://github.com/DarienRahl/CCTV_Farbic/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/DarienRahl/CCTV_Farbic?style=for-the-badge&amp;label=release&amp;color=5d8c3e"></a>
   <img alt="Minecraft 26.3" src="https://img.shields.io/badge/minecraft-26.3-866043?style=for-the-badge">
   <img alt="Fabric, server side only" src="https://img.shields.io/badge/fabric-server%20side%20only-8b8b8b?style=for-the-badge">
-  <a href="#roadmap"><img alt="Roadmap" src="https://img.shields.io/badge/roadmap-58%2F64%20done-80ff20?style=for-the-badge"></a>
+  <a href="#roadmap"><img alt="Roadmap" src="https://img.shields.io/badge/roadmap-62%2F68%20done-80ff20?style=for-the-badge"></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-555555?style=for-the-badge"></a>
 </p>
 <!-- badges:end -->
 
-A **server-side only** mod. Place a "camera" in the world with a command and watch its live picture
-in a web browser: players, mobs, opening doors and placed blocks show up right away.
+<p align="center">
+  <img src="docs/images/screenshots/hero.jpg" width="100%" alt="A CCTV camera in the browser: a house, a pond, villagers, a horse, a campfire and an enchanting table, drawn with shaders">
+</p>
+
+<p align="center">
+  <a href="#quick-start"><b>Quick start</b></a> ·
+  <a href="#what-you-get">Features</a> ·
+  <a href="#gallery">Gallery</a> ·
+  <a href="#commands">Commands</a> ·
+  <a href="#browser-viewer">Viewer</a> ·
+  <a href="#configuration--configcctvconfigjson">Configuration</a> ·
+  <a href="#roadmap">Roadmap</a> ·
+  <a href="#faq">FAQ</a>
+</p>
+
+Place a camera in the world with `/cctv create lobby`, open `http://your-server:8100/cam/lobby` and watch the
+live picture: players walking, mobs with their animations, doors opening, blocks being placed, rain and sunsets —
+20 updates a second, in any browser, on any device.
+
+## What you get
+
+<table>
+<tr>
+<td width="33%" valign="top">
+
+### 🧩 Nothing to install for players
+Vanilla clients join as usual. The mod runs only on the server; nobody has to be logged in for a camera
+to work.
+
+</td>
+<td width="33%" valign="top">
+
+### 🖥️ No GPU on the server
+The server sends compact block, light and entity data. All drawing happens in the browser with WebGL2,
+off the main thread where it can.
+
+</td>
+<td width="33%" valign="top">
+
+### 🎯 1:1 with Minecraft 26.3
+Block meshes, smooth lighting, the lightmap, fog, sky, weather and mob models are ported from the game's
+own code and read from its `client.jar`.
+
+</td>
+</tr>
+<tr>
+<td valign="top">
+
+### 🐑 Every mob, animated
+All mob models with their variants, armour and equipment, the game's keyframe animations, entity events,
+shadows and name tags in the game's font.
+
+</td>
+<td valign="top">
+
+### 🔊 Sounds in 3D
+Steps, mobs, doors, explosions, note blocks, **music discs with "Now Playing"**, rain, caves and biome
+ambience — fading with distance like the game's sound engine.
+
+</td>
+<td valign="top">
+
+### 🌄 1024-block view distance
+Terrain in unloaded chunks comes from the region files (like Bobby), with distance fog you can choose.
+
+</td>
+</tr>
+<tr>
+<td valign="top">
+
+### ✨ Shaders and 11 post effects
+Sun shadows, waving plants, water reflections, sun rays — plus cinematic, noir, thermal, night vision,
+VHS, fisheye and more. Your own GLSL too.
+
+</td>
+<td valign="top">
+
+### 🎨 Your world's own packs
+Data packs, the world's `resources.zip` and the server resource pack are used like the game uses them:
+custom paintings, discs, blocks and sounds just work.
+
+</td>
+<td valign="top">
+
+### ⚡ Light on the server
+About a millisecond per camera tick, a browser-side section cache and a stream that never outruns a slow
+connection. A camera nobody watches costs nothing.
+
+</td>
+</tr>
+</table>
+
+## Gallery
+
+<table>
+<tr>
+<td colspan="2"><img src="docs/images/screenshots/vanilla-vs-shaders.jpg" width="100%" alt="The same camera drawn like vanilla Minecraft (left) and with the shaders mode (right)"><br>
+<sub><b>Vanilla or shaders</b> — the game's look, or sun shadows, waving plants, reflections and sun rays. Both run in any WebGL2 browser.</sub></td>
+</tr>
+<tr>
+<td width="50%"><img src="docs/images/screenshots/far.jpg" width="100%" alt="A camera looking over a plain with a tall stone wall and a beacon beam in the distance"><br>
+<sub><b>Far view</b> — up to 1024 blocks, beacon beams, clouds and distance fog.</sub></td>
+<td width="50%"><img src="docs/images/screenshots/underwater.jpg" width="100%" alt="A camera under water looking along the bottom of a pond"><br>
+<sub><b>Under water</b> — the water fog and the underwater overlay of the game.</sub></td>
+</tr>
+<tr>
+<td colspan="2"><img src="docs/images/screenshots/effects.jpg" width="100%" alt="The same scene with the 11 built-in post effects: cinematic, film noir, thermal camera, night vision, VHS tape, dome camera, tilt-shift, comic book, retro, dreamy glow and vivid"><br>
+<sub><b>Built-in post effects</b> — Settings › Post effect, or a default for everybody in the config.</sub></td>
+</tr>
+</table>
+
+<sub>All pictures are screenshots of the viewer taken by CI from a real 26.3 server.</sub>
+
+## Quick start
+
+```text
+1. Put cctv-fabric-<version>.jar and Fabric API into the server's mods/ folder, start the server.
+2. In game (as an operator):   /cctv create lobby
+3. Open in a browser:          http://your-server:8100/cam/lobby
+```
+
+Open port **8100/TCP** if players should watch from outside. `http://your-server:8100/` shows every camera
+at once as a video wall.
+
+<details>
+<summary><b>Everything it draws</b> (the long list)</summary>
 
 - **Players do not need the mod.** They join with a normal vanilla client.
 - **No extra Minecraft account and no bot.** Nobody has to be logged in for a camera to work.
@@ -46,10 +175,12 @@ in a web browser: players, mobs, opening doors and placed blocks show up right a
   reflections, glow, sun rays), custom GLSL post effects and sky boxes, with defaults for every
   viewer set by the admin.
 
+</details>
+
 ## Roadmap
 
 <!-- roadmap:start -->
-<p align="center"><img src="docs/images/roadmap/banner.svg" width="100%" alt="CCTV roadmap: 58 of 64 done"></p>
+<p align="center"><img src="docs/images/roadmap/banner.svg" width="100%" alt="CCTV roadmap: 62 of 68 done"></p>
 
 What is done and what comes next, milestone by milestone (the full plan with its principles is in
 [docs/ROADMAP.md](docs/ROADMAP.md)).
@@ -87,10 +218,10 @@ What is done and what comes next, milestone by milestone (the full plan with its
 
 </details>
 
-<img src="docs/images/roadmap/1-3.svg" width="100%" alt="1.3 — 1:1 picture: in progress - 1.3.4 is out, 37 of 40 done">
+<img src="docs/images/roadmap/1-3.svg" width="100%" alt="1.3 — 1:1 picture: in progress - 1.3.4 is out, 41 of 44 done">
 
 <details open>
-<summary><b>1.3 — 1:1 picture</b> · in progress - 1.3.4 is out · 37 of 40 done</summary>
+<summary><b>1.3 — 1:1 picture</b> · in progress - 1.3.4 is out · 41 of 44 done</summary>
 
 - [ ] **Reference renders in CI**: a Fabric client game test builds the CI scene in single player, takes a screenshot from the camera position with the game, and the viewer takes one from the same camera; both are published side by side with a difference score
 - [x] **Signs and hanging signs** with their text in the game font (text sent by the server; boards and beds are block models in 26.3 and were already drawn)
@@ -130,6 +261,10 @@ What is done and what comes next, milestone by milestone (the full plan with its
 - [x] **Fishing lines** (FishingHookRenderer: the hook facing the camera and the sagging black line to the hand holding the rod) and **wolf armour cracks** (WolfArmorLayer with Crackiness.WOLF_ARMOR)
 - [x] **Items with special models** (the game's `items/*.json`: chests, shulker boxes, heads, banners, conduits, decorated pots, copper golem statues, beds) dropped, held and in item frames, like SpecialModelWrapper
 - [x] **Glowing outlines** (the Glowing effect and tag: the entity outline target and the game's entity_outline post chain, in the team colour, seen through walls) and the **names of map markers** on framed maps (MapRenderer)
+- [x] **Paintings like PaintingRenderer** (the picture, the wooden back and edges, each block lit by its own light) and **music discs** (LevelEventHandler.playJukeboxSong with Gui.setNowPlaying's rainbow "Now Playing"; songs already playing are picked up from JukeboxSongPlayer)
+- [x] **The world's own packs**: data packs with assets, the world's `resources.zip` and the server resource pack are used like the game does, so custom paintings, discs, blocks, items and sounds show up
+- [x] Mob animations checked against the 26.3 models (felines, bees, chickens, polar bears, turtles, fish, dolphins, endermites, silverfish, vexes, allays, striders)
+- [x] Your own field of view (30–110°), distance fog modes and 11 built-in post effects
 - [ ] Terrain: the game's chunk occlusion culling (visibility graph), remaining fluid edge cases, the biome blend setting
 - [x] **Camera in water, lava and powder snow**: the underwater overlay (ScreenEffectRenderer, as bright as the light at the camera) and the fog of each (LavaFogEnvironment, PowderedSnowFogEnvironment)
 
@@ -223,7 +358,9 @@ time. If a camera should show movement while nobody is nearby, keep the area loa
 
 Drag with the mouse to look around, use the wheel to zoom and double-click to go back to the
 camera's view. The view turns only as far as the terrain the server streams around the camera's
-direction (about 20° beyond the picture); aim the camera with `/cctv aim` to look elsewhere. **⚙ Settings** has: graphics (vanilla / shaders) and shader quality, post effect
+direction (about 20° beyond the picture); aim the camera with `/cctv aim` to look elsewhere. **⚙ Settings** has: graphics (vanilla / shaders) and shader quality, field of view
+(30–110° like the game's option, or the camera's own), distance fog (the game's, smooth, atmospheric or
+minimal), post effect
 (custom shader), sky (sky box), clouds, camera mode (colour / black and white / night vision),
 render resolution (for weak GPUs), name tags, mob labels, particles and the CCTV effect. Each viewer's
 choice is remembered in their browser.
@@ -291,6 +428,27 @@ data pack's `jukebox_song` with its sound from the pack's `sounds.json`, and its
 
 ## How it works
 
+```mermaid
+flowchart LR
+    subgraph server["Minecraft server (Fabric, no GPU)"]
+        world["Loaded chunks<br/>entities · block changes<br/>light · weather · sounds"]
+        disk["Region files<br/>(unloaded terrain)"]
+        jar["client.jar + resource packs<br/>textures · models · sounds"]
+        session["Camera session<br/>sections in the view cone"]
+        world --> session
+        disk --> session
+    end
+    subgraph browser["Browser (WebGL2)"]
+        mesher["Web Workers<br/>section meshes like the game"]
+        gpu["GPU<br/>lightmap · fog · sky · mobs · particles"]
+        cache[("IndexedDB<br/>section cache")]
+        mesher --> gpu
+        cache --> mesher
+    end
+    session -- "Server-Sent Events<br/>20× per second" --> mesher
+    jar -- "HTTP, cached" --> gpu
+```
+
 ```
 Server (no GPU)                                      Browser (WebGL2)
 ────────────────────────                             ──────────────────────────────
@@ -337,7 +495,7 @@ All endpoints support CORS and `?token=` (when a token is set).
 | `GET /assets/models.json` | Mob model geometry (layers from `LayerDefinitions`) |
 | `GET /assets/entities.json`, `/assets/entity/{path}.png` | Mob textures |
 | `GET /assets/misc/{path}.png` | Textures of `textures/misc` (the entity shadow) |
-| `GET /assets/painting/{name}.png` | Paintings |
+| `GET /assets/painting/{name}.png` | Paintings (`{namespace}:{name}` for the paintings of data packs) |
 | `GET /assets/font/{path}` | The game's font (`default.json`, glyph sheets such as `ascii.png`) |
 | `GET /api/viewer` | Viewer defaults, list of shaders and sky boxes |
 | `GET /custom/shaders/{name}.glsl`, `/custom/skyboxes/...` | Shader and sky box files from `config/cctv` |
@@ -385,11 +543,51 @@ Stream events:
 
 ## Limitations
 
-- Item pieces (eating, breaking tools) have no particles yet, and sniffers searching and the
-  background music are not played.
+- The background music is not played (jukeboxes are).
 - Terrain in unloaded chunks shows the state of the last world save.
 - Textures and models from `client.jar` are not part of this repository. The mod downloads them
   from Mojang's servers on a server that runs the game.
+
+## FAQ
+
+<details>
+<summary><b>Do players need to install anything?</b></summary>
+
+No. The mod runs only on the server; players join with a normal vanilla client and the cameras are
+watched in a browser.
+</details>
+
+<details>
+<summary><b>How much does a camera cost the server?</b></summary>
+
+About a millisecond per tick while somebody watches it (`GET /api/status` shows the exact time for each
+camera), a few to a few dozen KB/s per viewer, and nothing while nobody watches. The heavy work
+(meshes, lighting, drawing) is done by the browser.
+</details>
+
+<details>
+<summary><b>Can I show it on a website or a stream overlay?</b></summary>
+
+Yes: `http://your-server:8100/cam/<name>?embed=1` is a bare picture for an `<iframe>` or OBS browser
+source, and the [API](#api-to-build-your-own-page) lets you build your own page. Set `accessToken` to
+keep the cameras private.
+</details>
+
+<details>
+<summary><b>My server uses a resource pack or data packs with custom content. Does it show up?</b></summary>
+
+Yes. The world's data packs, its `resources.zip` and the server resource pack of `server.properties` are
+used like the game uses them, so custom paintings, music discs, blocks, items and sounds appear in the
+viewer too. Extra packs go into `config/cctv/resourcepacks/`.
+</details>
+
+<details>
+<summary><b>How hard is it to update to a new Minecraft version?</b></summary>
+
+Most of the game data (models, textures, animations, entity renderers, sounds, languages) is read from the
+new `client.jar` automatically. [docs/UPDATING.md](docs/UPDATING.md) walks through the rest, and the
+`inspect-minecraft` workflow compares the game classes the viewer ports between two versions.
+</details>
 
 ## License
 
