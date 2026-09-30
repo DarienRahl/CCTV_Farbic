@@ -1,5 +1,6 @@
 package io.github.darienrahl.cctv.camera;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -7,11 +8,17 @@ import java.util.function.IntConsumer;
 
 import org.jspecify.annotations.Nullable;
 
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonPrimitive;
 import com.mojang.authlib.GameProfile;
+import com.mojang.serialization.JsonOps;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.Holder;
+import net.minecraft.core.UUIDUtil;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
@@ -42,6 +49,9 @@ import net.minecraft.world.level.block.entity.SignTextSlot;
 import net.minecraft.world.level.block.entity.SkullBlockEntity;
 import net.minecraft.world.level.block.entity.SpawnerBlockEntity;
 import net.minecraft.world.level.block.entity.TrialSpawnerBlockEntity;
+import net.minecraft.world.level.block.entity.vault.VaultBlockEntity;
+import net.minecraft.world.level.block.entity.vault.VaultConfig;
+import net.minecraft.world.level.block.entity.vault.VaultSharedData;
 import net.minecraft.world.level.block.piston.PistonBaseBlock;
 import net.minecraft.world.level.block.piston.PistonHeadBlock;
 import net.minecraft.world.level.block.piston.PistonMovingBlockEntity;
@@ -85,6 +95,7 @@ final class BlockEntityEncoder {
 							spawner.getSpawner().getOrCreateDisplayEntity(spawner.getLevel(), spawner.getBlockPos()));
 					case TrialSpawnerBlockEntity trial -> spawner(trial, trial.getTrialSpawner().getStateData()
 							.getOrCreateDisplayEntity(trial.getTrialSpawner(), trial.getLevel(), trial.getTrialSpawner().getState()));
+					case VaultBlockEntity vault -> vault(vault);
 					default -> null;
 				};
 			} catch (RuntimeException | LinkageError e) {
@@ -185,6 +196,60 @@ final class BlockEntityEncoder {
 				.field("i", BuiltInRegistries.ITEM.getKey(item.getItem()).toString())
 				.field("d", side.getSerializedName())
 				.endObject().toString();
+	}
+
+	/**
+	 * What a vault shows its players (VaultSharedData, the part the game sends to clients): whether it shows an
+	 * item (its flames), the players it is waiting for and how far its connections reach:
+	 * {@code {"k":"vault", "d": shows an item, "p": [uuid, ...], "r": range}}; idle vaults are left out.
+	 */
+	private static @Nullable String vault(VaultBlockEntity vault) {
+		VaultSharedData shared = vault.getSharedData();
+		if (vault.getLevel() == null) {
+			return null;
+		}
+		// the connected players are package-private: read them the way the game sends them, through the codec
+		JsonElement encoded = VaultSharedData.CODEC.encodeStart(vault.getLevel().registryAccess().createSerializationContext(JsonOps.INSTANCE),
+				shared).result().orElse(null);
+		List<UUID> players = new ArrayList<>();
+		// the codec leaves out the range while it is the default
+		double range = VaultConfig.DEFAULT.deactivationRange();
+		if (encoded instanceof JsonObject object) {
+			if (object.get("connected_players") instanceof JsonArray list) {
+				for (JsonElement element : list) {
+					UUID uuid = uuid(element);
+					if (uuid != null) {
+						players.add(uuid);
+					}
+				}
+			}
+			if (object.get("connected_particles_range") instanceof JsonPrimitive primitive && primitive.isNumber()) {
+				range = primitive.getAsDouble();
+			}
+		}
+		if (!shared.hasDisplayItem() && players.isEmpty()) {
+			return null;
+		}
+		Json json = begin("vault", vault).field("d", shared.hasDisplayItem()).name("p").beginArray();
+		for (UUID uuid : players) {
+			json.value(uuid.toString());
+		}
+		return json.endArray().field("r", range, 2).endObject().toString();
+	}
+
+	/** UUIDUtil.CODEC's forms: four ints, or a string. */
+	private static @Nullable UUID uuid(JsonElement element) {
+		try {
+			if (element instanceof JsonArray ints && ints.size() == 4) {
+				return UUIDUtil.uuidFromIntArray(new int[]{ints.get(0).getAsInt(), ints.get(1).getAsInt(), ints.get(2).getAsInt(), ints.get(3).getAsInt()});
+			}
+			if (element instanceof JsonPrimitive primitive && primitive.isString()) {
+				return UUID.fromString(primitive.getAsString());
+			}
+		} catch (RuntimeException e) {
+			return null;
+		}
+		return null;
 	}
 
 	/** Food cooking on a campfire, one item id (or null) per slot: {@code {"k":"campfire", "i": [...]}}; empty ones are left out. */

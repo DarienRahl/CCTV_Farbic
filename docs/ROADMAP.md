@@ -259,7 +259,7 @@ to the milestone it belongs to. The roadmap on the README page is drawn from thi
       coloured custom names), the scoreboard's below_name objective under players' names, teams that hide name
       tags, no tag on a mob that is ridden, and the name_tag_distance and below_name_distance attributes
 
-## 1.7 — the world around the camera
+## 1.7 — the world around the camera (released: 1.7.0)
 
 - [x] **The world border** (WorldBorderRenderer): the scrolling force field on the border's walls within the render
       distance, fading in as the camera comes near, blue while it stands, green while it grows and red while it
@@ -275,7 +275,7 @@ to the milestone it belongs to. The roadmap on the README page is drawn from thi
       hit, the block they carry at its display offset (lit furnaces, custom display blocks), TNT minecarts swelling
       and flashing on their fuse, and the id's tiny offset that keeps carts in one place from flickering
 
-## 1.8 — every particle
+## 1.8 — every particle (released: 1.9.0)
 
 - [x] **Every particle type of 26.3** (ParticleResources): ash, white ash, crimson and warped spores, souls, sculk
       souls, charges and shrieks, vibrations flying to their listener, sonic booms, glow squids' glow and ink,
@@ -292,14 +292,15 @@ to the milestone it belongs to. The roadmap on the README page is drawn from thi
 - [x] **Biome ambient particles** (EnvironmentAttributes.AMBIENT_PARTICLES): the Nether's ash, white ash and spores
       and any data pack's, around the camera like ClientLevel.doAnimateTick
 
-## 1.9 — blocks' own particles
+## 1.9 — blocks' own particles (released: 1.9.0)
 
 - [x] Enchanting tables' glyphs flying from bookshelves, ender chests' portal specks, redstone wire, repeaters'
       and lit ores' glowing dust, falling dust under sand, gravel and concrete powder, mycelium, end portals and
       gateways, brewing stands' smoke, wet sponges' drips and active sculk sensors
 - [x] Conduits' nautilus specks drawn to the conduit, trial spawners' and vaults' flames and smoke, vaults
       opening and going out, bees dripping nectar, lightning rods' sparks in thunderstorms
-- [ ] Vaults' connections to the players they are waiting for (needs the vault's shared data from the server)
+- [x] Vaults' connections: specks flying from the players a vault is waiting for to its keyhole, and its flames
+      only while it shows an item, from the vault's shared data like the game sends it
 
 ## Later
 

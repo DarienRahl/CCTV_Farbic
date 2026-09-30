@@ -10,7 +10,7 @@
   <a href="https://github.com/DarienRahl/CCTV_Farbic/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/DarienRahl/CCTV_Farbic?style=for-the-badge&amp;label=release&amp;color=5d8c3e"></a>
   <img alt="Minecraft 26.3" src="https://img.shields.io/badge/minecraft-26.3-866043?style=for-the-badge">
   <img alt="Fabric, server side only" src="https://img.shields.io/badge/fabric-server%20side%20only-8b8b8b?style=for-the-badge">
-  <a href="#roadmap"><img alt="Roadmap" src="https://img.shields.io/badge/roadmap-100%2F102%20done-80ff20?style=for-the-badge"></a>
+  <a href="#roadmap"><img alt="Roadmap" src="https://img.shields.io/badge/roadmap-101%2F102%20done-80ff20?style=for-the-badge"></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-555555?style=for-the-badge"></a>
 </p>
 <!-- badges:end -->
@@ -58,7 +58,8 @@ off the main thread where it can.
 
 ### 🎯 1:1 with Minecraft 26.3
 Block meshes, smooth lighting, the lightmap, fog, sky, weather and mob models are ported from the game's
-own code and read from its `client.jar`.
+own code and read from its `client.jar`. **Every particle type** of the game is there too, from the
+Nether's ash to glyphs flying into enchanting tables.
 
 </td>
 </tr>
@@ -180,10 +181,12 @@ at once as a video wall.
   sheep eating grass, wolves shaking off water); burning entities are wrapped in flames.
 - **Blocks come alive.** Signs with their text, banners with patterns, decorated pots, player
   heads with skins, beacon beams, end portals with the game's own shader, food on campfires, the
-  enchanting table's book turning to players, and the game's particles: torch and campfire flames
-  and smoke, lava pops, drips, falling leaves, pieces of broken blocks, explosions, crits, hearts,
-  villager moods and potion swirls. Chests and shulker boxes open, bells swing, blocks being mined
-  crack and spawners spin their mobs.
+  enchanting table's book turning to players, and every particle of the game: torch and campfire
+  flames, drips, falling leaves, pieces of broken blocks, explosions, potions bursting, glyphs flying
+  into enchanting tables, redstone dust, sculk charges and shrieks, vibrations flying to their
+  listener, sonic booms, the totem of undying, vaults calling their players and the Nether's ash and
+  spores. Chests and shulker boxes open, bells swing, blocks being mined crack and spawners spin their
+  mobs.
 - **Sounds.** With the 🔈 button the viewer plays what a player at the camera would hear: mobs, steps,
   doors, chests, blocks breaking, explosions, note blocks and jukeboxes, thunder, rain, crackling fires
   and bubbling lava, cave and biome ambience, the underwater hum, in 3D and fading with distance like
@@ -199,7 +202,7 @@ at once as a video wall.
 ## Roadmap
 
 <!-- roadmap:start -->
-<p align="center"><img src="docs/images/roadmap/banner.svg" width="100%" alt="CCTV roadmap: 100 of 102 done"></p>
+<p align="center"><img src="docs/images/roadmap/banner.svg" width="100%" alt="CCTV roadmap: 101 of 102 done"></p>
 
 What is done and what comes next, milestone by milestone (the full plan with its principles is in
 [docs/ROADMAP.md](docs/ROADMAP.md)).
@@ -341,10 +344,10 @@ What is done and what comes next, milestone by milestone (the full plan with its
 
 </details>
 
-<img src="docs/images/roadmap/1-7.svg" width="100%" alt="1.7 — the world around the camera: started, 5 of 5 done">
+<img src="docs/images/roadmap/1-7.svg" width="100%" alt="1.7 — the world around the camera: released 1.7.0, 5 of 5 done">
 
 <details>
-<summary><b>1.7 — the world around the camera</b> · started · 5 of 5 done</summary>
+<summary><b>1.7 — the world around the camera</b> · released 1.7.0 · 5 of 5 done</summary>
 
 - [x] **The world border** (WorldBorderRenderer): the scrolling force field on the border's walls within the render distance, fading in as the camera comes near, blue while it stands, green while it grows and red while it shrinks, and following the border as it moves
 - [x] **Stacks on the ground** (ItemEntityRenderer.submitMultipleFromCount): bigger stacks show up to five copies, scattered by the game's seed for the item, flat items stacked front to back; every dropped item rests 1/16 above the ground by its model's real size
@@ -354,10 +357,10 @@ What is done and what comes next, milestone by milestone (the full plan with its
 
 </details>
 
-<img src="docs/images/roadmap/1-8.svg" width="100%" alt="1.8 — every particle: started, 4 of 4 done">
+<img src="docs/images/roadmap/1-8.svg" width="100%" alt="1.8 — every particle: released 1.9.0, 4 of 4 done">
 
 <details>
-<summary><b>1.8 — every particle</b> · started · 4 of 4 done</summary>
+<summary><b>1.8 — every particle</b> · released 1.9.0 · 4 of 4 done</summary>
 
 - [x] **Every particle type of 26.3** (ParticleResources): ash, white ash, crimson and warped spores, souls, sculk souls, charges and shrieks, vibrations flying to their listener, sonic booms, glow squids' glow and ink, squid ink, wax on and off, scrapes, electric sparks, enchanting glyphs, nautilus and vault connections, the totem of undying, gusts, dust plumes, dust changing colour, falling dust, snowflakes, spit, trails, trial spawner flames, fishing wakes, sneezes, mob growth specks and sulfur cube goo, with the game's physics, their quads turned like the game's (LOOKAT_Y, shrieks and vibrations) and glowing where they glow
 - [x] **Level events' particles** (LevelEventHandler): splash and lingering potions bursting, dragon fireballs, eyes of ender breaking, dragon eggs and endermen teleporting, waxing, scraping and sparks on copper and lightning rods, sculk spreading and shriekers, a mace's smash, other players mining blocks, composters, trial spawners spawning, detecting and ejecting, cobwebs woven
@@ -366,14 +369,14 @@ What is done and what comes next, milestone by milestone (the full plan with its
 
 </details>
 
-<img src="docs/images/roadmap/1-9.svg" width="100%" alt="1.9 — blocks' own particles: started, 2 of 3 done">
+<img src="docs/images/roadmap/1-9.svg" width="100%" alt="1.9 — blocks' own particles: released 1.9.0, 3 of 3 done">
 
 <details>
-<summary><b>1.9 — blocks' own particles</b> · started · 2 of 3 done</summary>
+<summary><b>1.9 — blocks' own particles</b> · released 1.9.0 · 3 of 3 done</summary>
 
 - [x] Enchanting tables' glyphs flying from bookshelves, ender chests' portal specks, redstone wire, repeaters' and lit ores' glowing dust, falling dust under sand, gravel and concrete powder, mycelium, end portals and gateways, brewing stands' smoke, wet sponges' drips and active sculk sensors
 - [x] Conduits' nautilus specks drawn to the conduit, trial spawners' and vaults' flames and smoke, vaults opening and going out, bees dripping nectar, lightning rods' sparks in thunderstorms
-- [ ] Vaults' connections to the players they are waiting for (needs the vault's shared data from the server)
+- [x] Vaults' connections: specks flying from the players a vault is waiting for to its keyhole, and its flames only while it shows an item, from the vault's shared data like the game sends it
 
 </details>
 

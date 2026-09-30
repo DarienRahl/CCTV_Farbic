@@ -115,6 +115,9 @@ def build(rcon):
                  'text:[{text:"CCTV ",color:"gold",bold:true},{text:"PARTY",color:"light_purple",bold:true}],'
                  'transformation:{translation:[0f,0f,0f],left_rotation:[0f,0f,0f,1f],scale:[1.6f,1.6f,1.6f],'
                  'right_rotation:[0f,0f,0f,1f]}}')
+    # the librarian's corner: an enchanting table with bookshelves two blocks behind it, glyphs flying to it
+    rcon.command(f"setblock {at(-7, 0, 8)} minecraft:enchanting_table")
+    rcon.command(f"fill {at(-9, 0, 10)} {at(-5, 1, 10)} minecraft:bookshelf")
     # the smoke machine: dragon's breath lying on the dance floor behind the DJ (AreaEffectCloud's particles)
     rcon.command(f'summon minecraft:area_effect_cloud {X + 0.5} {Y} {Z + 7.5} {{Radius:2.5f,Duration:6000,'
                  'custom_particle:{type:"minecraft:dragon_breath"}}')

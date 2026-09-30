@@ -3236,6 +3236,7 @@ export class Particles {
 		for (const starter of this.starters) starter.tick();
 		this.starters = this.starters.filter(starter => !starter.removed);
 		for (const e of entities || []) if (e.fxp && e.fxp.length) this.effectSwirls(level, e);
+		this.entityList = entities;
 		this.entityParticles(level, entities);
 		const list = this.particles;
 		let n = 0;
@@ -3274,13 +3275,15 @@ export class Particles {
 			}
 			if (name === 'trial_spawner' || name === 'vault') {
 				// TrialSpawner.tickClient / VaultBlockEntity.Client.playIdleSounds (a vault with its item on show)
-				const on = name === 'vault' ? p.vault_state === 'active' || p.vault_state === 'unlocking'
+				const data = name === 'vault' ? world.blockEntityAt(x, y, z) : null;
+				const on = name === 'vault' ? (data ? !!data.d : p.vault_state === 'active' || p.vault_state === 'unlocking')
 					: p.trial_spawner_state === 'waiting_for_players' || p.trial_spawner_state === 'active';
 				if (on && nextFloat() <= 0.02) {
 					const sound = name === 'vault' ? 'minecraft:block.vault.ambient'
 						: p.ominous === 'true' ? 'minecraft:block.trial_spawner.ambient_ominous' : 'minecraft:block.trial_spawner.ambient';
 					level.sound(sound, x + 0.5, y + 0.5, z + 0.5, 'block', nextFloat() * 0.25 + 0.75, nextFloat() + 0.5);
 				}
+				if (name === 'vault' && this.gameTime % 20 === 0) this.vaultConnections(level, x, y, z, p.facing, data);
 				if (name === 'vault') this.vaultIdle(level, x, y, z, p.ominous === 'true', on);
 				else this.trialSpawnerParticles(level, x, y, z, p.trial_spawner_state, p.ominous === 'true');
 				continue;
@@ -3805,7 +3808,8 @@ export class Particles {
 				}
 				break;
 			case 3015:
-				// a vault opening (VaultBlockEntity.Client.emitActivationParticles, without the links to players)
+				// a vault opening (VaultBlockEntity.Client.emitActivationParticles)
+				this.vaultConnections(level, x, y, z, props(level.info(x, y, z) || {}).facing, level.world.blockEntityAt(x, y, z));
 				for (let i = 0; i < 20; i++) {
 					const px = x + 0.1 + nextDouble() * 0.8, py = y + 0.25 + nextDouble() * 0.5, pz = z + 0.1 + nextDouble() * 0.8;
 					this.addFx(level, 'minecraft:smoke', px, py, pz, 0, 0, 0);
@@ -3916,6 +3920,25 @@ export class Particles {
 			}
 			default:
 				break;
+		}
+	}
+
+	/**
+	 * VaultBlockEntity.Client.emitConnectionParticlesForNearbyPlayers: specks fly from each player the vault is
+	 * waiting for (within its range) to its keyhole.
+	 */
+	vaultConnections(level, x, y, z, facing, data) {
+		if (!data || !data.p || !data.p.length) return;
+		const d = DIRS[facing] || DIRS.north;
+		const kx = x + 0.5 + d[0] * 0.5, ky = y + 1.75, kz = z + 0.5 + d[2] * 0.5;
+		for (const e of this.entityList || []) {
+			if (!e.uuid || !data.p.includes(e.uuid)) continue;
+			const bx = Math.floor(e.x) - x, by = Math.floor(e.y) - y, bz = Math.floor(e.z) - z;
+			if (bx * bx + by * by + bz * bz > (data.r || 0) ** 2) continue;
+			const dx = e.x - kx, dy = e.y + (e.h || 1.8) / 2 - ky, dz = e.z - kz;
+			for (let i = 2 + nextInt(4); i > 0; i--) {
+				this.addFx(level, 'minecraft:vault_connection', kx, ky, kz, dx + nextFloat() - 0.5, dy + nextFloat() - 0.5, dz + nextFloat() - 0.5);
+			}
 		}
 	}
 
