@@ -12,7 +12,7 @@ import { collectParts, needsRandom, DOWN, UP, NORTH, SOUTH, WEST, EAST, DIR_VECT
 
 /** Blocks with a model whose block entity also draws something (a beacon's beam, food on a campfire, a book); shelves too. */
 const DRAWN_OVER = new Set(['minecraft:beacon', 'minecraft:campfire', 'minecraft:soul_campfire', 'minecraft:enchanting_table', 'minecraft:lectern',
-	'minecraft:spawner', 'minecraft:trial_spawner', 'minecraft:suspicious_sand', 'minecraft:suspicious_gravel']);
+	'minecraft:spawner', 'minecraft:trial_spawner', 'minecraft:vault', 'minecraft:suspicious_sand', 'minecraft:suspicious_gravel']);
 
 export const STRIDE = 24; // f32 x3 position | u16 x2 uv (1/65536) | u8 rgb + face | u8 sky, block, material, flags
 export const PAD = 18;

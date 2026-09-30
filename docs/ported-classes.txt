@@ -437,3 +437,19 @@ net/minecraft/client/particle/VibrationSignalParticle
 net/minecraft/client/particle/WakeParticle
 net/minecraft/client/particle/TrackingEmitter
 net/minecraft/world/attribute/AmbientParticle
+# the last renderer layers (mobs.js mob definitions and anims; entities.js drawMob, drawVaultItem,
+# drawOminousItem, drawCushion, drawDragonFireball, submitItemCluster; BlockEntityEncoder vault)
+net/minecraft/client/renderer/entity/layers/MushroomCowMushroomLayer
+net/minecraft/client/renderer/entity/layers/SnowGolemHeadLayer
+net/minecraft/client/renderer/entity/layers/CrossedArmsItemLayer
+net/minecraft/client/renderer/entity/layers/WitchItemLayer
+net/minecraft/client/renderer/entity/layers/DolphinCarryingItemLayer
+net/minecraft/client/renderer/entity/layers/LivingEntityEmissiveLayer
+net/minecraft/client/renderer/entity/WardenRenderer
+net/minecraft/client/model/npc/VillagerModel
+net/minecraft/client/model/monster/witch/WitchModel
+net/minecraft/client/renderer/blockentity/VaultRenderer
+net/minecraft/world/level/block/entity/vault/VaultClientData
+net/minecraft/client/renderer/entity/OminousItemSpawnerRenderer
+net/minecraft/client/renderer/entity/CushionRenderer
+net/minecraft/client/renderer/entity/DragonFireballRenderer

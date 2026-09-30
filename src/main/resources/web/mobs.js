@@ -5,6 +5,15 @@
 
 import { DEG } from './entity-models.js';
 
+/** Warden.getHeartBeatDelay: from 40 ticks when calm to 10 when angry (anger 80 and more). */
+export const heartBeatDelay = e => 40 - Math.floor(Math.min(1, Math.max(0, (Number(e.d && e.d.anger) || 0) / 80)) * 30);
+/** Warden.getTendrilAnimation / getHeartAnimation: the countdown from 10, between the last two ticks, over 10. */
+const wardenPulse = (a, age, key) => {
+	const m = (a && a.memory) || {};
+	const now = m[key] || 0, before = m[key + 'O'] ?? now;
+	return (before + (now - before) * (age - Math.floor(age))) / 10;
+};
+
 const PI = Math.PI;
 const cos = Math.cos, sin = Math.sin, abs = Math.abs;
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
@@ -439,11 +448,28 @@ const ANIMS = {
 			if (p.left_arm && p.head) { p.left_arm.yRot = 0.1 + p.head.yRot + 0.4; p.left_arm.xRot = -PI / 2 + p.head.xRot; }
 		}
 	},
-	villager(p, a) {
+	/** VillagerModel.setupAnim: an unhappy villager (one just refused a trade) shakes its head */
+	villager(p, a, e) {
 		headLook(p, a);
+		if (p.head && e && e.d && e.d.unhappy > 0) {
+			p.head.zRot = 0.3 * sin(0.45 * a.age);
+			p.head.xRot = 0.4;
+		}
 		const w = a.walk * 0.6662, s = a.walkSpeed;
 		if (p.right_leg) p.right_leg.xRot = cos(w) * 1.4 * s * 0.5;
 		if (p.left_leg) p.left_leg.xRot = cos(w + PI) * 1.4 * s * 0.5;
+	},
+	/** WitchModel.setupAnim: the nose twitching at the witch's own pace, raised while it holds something */
+	witch(p, a, e) {
+		ANIMS.villager(p, a);
+		if (!p.nose) return;
+		const speed = 0.01 * ((e && e.id) % 10 || 0);
+		p.nose.xRot = sin(a.age * speed) * 4.5 * DEG;
+		p.nose.zRot = cos(a.age * speed) * 2.5 * DEG;
+		if (e && e.hand) {
+			p.nose.x = 0; p.nose.y = 1; p.nose.z = -1.5;
+			p.nose.xRot = -0.9;
+		}
 	},
 	/** IllagerModel.setupAnim with IllagerRenderer's state (the illager's own arm pose, AbstractIllager.getArmPose). */
 	illager(p, a, e) {
@@ -1640,8 +1666,13 @@ export const CLIENT = {
 			else if (id === 61) st.memory.tendril = 10;
 			else if (id === 62) st.start('sonicBoomAnimationState', tick);
 		},
-		tick(e, st) {
-			if (st.memory.tendril > 0) st.memory.tendril--;
+		tick(e, st, tick) {
+			const m = st.memory;
+			if (tick % heartBeatDelay(e) === 0) m.heart = 10;
+			m.tendrilO = m.tendril || 0;
+			if (m.tendril > 0) m.tendril--;
+			m.heartO = m.heart || 0;
+			if (m.heart > 0) m.heart--;
 		},
 	},
 	/** Frog.tick (client) */
@@ -1952,7 +1983,7 @@ const MOBS = {
 		// CreeperPowerLayer
 		layers: [{ layer: 'creeper#armor', texture: 'creeper/creeper_armor', when: e => e.d && e.d.powered, ...energySwirl(t => t * 0.01) }],
 	},
-	dolphin: { layer: e => (e.baby ? 'dolphin_baby#main' : 'dolphin#main'), texture: e => 'dolphin/dolphin' + baby(e), shadow: 0.7, anim: 'dolphin' },
+	dolphin: { layer: e => (e.baby ? 'dolphin_baby#main' : 'dolphin#main'), texture: e => 'dolphin/dolphin' + baby(e), shadow: 0.7, anim: 'dolphin', carriesItem: true },
 	donkey: { layer: e => (e.baby ? 'donkey_baby#main' : 'donkey#main'), texture: e => 'horse/donkey' + baby(e), shadow: 0.75, anim: 'horse', saddle: ['donkey#saddle', 'equipment/donkey_saddle/saddle'] },
 	drowned: {
 		layer: e => (e.baby ? 'drowned_baby#main' : 'drowned#main'), texture: e => 'zombie/drowned' + baby(e), shadow: 0.5, anim: 'zombie', armor: 'drowned',
@@ -2012,7 +2043,7 @@ const MOBS = {
 		layers: [{ layer: e => (e.baby ? 'llama_baby#decor' : 'llama#decor'), texture: e => (e.baby ? 'equipment/llama_body/trader_llama_baby' : 'equipment/llama_body/trader_llama') }],
 	},
 	magma_cube: { layer: 'magma_cube#main', texture: 'slime/magmacube', shadow: cubeShadow, anim: 'none', slime: true, fullBright: true },
-	mooshroom: { layer: e => (e.baby ? 'mooshroom_baby#main' : 'mooshroom#main'), texture: e => 'cow/mooshroom_' + variant(e, 'red') + baby(e), shadow: 0.7, anim: 'quadruped' },
+	mooshroom: { layer: e => (e.baby ? 'mooshroom_baby#main' : 'mooshroom#main'), texture: e => 'cow/mooshroom_' + variant(e, 'red') + baby(e), shadow: 0.7, anim: 'quadruped', mushrooms: true },
 	mule: { layer: e => (e.baby ? 'mule_baby#main' : 'mule#main'), texture: e => 'horse/mule' + baby(e), shadow: 0.75, anim: 'horse', saddle: ['mule#saddle', 'equipment/mule_saddle/saddle'] },
 	nautilus: { layer: e => (e.baby ? 'nautilus_baby#main' : 'nautilus#main'), texture: e => 'nautilus/nautilus' + baby(e), shadow: 0.7, anim: 'nautilus', body: e => (e.baby ? [] : bodyLayers(e, 'nautilus_body', 'nautilus_armor#main')), saddle: ['nautilus#saddle', 'equipment/nautilus_saddle/saddle'] },
 	ocelot: { layer: e => (e.baby ? 'ocelot_baby#main' : 'ocelot#main'), texture: e => 'cat/ocelot' + baby(e), shadow: 0.4, anim: 'cat' },
@@ -2072,7 +2103,7 @@ const MOBS = {
 	skeleton_horse: { layer: e => (e.baby ? 'skeleton_horse_baby#main' : 'skeleton_horse#main'), texture: e => 'horse/horse_skeleton' + baby(e), shadow: 0.75, anim: 'horse', body: e => (e.baby ? [] : bodyLayers(e, 'horse_body', 'undead_horse_armor#main')), saddle: ['skeleton_horse#saddle', 'equipment/skeleton_horse_saddle/saddle'] },
 	slime: { layer: 'slime#main', texture: 'slime/slime', shadow: cubeShadow, anim: 'none', slime: true, layers: [{ layer: 'slime#outer', texture: 'slime/slime', mode: 'translucent' }] },
 	sniffer: { layer: e => (e.baby ? 'sniffer_baby#main' : 'sniffer#main'), texture: e => (e.baby ? 'sniffer/snifflet' : 'sniffer/sniffer'), shadow: 1.1, anim: 'sniffer' },
-	snow_golem: { layer: 'snow_golem#main', texture: 'snow_golem/snow_golem', shadow: 0.5, anim: 'snowGolem' },
+	snow_golem: { layer: 'snow_golem#main', texture: 'snow_golem/snow_golem', shadow: 0.5, anim: 'snowGolem', pumpkinHead: true },
 	spider: { flip: 180, layer: 'spider#main', texture: 'spider/spider', shadow: 0.8, anim: 'spider', layers: [{ layer: 'spider#main', texture: 'spider/spider_eyes', mode: 'eyes' }] },
 	squid: { layer: e => (e.baby ? 'squid_baby#main' : 'squid#main'), texture: e => 'squid/squid' + baby(e), shadow: 0.7, anim: 'squid', squid: true },
 	stray: { layer: 'stray#main', texture: 'skeleton/stray', shadow: 0.5, anim: 'skeleton', armor: 'stray', layers: [{ layer: 'stray#outer', texture: 'skeleton/stray_overlay' }] },
@@ -2087,14 +2118,24 @@ const MOBS = {
 	tropical_fish: { tropical: true, shadow: 0.15, anim: 'fish', fish: true },
 	turtle: { layer: e => (e.baby ? 'turtle_baby#main' : 'turtle#main'), texture: e => 'turtle/turtle' + baby(e), shadow: 0.7, anim: 'turtle' },
 	vex: { layer: 'vex#main', texture: e => (e.d && e.d.charging ? 'illager/vex_charging' : 'illager/vex'), shadow: 0.3, anim: 'vex', fullBright: true },
-	villager: { villager: 'villager', shadow: 0.5, anim: 'villager' },
+	villager: { villager: 'villager', shadow: 0.5, anim: 'villager', crossedItem: true },
 	vindicator: { layer: 'vindicator#main', texture: 'illager/vindicator', shadow: 0.5, anim: 'illager' },
-	wandering_trader: { layer: 'wandering_trader#main', texture: 'wandering_trader/wandering_trader', shadow: 0.5, anim: 'villager' },
+	wandering_trader: { layer: 'wandering_trader#main', texture: 'wandering_trader/wandering_trader', shadow: 0.5, anim: 'villager', crossedItem: true },
 	warden: {
 		layer: 'warden#main', texture: 'warden/warden', shadow: 0.9, anim: 'warden',
-		layers: [{ layer: 'warden#bioluminescent', texture: 'warden/warden_bioluminescent_layer', mode: 'eyes' }],
+		// WardenRenderer's LivingEntityEmissiveLayers: glowing always, pulsing in turns, the tendrils when it
+		// hears something (Warden.getTendrilAnimation) and the heart with every beat (getHeartAnimation)
+		layers: [
+			{ layer: 'warden#bioluminescent', texture: 'warden/warden_bioluminescent_layer', mode: 'translucent_emissive', alpha: () => 1 },
+			{ layer: 'warden#pulsating_spots', texture: 'warden/warden_pulsating_spots_1', mode: 'translucent_emissive',
+				alpha: (e, age) => Math.max(0, cos(age * 0.045) * 0.25) },
+			{ layer: 'warden#pulsating_spots', texture: 'warden/warden_pulsating_spots_2', mode: 'translucent_emissive',
+				alpha: (e, age) => Math.max(0, cos(age * 0.045 + PI) * 0.25) },
+			{ layer: 'warden#tendrils', texture: 'warden/warden', mode: 'translucent_emissive', alpha: (e, age, a) => wardenPulse(a, age, 'tendril') },
+			{ layer: 'warden#heart', texture: 'warden/warden_heart', mode: 'translucent_emissive', alpha: (e, age, a) => wardenPulse(a, age, 'heart') },
+		],
 	},
-	witch: { layer: 'witch#main', texture: 'witch/witch', shadow: 0.5, anim: 'villager' },
+	witch: { layer: 'witch#main', texture: 'witch/witch', shadow: 0.5, anim: 'witch', crossedItem: true, witch: true },
 	wither: {
 		layer: 'wither#main', texture: e => (e.d && e.d.invulnerable > 0 ? 'wither/wither_invulnerable' : 'wither/wither'), shadow: 1, anim: 'wither', wither: true,
 		// WitherArmorLayer: at half health or less (WitherBoss.isPowered)
@@ -2269,7 +2310,8 @@ export function describeMob(e) {
 	if (!def || def.special) return def ? { def, special: def.special } : null;
 	const value = (v, fallback) => (typeof v === 'function' ? v(e) : v ?? fallback);
 	const out = [];
-	const add = (layer, texture, extra = {}) => out.push({ layer: 'minecraft:' + layer, texture, mode: extra.mode || 'cutout', color: extra.color || null, swirl: extra.swirl || null });
+	const add = (layer, texture, extra = {}) => out.push({ layer: 'minecraft:' + layer, texture, mode: extra.mode || 'cutout', color: extra.color || null,
+		swirl: extra.swirl || null, alpha: extra.alpha || null });
 
 	if (def.player) {
 		const slim = e.slim;
@@ -2315,7 +2357,7 @@ export function describeMob(e) {
 		if (extra.when && !extra.when(e)) continue;
 		const texture = value(extra.texture);
 		if (!texture) continue;
-		add(value(extra.layer), texture, { mode: extra.mode, color: extra.color ? extra.color(e) : null, swirl: extra.swirl });
+		add(value(extra.layer), texture, { mode: extra.mode, color: extra.color ? extra.color(e) : null, swirl: extra.swirl, alpha: extra.alpha });
 	}
 	// Equipment layers (saddle, armour) are drawn on invisible mobs too.
 	if (def.saddle && e.saddle) { add(def.saddle[0], def.saddle[1]); out[out.length - 1].equipment = true; }

@@ -200,8 +200,10 @@ final class BlockEntityEncoder {
 
 	/**
 	 * What a vault shows its players (VaultSharedData, the part the game sends to clients): whether it shows an
-	 * item (its flames), the players it is waiting for and how far its connections reach:
-	 * {@code {"k":"vault", "d": shows an item, "p": [uuid, ...], "r": range}}; idle vaults are left out.
+	 * item (its flames), the players it is waiting for and how far its connections reach, and the item it shows
+	 * (VaultRenderer spins it in the cage) like a dropped stack:
+	 * {@code {"k":"vault", "d": shows an item, "p": [uuid, ...], "r": range, "i": item, "iModel", "iP", "n", "seed"}};
+	 * idle vaults are left out.
 	 */
 	private static @Nullable String vault(VaultBlockEntity vault) {
 		VaultSharedData shared = vault.getSharedData();
@@ -234,7 +236,13 @@ final class BlockEntityEncoder {
 		for (UUID uuid : players) {
 			json.value(uuid.toString());
 		}
-		return json.endArray().field("r", range, 2).endObject().toString();
+		json.endArray().field("r", range, 2);
+		ItemStack shown = shared.getDisplayItem();
+		if (!shown.isEmpty()) {
+			EntityEncoder.writeItem(json, "i", shown);
+			EntityEncoder.writeCluster(json, shown);
+		}
+		return json.endObject().toString();
 	}
 
 	/** UUIDUtil.CODEC's forms: four ints, or a string. */

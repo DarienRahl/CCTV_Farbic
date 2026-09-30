@@ -302,6 +302,19 @@ to the milestone it belongs to. The roadmap on the README page is drawn from thi
 - [x] Vaults' connections: specks flying from the players a vault is waiting for to its keyhole, and its flames
       only while it shows an item, from the vault's shared data like the game sends it
 
+## 1.10 — every layer of every renderer (released: 1.10.0)
+
+- [x] Mooshrooms' mushrooms on their back and head (MushroomCowMushroomLayer) and snow golems' carved pumpkin
+      (SnowGolemHeadLayer)
+- [x] Villagers and wandering traders holding what they offer in their crossed arms (CrossedArmsItemLayer),
+      witches' potions at their nose while they drink (WitchItemLayer) and dolphins carrying items
+      (DolphinCarryingItemLayer); unhappy villagers shaking their heads
+- [x] The warden's pulsating spots, its tendrils lighting up as it hears something and its heart beating faster
+      as it gets angry (LivingEntityEmissiveLayer)
+- [x] Vaults' spinning display item (VaultRenderer) and ominous item spawners' item growing and spinning
+      (OminousItemSpawnerRenderer)
+- [x] Cushions (CushionRenderer) and dragon fireballs (DragonFireballRenderer)
+
 ## Later
 
 - [x] **Recording and timelapse** of a camera in the browser: a video with the game's sounds, or one picture

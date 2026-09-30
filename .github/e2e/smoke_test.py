@@ -81,6 +81,7 @@ class StreamReader(threading.Thread):
         self.minecart = None
         self.cloud = None
         self.stack = None
+        self.ominous = None
         self.foil = set()
         self.glowing = set()
         self.leashed = set()
@@ -138,6 +139,8 @@ class StreamReader(threading.Thread):
                                     self.cloud = e
                                 if e["type"] == "minecraft:item" and e.get("n"):
                                     self.stack = e
+                                if e["type"] == "minecraft:ominous_item_spawner":
+                                    self.ominous = e
                                 if e.get("helm") or e.get("skull"):
                                     self.worn_heads[e["type"]] = e
                                 if e["type"] in ("minecraft:text_display", "minecraft:block_display", "minecraft:item_display"):
@@ -343,6 +346,8 @@ def main():
     rcon.command("summon minecraft:furnace_minecart 3 -60 -4")
     rcon.command('summon minecraft:item 4 -60 -6 {Item:{id:"minecraft:cobblestone",count:20},PickupDelay:32767,Age:-32768}')
     rcon.command('summon minecraft:area_effect_cloud 0 -60 -3 {Radius:2f,Duration:12000,potion_contents:{potion:"minecraft:poison"}}')
+    # an ominous item spawner holding three diamonds (OminousItemSpawnerRenderer draws them like a dropped stack)
+    rcon.command('summon minecraft:ominous_item_spawner 5 -58 -6 {item:{id:"minecraft:diamond",count:3},spawn_item_after_ticks:1000000L}')
 
     rcon.command("cctv create ci -1 -56 -8 10 30")
     # a camera under water, in the pool (the water fog and the underwater overlay, screenshot.mjs)
@@ -582,6 +587,9 @@ def main():
         failures.append(f"the furnace minecart was not streamed with its display block (got {stream.minecart})")
     if (stream.stack or {}).get("n") != 3 or "seed" not in (stream.stack or {}):
         failures.append(f"the stack of cobblestone was not streamed as three copies with its seed (got {stream.stack})")
+    print("ominous item spawner:", json.dumps(stream.ominous), flush=True)
+    if (stream.ominous or {}).get("item") != "minecraft:diamond" or (stream.ominous or {}).get("n") != 2:
+        failures.append(f"the ominous item spawner was not streamed with its diamonds as two copies (got {stream.ominous})")
     cloud = (stream.cloud or {}).get("cloud", {})
     if cloud.get("p") != "minecraft:entity_effect" or not cloud.get("r") or "color" not in cloud.get("o", {}):
         failures.append(f"the poison cloud was not streamed with its radius and coloured particle (got {stream.cloud})")

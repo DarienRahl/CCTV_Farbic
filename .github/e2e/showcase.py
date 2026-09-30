@@ -103,9 +103,11 @@ def build(rcon):
     rcon.command(f'summon minecraft:sheep {X - 4.5} {Y} {Z + 2.5} {{CustomName:"jeb_",NoAI:1b,Rotation:[150f,0f]}}')
     rcon.command(f'summon minecraft:cow {X + 6.5} {Y} {Z + 3.5} {{CustomName:"Dinnerbone",NoAI:1b,Rotation:[210f,0f]}}')
     rcon.command(f'summon minecraft:villager {X - 5.5} {Y} {Z + 6.5} {{NoAI:1b,Rotation:[120f,0f],'
-                 'VillagerData:{type:"minecraft:plains",profession:"minecraft:librarian",level:2}}')
+                 'VillagerData:{type:"minecraft:plains",profession:"minecraft:librarian",level:2},'
+                 'equipment:{mainhand:{id:"minecraft:book",count:1}}}')
     rcon.command(f'summon minecraft:villager {X + 5.5} {Y} {Z + 6.5} {{NoAI:1b,Rotation:[240f,0f],'
-                 'VillagerData:{type:"minecraft:desert",profession:"minecraft:farmer",level:1}}')
+                 'VillagerData:{type:"minecraft:desert",profession:"minecraft:farmer",level:1},'
+                 'equipment:{mainhand:{id:"minecraft:bread",count:1}}}')
     rcon.command(f"summon minecraft:creeper {X + 9.5} {Y + 5} {Z + 10.5} {{NoAI:1b,Rotation:[160f,0f]}}")
     rcon.command(f"summon minecraft:iron_golem {X + 3.5} {Y} {Z + 9.5} {{NoAI:1b,Rotation:[200f,0f]}}")
     # the DJ: a mannequin with jeb_'s skin behind the jukebox, and a hologram over the dance floor

@@ -33,7 +33,7 @@ function axisRotation(x, y, z, angle) {
 /** A standard normal random number (Random.nextGaussian). */
 const gaussian = () => Math.sqrt(-2 * Math.log(1 - Math.random())) * Math.cos(2 * PI * Math.random());
 
-const MODE_CUTOUT = 0, MODE_NOCULL = 1, MODE_TRANSLUCENT = 2, MODE_EYES = 3, MODE_ENERGY = 4, MODE_CRUMBLING = 5;
+const MODE_CUTOUT = 0, MODE_NOCULL = 1, MODE_TRANSLUCENT = 2, MODE_EYES = 3, MODE_ENERGY = 4, MODE_CRUMBLING = 5, MODE_TRANSLUCENT_EMISSIVE = 6;
 
 /**
  * Enchantment glint kinds (RenderTypes ITEM_CUTOUT_GLINT, ARMOR_CUTOUT_NO_CULL_GLINT, ENTITY_SOLID_GLINT): the glint
@@ -116,7 +116,8 @@ const SHIELD_DISPLAY = {
 const FACING_STEP = { north: [0, 0, -1], south: [0, 0, 1], west: [-1, 0, 0], east: [1, 0, 0], up: [0, 1, 0], down: [0, -1, 0] };
 const FACING_YROT = { south: 0, west: 90, north: 180, east: 270 };
 
-const MODES = { cutout: MODE_CUTOUT, cutout_nocull: MODE_NOCULL, translucent: MODE_TRANSLUCENT, eyes: MODE_EYES, energy: MODE_ENERGY };
+const MODES = { cutout: MODE_CUTOUT, cutout_nocull: MODE_NOCULL, translucent: MODE_TRANSLUCENT, eyes: MODE_EYES, energy: MODE_ENERGY,
+	translucent_emissive: MODE_TRANSLUCENT_EMISSIVE };
 
 // GPU skinning: models stay on the GPU in their parts' own space (aBone = the part's index) and each part's matrix of
 // this frame is read from a float texture, four texels per matrix; vertices made on the CPU have aBone -1.
@@ -218,6 +219,13 @@ void main() {
 		// rendertype_crumbling: the destroy stage texture, blended as DST_COLOR * SRC_COLOR
 		color *= vColor;
 		if (color.a < 0.1) discard;
+		outColor = apply_fog(color, vSph, vCyl);
+		return;
+	}
+	if (uMode == 6) {
+		// entity_translucent_emissive: alpha cutout 0.1, blended, not darkened by the lightmap
+		if (color.a < 0.1) discard;
+		color *= vColor;
 		outColor = apply_fog(color, vSph, vCyl);
 		return;
 	}
@@ -1698,6 +1706,9 @@ export class EntityRenderer {
 		const style = { color: [1, 1, 1, 1], light, overlay: [e.hurt || e.dead ? 1 : 0, 0] };
 		switch (type) {
 			case 'item': return this.drawDroppedItem(e, pos, style);
+			case 'ominous_item_spawner': return this.drawOminousItem(e, pos, style);
+			case 'cushion': return this.drawCushion(e, pos, style);
+			case 'dragon_fireball': return this.drawDragonFireball(pos, style);
 			case 'experience_orb': return this.drawOrb(e, pos, style, now);
 			case 'arrow': case 'spectral_arrow': return this.drawProjectile(e, pos, style, 'arrow#main', type === 'spectral_arrow' ? 'projectiles/arrow_spectral' : 'projectiles/arrow', -90, 0);
 			case 'trident': return this.drawProjectile(e, pos, style, 'trident#main', 'trident/trident', -90, 90);
@@ -1885,7 +1896,13 @@ export class EntityRenderer {
 			if (e.invisible && !layer.equipment && !layer.swirl) continue;
 			const start = this.sink.mark();
 			// getModelTint (e.g. a wet wolf) tints the entity's own model, not the layers drawn over it.
-			const color = layer.color || (model === base && layer === mob.layers[0] && anim.tint) || [1, 1, 1, 1];
+			let color = layer.color || (model === base && layer === mob.layers[0] && anim.tint) || [1, 1, 1, 1];
+			if (layer.alpha) {
+				// LivingEntityEmissiveLayer: white at the layer's alpha, not drawn while it is (nearly) zero
+				const alpha = layer.alpha(e, age, anim);
+				if (alpha <= 1e-5) continue;
+				color = [1, 1, 1, alpha];
+			}
 			let lm = m;
 			let layerStyle = style;
 			// SulfurCubeInnerLayer: white while the fuse is lit
@@ -1900,7 +1917,7 @@ export class EntityRenderer {
 			const glint = layer.foil && (e.foil & layer.foil) ? GLINT_ARMOR : 0;
 			// EnergySwirlLayer: the texture offset by xOffset(ageInTicks) % 1 and ageInTicks * 0.01 % 1
 			const uv = layer.swirl ? [layer.swirl(age) % 1, age * 0.01 % 1] : null;
-			this.batch(texture, mode, start, mode !== MODE_NOCULL && mode !== MODE_TRANSLUCENT, glint, uv);
+			this.batch(texture, mode, start, mode !== MODE_NOCULL && mode !== MODE_TRANSLUCENT && mode !== MODE_TRANSLUCENT_EMISSIVE, glint, uv);
 		}
 		if (!base) return this.drawBox(e, pos, style);
 		// SulfurCubeInnerLayer: the block a sulfur cube holds, upside down inside it, white while the fuse is lit
@@ -1972,6 +1989,73 @@ export class EntityRenderer {
 				translate(fm, -0.5, -0.5, -0.5);
 				this.emitBlock('minecraft:poppy', fm, style);
 			}
+		}
+		// MushroomCowMushroomLayer: two mushrooms on a grown mooshroom's back and one on its head
+		if (def.mushrooms && !e.baby && !e.invisible) {
+			const block = strip(e.d && e.d.variant) === 'brown' ? 'minecraft:brown_mushroom' : 'minecraft:red_mushroom';
+			const mushroom = (mm, turn) => {
+				rotate(mm, 1, turn * DEG);
+				scale(mm, -1, -1, 1);
+				translate(mm, -0.5, -0.5, -0.5);
+				this.emitBlock(block, mm, style);
+			};
+			let mm = Float32Array.from(m);
+			translate(mm, 0.2, -0.35, 0.5);
+			mushroom(mm, -48);
+			mm = Float32Array.from(m);
+			translate(mm, 0.2, -0.35, 0.5);
+			rotate(mm, 1, 42 * DEG);
+			translate(mm, 0.1, 0, -0.6);
+			mushroom(mm, -48);
+			mm = partMatrix(base, 'head', m);
+			if (mm) {
+				scale(mm, 16);
+				translate(mm, 0, -0.7, -0.2);
+				mushroom(mm, -78);
+			}
+		}
+		// SnowGolemHeadLayer: the carved pumpkin on its head until it is sheared
+		if (def.pumpkinHead && e.d && e.d.pumpkin && !e.invisible) {
+			const pm = partMatrix(base, 'head', m);
+			if (pm) {
+				scale(pm, 16);
+				translate(pm, 0, -0.34375, 0);
+				rotate(pm, 1, 180 * DEG);
+				scale(pm, 0.625, -0.625, -0.625);
+				translate(pm, -0.5, -0.5, -0.5);
+				this.emitBlock('minecraft:carved_pumpkin', pm, style);
+			}
+		}
+		// CrossedArmsItemLayer (villagers, wandering traders) and WitchItemLayer: the main hand's item held in the
+		// crossed arms, or a witch's potion at its nose while it drinks
+		if (def.crossedItem && (e.handModel || e.hand)) {
+			const potion = def.witch && /(^|:)potion$/.test(strip(e.hand) || '');
+			const im = partMatrix(base, potion ? 'nose' : 'arms', m);
+			if (im) {
+				scale(im, 16);
+				if (potion) {
+					translate(im, 0.0625, 0.25, 0);
+					rotate(im, 2, 180 * DEG);
+					rotate(im, 0, 140 * DEG);
+					rotate(im, 2, 10 * DEG);
+					rotate(im, 0, 180 * DEG);
+				} else {
+					rotate(im, 0, 0.75);
+					scale(im, 1.07);
+					translate(im, 0, 0.13, -0.34);
+					rotate(im, 0, Math.PI);
+				}
+				this.drawGroundItem(e.handModel || e.hand, im, e.foil & FOIL_HAND ? { ...style, glint: GLINT_ITEM } : style, e.handP);
+			}
+		}
+		// DolphinCarryingItemLayer: the item in a dolphin's mouth, lower as it dives and higher as it rises
+		if (def.carriesItem && (e.handModel || e.hand)) {
+			const pitch = Number(e.pitch) || 0;
+			const tilt = Math.abs(pitch) / 60;
+			const im = Float32Array.from(m);
+			if (pitch < 0) translate(im, 0, 1 - tilt * 0.5, -1 + tilt * 0.5);
+			else translate(im, 0, 1 + tilt * 0.8, -1 + tilt * 0.2);
+			this.drawGroundItem(e.handModel || e.hand, im, e.foil & FOIL_HAND ? { ...style, glint: GLINT_ITEM } : style, e.handP);
 		}
 		if (def.anim === 'guardian' && e.beam !== undefined) this.drawGuardianBeam(e, type, pos, world);
 
@@ -2972,16 +3056,22 @@ export class EntityRenderer {
 		// ItemEntityRenderer.submit: bob, resting the model's lowest point 1/16 above the ground, and spin
 		translate(m, pos[0], pos[1] + bob - box[1] + 0.0625, pos[2]);
 		rotate(m, 1, age / 20 + bobOffset);
-		const itemStyle = e.foil & FOIL_ITEM ? { ...style, glint: GLINT_ITEM } : style;
+		this.submitItemCluster(m, mesh, transform, box, e.n || 1, e.seed || 0, e.foil & FOIL_ITEM ? { ...style, glint: GLINT_ITEM } : style, e.itemPatterns);
+		this.shadowFor(e, pos, 0.15, this.world, 0.75);
+	}
+
+	/**
+	 * ItemEntityRenderer.submitMultipleFromCount: the stack's model as it lies on the ground, with more copies for
+	 * bigger stacks (ItemClusterRenderState.getRenderedAmount) scattered by a random seeded with the item
+	 * (getSeedForItemStack); flat items are stacked front to back.
+	 */
+	submitItemCluster(m, mesh, transform, box, amount, seed, itemStyle, patterns) {
 		const submit = im => {
 			this.applyDisplay(im, transform, false);
-			this.emitItem(mesh, im, itemStyle, e.itemPatterns);
+			this.emitItem(mesh, im, itemStyle, patterns);
 		};
-		// submitMultipleFromCount: more copies for bigger stacks (ItemClusterRenderState.getRenderedAmount), scattered
-		// by a random seeded with the item (getSeedForItemStack); flat items are stacked front to back
-		const amount = e.n || 1;
 		const random = this.clusterRandom || (this.clusterRandom = new JavaRandom());
-		random.setSeedNumber(e.seed || 0);
+		random.setSeedNumber(seed);
 		const depth = box[5] - box[2];
 		if (depth > 0.0625) {
 			submit(Float32Array.from(m));
@@ -3007,7 +3097,45 @@ export class EntityRenderer {
 				translate(m, 0, 0, offsetZ);
 			}
 		}
-		this.shadowFor(e, pos, 0.15, this.world, 0.75);
+	}
+
+	/** A stack drawn the way a dropped one is, at m (no bobbing): its mesh, ground transform and model box. */
+	stackCluster(item, model, props) {
+		const mesh = this.itemMesh(model || item, props, 'ground');
+		if (!mesh) return null;
+		const fallback = mesh.kind === 'block'
+			? { translation: [0, 3, 0], scale: [0.25, 0.25, 0.25] }
+			: { translation: [0, 2, 0], scale: [0.5, 0.5, 0.5] };
+		const transform = this.displayTransform(item, 'ground', fallback, mesh.modelId);
+		return { mesh, transform, box: this.itemBox(mesh, transform) };
+	}
+
+	/** OminousItemSpawnerRenderer: the item growing in over its first 50 ticks and turning 40° a tick, at full light. */
+	drawOminousItem(e, pos, style) {
+		const stack = this.stackCluster(e.item, e.itemModel, e.itemP);
+		if (!stack) return;
+		const age = e.age || 0;
+		const m = mat4();
+		translate(m, pos[0], pos[1], pos[2]);
+		if (age <= 50) scale(m, Math.min(age, 50) / 50);
+		rotate(m, 1, (age * 40 % 360) * DEG);
+		const lit = { ...style, light: [240, 240] };
+		this.submitItemCluster(m, stack.mesh, stack.transform, stack.box, e.n || 1, e.seed || 0,
+			e.foil & FOIL_ITEM ? { ...lit, glint: GLINT_ITEM } : lit, e.itemPatterns);
+	}
+
+	/** VaultRenderer: the item a vault shows, spinning 10° a tick in the middle of its cage. */
+	drawVaultItem(be, pos, world) {
+		const data = world.blockEntityAt(be.x, be.y, be.z);
+		if (!data || data.k !== 'vault' || !data.d || !data.i) return;
+		const stack = this.stackCluster(data.i, data.iModel, data.iP);
+		if (!stack) return;
+		const m = mat4();
+		translate(m, pos[0] + 0.5, pos[1] + 0.4, pos[2] + 0.5);
+		rotate(m, 1, (performance.now() / 50 * 10 % 360) * DEG);
+		const [sky, block] = world.lightAt(be.x, be.y, be.z);
+		const style = { color: [1, 1, 1, 1], light: [block * 16, sky * 16], overlay: [0, 0] };
+		this.submitItemCluster(m, stack.mesh, stack.transform, stack.box, data.n || 1, data.seed || 0, style, null);
 	}
 
 	/** An item as ItemStackRenderState.submit draws it for ItemDisplayContext.GROUND (what mobs hold in their mouths). */
@@ -3050,6 +3178,41 @@ export class EntityRenderer {
 		scale(m, 0.5);
 		translate(m, -0.5, -0.25, -0.5);
 		this.emitItem(mesh, m, style);
+	}
+
+	/** CushionRenderer: the cushion model in its colour, turned to the nearest side, upside down about x. */
+	drawCushion(e, pos, style) {
+		const model = this.library.get('minecraft:cushion#main');
+		const texture = this.texture('cushion/' + (strip(e.d && e.d.color) || 'white') + '_cushion');
+		if (!model || !texture) return this.drawBox(e, pos, style);
+		model.reset();
+		const m = mat4();
+		translate(m, pos[0], pos[1], pos[2]);
+		// Direction.fromYRot(yRot).toYRot()
+		const facing = (Math.floor((e.yaw || 0) / 90 + 0.5) & 3) * 90;
+		rotate(m, 1, (180 - facing) * DEG);
+		rotate(m, 0, Math.PI);
+		translate(m, 0, -0.25, 0);
+		const start = this.sink.mark();
+		emitModel(this.sink, model, m, style);
+		this.batch(texture, MODE_CUTOUT, start);
+	}
+
+	/** DragonFireballRenderer: its texture on a quad twice a block wide facing the camera, lit like block light 15. */
+	drawDragonFireball(pos, style) {
+		const texture = this.texture('enderdragon/dragon_fireball');
+		const v = this.frame && this.frame.viewRotation;
+		if (!texture || !v) return;
+		const m = mat4();
+		translate(m, pos[0], pos[1], pos[2]);
+		scale(m, 2);
+		// camera.orientation
+		m.set(mul(m, new Float32Array([v[0], v[4], v[8], 0, v[1], v[5], v[9], 0, v[2], v[6], v[10], 0, 0, 0, 0, 1])));
+		const q = new Float32Array([-0.5, -0.25, 0, 0, 1, 0.5, -0.25, 0, 1, 1, 0.5, 0.75, 0, 1, 0, -0.5, 0.75, 0, 0, 0]);
+		const start = this.sink.mark();
+		this.sink.ensure(6);
+		emitQuads(this.sink, q, m, { ...style, light: [240, style.light[1]] });
+		this.batch(texture, MODE_CUTOUT, start, false);
 	}
 
 	drawOrb(e, pos, style, now) {
@@ -3940,6 +4103,10 @@ export class EntityRenderer {
 					if (Math.hypot(bx, by, bz) <= Math.min(frame.fogEnd, 64) && frame.frustum(bx + 0.5, by + 0.5, bz + 0.5, 1.5)) this.drawBrushable(be, [bx, by, bz], world);
 					continue;
 				}
+				if (be.info.shortName === 'vault') {
+					if (Math.hypot(bx, by, bz) <= Math.min(frame.fogEnd, 64) && frame.frustum(bx + 0.5, by + 0.5, bz + 0.5, 1.5)) this.drawVaultItem(be, [bx, by, bz], world);
+					continue;
+				}
 				if (be.info.shortName === 'conduit') {
 					if (Math.hypot(bx, by, bz) <= Math.min(frame.fogEnd, 64) && frame.frustum(bx + 0.5, by + 0.5, bz + 0.5, 1.5)) this.drawConduit(be, [bx, by, bz], frame, world);
 					continue;
@@ -4466,7 +4633,7 @@ export class EntityRenderer {
 		gl.enable(gl.BLEND);
 		gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
 		gl.depthMask(false);
-		drawBatches(b => b.mode === MODE_TRANSLUCENT);
+		drawBatches(b => b.mode === MODE_TRANSLUCENT || b.mode === MODE_TRANSLUCENT_EMISSIVE);
 		gl.blendFunc(gl.ONE, gl.ONE);
 		drawBatches(b => b.mode === MODE_EYES || b.mode === MODE_ENERGY);
 		// RenderPipelines.CRUMBLING: multiplied into the block, pulled towards the camera (depth bias 1, 10)

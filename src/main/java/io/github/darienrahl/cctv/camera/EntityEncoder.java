@@ -212,6 +212,8 @@ final class EntityEncoder {
 			{"isMoving", "moving", "minecraft:guardian minecraft:elder_guardian"},
 			{"isInWater", "inWater", "minecraft:guardian minecraft:elder_guardian"},
 			{"getClientAngerLevel", "anger", "minecraft:warden"},
+			// VillagerModel: an unhappy villager shakes its head
+			{"getUnhappyCounter", "unhappy", "minecraft:villager minecraft:wandering_trader"},
 			{"hasBeenStaredAt", "staredAt", "minecraft:enderman"},
 			{"getMaxHealth", "maxHealth", "minecraft:wolf"},
 			// Poses of FoxModel, PandaModel, AbstractEquineModel and IllagerModel (their renderers' extractRenderState).
@@ -407,6 +409,8 @@ final class EntityEncoder {
 			if (shown != null) {
 				writeItem(json, "item", shown);
 				writePatterns(json, "itemPatterns", shown);
+				// an ominous item spawner draws its stack like a dropped one (ItemClusterRenderState)
+				writeCluster(json, shown);
 				foil |= foil(shown, FOIL_ITEM);
 			}
 		}
@@ -563,7 +567,7 @@ final class EntityEncoder {
 	 * ItemClusterRenderState (client code): how many copies of a stack ItemEntityRenderer draws (getRenderedAmount)
 	 * and the seed that scatters them (getSeedForItemStack), when more than one.
 	 */
-	private static void writeCluster(Json json, ItemStack stack) {
+	static void writeCluster(Json json, ItemStack stack) {
 		int count = stack.getCount();
 		int amount = count <= 1 ? 1 : count <= 16 ? 2 : count <= 32 ? 3 : count <= 48 ? 4 : 5;
 		if (amount > 1) {

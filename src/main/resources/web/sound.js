@@ -8,6 +8,7 @@
 // and cave "mood" (BiomeAmbientSoundsHandler), the underwater loop and its additions (LocalPlayer,
 // UnderwaterAmbientSoundHandler) and bubble columns (BubbleColumnAmbientSoundHandler).
 import { JavaRandom } from './rng.js';
+import { heartBeatDelay } from './mobs.js';
 
 /** Sounds playing at once (the game has 247 static channels; a camera rarely needs more than a few). */
 const MAX_PLAYING = 48;
@@ -42,8 +43,6 @@ function sample(value, random) {
 	return 1;
 }
 
-/** Warden.getHeartBeatDelay: from 40 ticks when calm to 10 when angry (anger 80 and more). */
-const heartBeatDelay = e => 40 - Math.floor(Math.min(1, Math.max(0, (Number(e.d && e.d.anger) || 0) / 80)) * 30);
 
 /** Sounds the client plays in handleEntityEvent: type -> (event, entity) -> [id, x, y, z, source, volume, pitch]. */
 const EVENT_SOUNDS = {
