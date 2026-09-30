@@ -385,3 +385,16 @@ net/minecraft/client/renderer/entity/AbstractCubeMobRenderer
 net/minecraft/client/renderer/entity/layers/SulfurCubeInnerLayer
 net/minecraft/client/renderer/entity/TntRenderer
 net/minecraft/client/renderer/entity/MobRenderer
+# the world around the camera (border.js; entities.js drawMinecart, drawDroppedItem, energy swirls; particles.js cloudParticles)
+net/minecraft/client/renderer/WorldBorderRenderer
+net/minecraft/client/renderer/state/level/WorldBorderRenderState
+net/minecraft/world/level/border/BorderStatus
+net/minecraft/client/renderer/entity/state/ItemClusterRenderState
+net/minecraft/client/renderer/entity/layers/EnergySwirlLayer
+net/minecraft/client/renderer/entity/layers/CreeperPowerLayer
+net/minecraft/client/renderer/entity/layers/WitherArmorLayer
+net/minecraft/client/renderer/entity/AbstractMinecartRenderer
+net/minecraft/client/renderer/entity/TntMinecartRenderer
+net/minecraft/world/entity/vehicle/minecart/OldMinecartBehavior
+net/minecraft/world/entity/AreaEffectCloud
+net/minecraft/client/particle/DragonBreathParticle

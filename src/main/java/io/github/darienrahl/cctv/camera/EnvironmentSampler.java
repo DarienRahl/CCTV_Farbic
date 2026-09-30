@@ -19,6 +19,7 @@ import net.minecraft.world.attribute.BackgroundMusic;
 import net.minecraft.world.attribute.EnvironmentAttributeReader;
 import net.minecraft.world.attribute.EnvironmentAttributes;
 import net.minecraft.world.level.biome.BiomeManager;
+import net.minecraft.world.level.border.WorldBorder;
 import net.minecraft.world.level.dimension.DimensionType;
 import net.minecraft.world.phys.Vec3;
 
@@ -114,6 +115,14 @@ final class EnvironmentSampler {
 		if (attributes.getValue(EnvironmentAttributes.WATER_EVAPORATES, pos)) {
 			json.field("evaporates", true);
 		}
+
+		// WorldBorderRenderer.extract: the border's sides now (they move while it grows or shrinks) and its status colour
+		WorldBorder border = level.getWorldBorder();
+		json.name("border").beginArray()
+				.value(border.getMinX(1.0F), 2).value(border.getMaxX(1.0F), 2)
+				.value(border.getMinZ(1.0F), 2).value(border.getMaxZ(1.0F), 2)
+				.endArray()
+				.field("borderTint", border.getStatus().getColor());
 
 		BlockPos blockPos = BlockPos.containing(pos);
 		if (level.getChunkSource().getChunkNow(blockPos.getX() >> 4, blockPos.getZ() >> 4) != null) {

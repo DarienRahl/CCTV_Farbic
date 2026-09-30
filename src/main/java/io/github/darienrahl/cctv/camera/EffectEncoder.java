@@ -175,7 +175,7 @@ final class EffectEncoder {
 	 * The particle's options: {"b": block state} for block particles, else the game's own serialisation
 	 * (ParticleTypes.CODEC: dust colour and scale, effect colours...); nothing for simple particles.
 	 */
-	private static @Nullable String options(ServerLevel level, ParticleOptions particle, IntConsumer blockStates) {
+	static @Nullable String options(ServerLevel level, ParticleOptions particle, IntConsumer blockStates) {
 		if (particle instanceof BlockParticleOption block) {
 			int id = Block.getId(block.getState());
 			blockStates.accept(id);

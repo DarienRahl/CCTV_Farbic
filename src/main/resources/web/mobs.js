@@ -1909,6 +1909,12 @@ const baby = e => (e.baby ? '_baby' : '');
  */
 const HUMANOID_ARMOR = true;
 
+/** EnergySwirlLayer: drawn with RenderTypes.energySwirl in grey (0xFF808080), its texture scrolled by xOffset. */
+const ENERGY_SWIRL_COLOR = [128 / 255, 128 / 255, 128 / 255, 1];
+function energySwirl(xOffset) {
+	return { mode: 'energy', color: () => ENERGY_SWIRL_COLOR, swirl: xOffset };
+}
+
 const MOBS = {
 	allay: { layer: 'allay#main', texture: 'allay/allay', shadow: 0.4, anim: 'allay', cull: false },
 	armadillo: { layer: e => (e.baby ? 'armadillo_baby#main' : 'armadillo#main'), texture: e => 'armadillo/armadillo' + baby(e), shadow: 0.4, anim: 'armadillo' },
@@ -1943,7 +1949,8 @@ const MOBS = {
 	creaking: { layer: 'creaking#main', texture: 'creaking/creaking', shadow: 0.6, anim: 'creaking', layers: [{ layer: 'creaking#eyes', texture: 'creaking/creaking_eyes', mode: 'eyes' }] },
 	creeper: {
 		layer: 'creeper#main', texture: 'creeper/creeper', shadow: 0.5, anim: 'creeper', creeper: true,
-		layers: [{ layer: 'creeper#armor', texture: 'creeper/creeper_armor', when: e => e.d && e.d.powered, mode: 'energy' }],
+		// CreeperPowerLayer
+		layers: [{ layer: 'creeper#armor', texture: 'creeper/creeper_armor', when: e => e.d && e.d.powered, ...energySwirl(t => t * 0.01) }],
 	},
 	dolphin: { layer: e => (e.baby ? 'dolphin_baby#main' : 'dolphin#main'), texture: e => 'dolphin/dolphin' + baby(e), shadow: 0.7, anim: 'dolphin' },
 	donkey: { layer: e => (e.baby ? 'donkey_baby#main' : 'donkey#main'), texture: e => 'horse/donkey' + baby(e), shadow: 0.75, anim: 'horse', saddle: ['donkey#saddle', 'equipment/donkey_saddle/saddle'] },
@@ -2088,7 +2095,11 @@ const MOBS = {
 		layers: [{ layer: 'warden#bioluminescent', texture: 'warden/warden_bioluminescent_layer', mode: 'eyes' }],
 	},
 	witch: { layer: 'witch#main', texture: 'witch/witch', shadow: 0.5, anim: 'villager' },
-	wither: { layer: 'wither#main', texture: e => (e.d && e.d.invulnerable > 0 ? 'wither/wither_invulnerable' : 'wither/wither'), shadow: 1, anim: 'wither', wither: true },
+	wither: {
+		layer: 'wither#main', texture: e => (e.d && e.d.invulnerable > 0 ? 'wither/wither_invulnerable' : 'wither/wither'), shadow: 1, anim: 'wither', wither: true,
+		// WitherArmorLayer: at half health or less (WitherBoss.isPowered)
+		layers: [{ layer: 'wither#armor', texture: 'wither/wither_armor', when: e => e.d && e.d.powered, ...energySwirl(t => Math.cos(t * 0.02) * 3) }],
+	},
 	wither_skeleton: { layer: 'wither_skeleton#main', texture: 'skeleton/wither_skeleton', shadow: 0.7, anim: 'skeleton', armor: 'wither_skeleton' },
 	wolf: {
 		layer: e => (e.baby ? 'wolf_baby#main' : 'wolf#main'),
@@ -2258,7 +2269,7 @@ export function describeMob(e) {
 	if (!def || def.special) return def ? { def, special: def.special } : null;
 	const value = (v, fallback) => (typeof v === 'function' ? v(e) : v ?? fallback);
 	const out = [];
-	const add = (layer, texture, extra = {}) => out.push({ layer: 'minecraft:' + layer, texture, mode: extra.mode || 'cutout', color: extra.color || null });
+	const add = (layer, texture, extra = {}) => out.push({ layer: 'minecraft:' + layer, texture, mode: extra.mode || 'cutout', color: extra.color || null, swirl: extra.swirl || null });
 
 	if (def.player) {
 		const slim = e.slim;
@@ -2304,7 +2315,7 @@ export function describeMob(e) {
 		if (extra.when && !extra.when(e)) continue;
 		const texture = value(extra.texture);
 		if (!texture) continue;
-		add(value(extra.layer), texture, { mode: extra.mode, color: extra.color ? extra.color(e) : null });
+		add(value(extra.layer), texture, { mode: extra.mode, color: extra.color ? extra.color(e) : null, swirl: extra.swirl });
 	}
 	// Equipment layers (saddle, armour) are drawn on invisible mobs too.
 	if (def.saddle && e.saddle) { add(def.saddle[0], def.saddle[1]); out[out.length - 1].equipment = true; }

@@ -15,7 +15,7 @@ function lerpDegrees(a, b, t) {
 }
 
 const ANGLES = new Set(['sunAngle', 'moonAngle', 'starAngle']);
-const DISCRETE = new Set(['t', 'time', 'clock', 'gt', 'moonPhase', 'precipitation', 'flash', 'skyDarken']);
+const DISCRETE = new Set(['t', 'time', 'clock', 'gt', 'moonPhase', 'precipitation', 'flash', 'skyDarken', 'borderTint']);
 
 const DEFAULT_SAMPLE = {
 	time: 6000, clock: 6000, gt: 0, rain: 0, thunder: 0,

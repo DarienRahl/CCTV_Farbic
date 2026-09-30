@@ -10,6 +10,7 @@ import { Environment } from './environment.js';
 import { SkyRenderer, customBrightness } from './sky.js';
 import { CloudRenderer } from './clouds.js';
 import { WeatherRenderer } from './weather.js';
+import { WorldBorder } from './border.js';
 import { PostProcessor } from './post.js';
 import { Particles } from './particles.js';
 import { Sounds } from './sound.js';
@@ -67,6 +68,7 @@ const environment = new Environment();
 const sky = new SkyRenderer(gl);
 const clouds = new CloudRenderer(gl);
 const weather = new WeatherRenderer(gl);
+const worldBorder = new WorldBorder(gl);
 const post = new PostProcessor(gl, renderer);
 const entities = new EntityRenderer(renderer);
 // ?skinning=0 poses entity models on the CPU (GPU skinning off, for comparisons)
@@ -750,6 +752,9 @@ function frame(now) {
 			weather.render({ viewProj, camera: { x: c.x, y: c.y, z: c.z }, fog, lightmap: renderer.lightmap }, rain, environment.gameTime(now),
 				(x, y, z) => world.lightAt(x, y, z), state.assets ? state.assets.environment : null);
 			weather.renderLightning(frameData, entities.bolts);
+			// LevelRenderer: the world border after the weather
+			worldBorder.render(frameData, { x: c.x, y: c.y, z: c.z }, environment.current.border, environment.current.borderTint || 0,
+				range, environment.current.border ? entities.texture('forcefield', 'misc') : null);
 			entities.drawOutlines(frameData, renderer.scene);
 			if (medium === 'water') {
 				// ScreenEffectRenderer: brightness of the light at the camera (getMaxLocalRawBrightness, LightTexture.getBrightness)

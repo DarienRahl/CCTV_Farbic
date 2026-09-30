@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -27,11 +28,13 @@ import net.minecraft.core.particles.ColorParticleOption;
 import net.minecraft.core.particles.ParticleOptions;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.tags.ItemTags;
 import net.minecraft.util.StringRepresentable;
 import net.minecraft.util.Util;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.AnimationState;
+import net.minecraft.world.entity.AreaEffectCloud;
 import net.minecraft.world.entity.Avatar;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.entity.Crackiness;
@@ -55,7 +58,10 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.player.PlayerModelPart;
 import net.minecraft.world.entity.player.PlayerSkin;
 import net.minecraft.world.entity.projectile.FishingHook;
+import net.minecraft.world.entity.vehicle.VehicleEntity;
 import net.minecraft.world.entity.vehicle.boat.AbstractBoat;
+import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
+import net.minecraft.world.entity.vehicle.minecart.OldMinecartBehavior;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.CrossbowItem;
 import net.minecraft.world.item.DyeColor;
@@ -93,11 +99,10 @@ import io.github.darienrahl.cctv.web.Json;
  * type...), walk animation, equipment and a few state flags.
  */
 final class EntityEncoder {
-	/** Technical entities that are invisible in game anyway (area effect clouds only make particles). */
+	/** Technical entities that are invisible in game anyway. */
 	private static final Set<String> HIDDEN_TYPES = Set.of(
 			"minecraft:marker",
-			"minecraft:interaction",
-			"minecraft:area_effect_cloud"
+			"minecraft:interaction"
 	);
 	/** The tag of the cameras' own markers (block displays the viewer does not draw: it is the camera). */
 	static final String CAMERA_MARKER_TAG = "cctv_camera";
@@ -394,6 +399,7 @@ final class EntityEncoder {
 		if (entity instanceof ItemEntity item) {
 			writeItem(json, "item", item.getItem());
 			writePatterns(json, "itemPatterns", item.getItem());
+			writeCluster(json, item.getItem());
 			foil |= foil(item.getItem(), FOIL_ITEM);
 		} else {
 			// Item frames, item displays and thrown items (snowballs, potions, eyes of ender...) show an item too.
@@ -421,6 +427,16 @@ final class EntityEncoder {
 		}
 		if (entity instanceof AbstractBoat boat) {
 			writeBoat(json, boat);
+		}
+		if (entity instanceof AbstractMinecart cart) {
+			writeMinecart(json, cart, blockStates);
+		}
+		if (entity instanceof AreaEffectCloud cloud) {
+			writeCloud(json, cloud, blockStates);
+		}
+		// AbstractBoatRenderer and AbstractMinecartRenderer rock a vehicle that was hit
+		if (entity instanceof VehicleEntity vehicle && vehicle.getHurtTime() > 0) {
+			json.field("hurtTime", vehicle.getHurtTime()).field("hurtDir", vehicle.getHurtDir()).field("damage", vehicle.getDamage(), 2);
 		}
 		if (entity instanceof SulfurCube cube) {
 			writeContainedBlock(json, cube, blockStates);
@@ -483,17 +499,87 @@ final class EntityEncoder {
 	}
 
 	/**
+	 * What AbstractMinecartRenderer draws besides the cart: the block it carries ({@code "db"}, getDisplayBlockState,
+	 * e.g. a furnace lit while it has fuel) at its height ({@code "dOff"}), and with the old minecart behaviour where
+	 * on its rail it sits and how it tilts along it ({@code "rail"}: the offset from the entity, yaw and pitch, as
+	 * oldExtractState and oldRender work them out from getPos and getPosOffs a little ahead and behind).
+	 * {@code "newCart"}: the experimental minecarts, turned by their own rotation (newRender).
+	 */
+	private static void writeMinecart(Json json, AbstractMinecart cart, IntConsumer blockStates) {
+		BlockState display = cart.getDisplayBlockState();
+		if (!display.isAir()) {
+			int id = Block.getId(display);
+			blockStates.accept(id);
+			json.field("db", id).field("dOff", cart.getDisplayOffset());
+		}
+		if (!(cart.getBehavior() instanceof OldMinecartBehavior behavior)) {
+			json.field("newCart", true);
+			return;
+		}
+		double x = cart.getX();
+		double y = cart.getY();
+		double z = cart.getZ();
+		Vec3 pos = behavior.getPos(x, y, z);
+		if (pos == null) {
+			return;
+		}
+		Vec3 front = Objects.requireNonNullElse(behavior.getPosOffs(x, y, z, 0.3F), pos);
+		Vec3 back = Objects.requireNonNullElse(behavior.getPosOffs(x, y, z, -0.3F), pos);
+		float rotation = cart.getYRot();
+		float xRot = cart.getXRot();
+		Vec3 direction = back.add(-front.x, -front.y, -front.z);
+		if (direction.length() != 0.0) {
+			direction = direction.normalize();
+			rotation = (float) (Math.atan2(direction.z, direction.x) * 180.0 / Math.PI);
+			xRot = (float) (Math.atan(direction.y) * 73.0);
+		}
+		json.name("rail").beginArray()
+				.value(pos.x - x, 3).value((front.y + back.y) / 2.0 - y, 3).value(pos.z - z, 3)
+				.value(rotation, 2).value(xRot, 2)
+				.endArray();
+	}
+
+	/**
+	 * AreaEffectCloud.clientTick: a cloud is nothing but particles puffed over its radius every tick (a few near its
+	 * middle while it waits), so the viewer gets its radius, whether it waits, and its particle with the options
+	 * (the potion's colour).
+	 */
+	private static void writeCloud(Json json, AreaEffectCloud cloud, IntConsumer blockStates) {
+		ParticleOptions particle = cloud.getParticle();
+		json.name("cloud").beginObject()
+				.field("r", cloud.getRadius(), 3)
+				.field("p", BuiltInRegistries.PARTICLE_TYPE.getKey(particle.getType()).toString());
+		if (cloud.isWaiting()) {
+			json.field("wait", true);
+		}
+		String options = cloud.level() instanceof ServerLevel level ? EffectEncoder.options(level, particle, blockStates) : null;
+		if (options != null) {
+			json.name("o").raw(options);
+		}
+		json.endObject();
+	}
+
+	/**
+	 * ItemClusterRenderState (client code): how many copies of a stack ItemEntityRenderer draws (getRenderedAmount)
+	 * and the seed that scatters them (getSeedForItemStack), when more than one.
+	 */
+	private static void writeCluster(Json json, ItemStack stack) {
+		int count = stack.getCount();
+		int amount = count <= 1 ? 1 : count <= 16 ? 2 : count <= 32 ? 3 : count <= 48 ? 4 : 5;
+		if (amount > 1) {
+			json.field("n", amount).field("seed", BuiltInRegistries.ITEM.getId(stack.getItem()) + stack.getDamageValue());
+		}
+	}
+
+	/**
 	 * What AbstractBoatRenderer shows: the paddles' rowing time (AbstractBoat.getRowingTime, rising by pi/8 a tick
-	 * while a paddle moves), the rocking when hit and the tilt over a bubble column. Only while not at rest.
+	 * while a paddle moves) and the tilt over a bubble column. Only while not at rest.
 	 */
 	private static void writeBoat(Json json, AbstractBoat boat) {
 		float left = boat.getRowingTime(0, 1.0F);
 		float right = boat.getRowingTime(1, 1.0F);
 		if (left != 0 || right != 0) {
 			json.field("rowL", left, 3).field("rowR", right, 3);
-		}
-		if (boat.getHurtTime() > 0) {
-			json.field("hurtTime", boat.getHurtTime()).field("hurtDir", boat.getHurtDir()).field("damage", boat.getDamage(), 2);
 		}
 		float bubble = boat.getBubbleAngle(1.0F);
 		if (bubble != 0) {

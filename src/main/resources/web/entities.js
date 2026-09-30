@@ -145,7 +145,7 @@ ${SKIN_GLSL}
 uniform mat4 uViewProj;
 uniform sampler2D uLightmap;
 uniform int uMode;
-uniform float uTime;
+uniform vec2 uUvOffset;
 uniform vec3 uLight0;
 uniform vec3 uLight1;
 uniform mat3 uGlintMatrix;
@@ -177,7 +177,8 @@ void main() {
 	float light = min(1.0, (max(0.0, dot(uLight0, n)) + max(0.0, dot(uLight1, n))) * 0.6 + 0.4);
 	vColor = uMode >= 3 ? aColor : vec4(aColor.rgb * light, aColor.a);
 	vLightColor = uMode == 3 || uMode == 5 ? vec4(1.0) : texture(uLightmap, clamp(aLight / 256.0 + 0.5 / 16.0, vec2(0.5 / 16.0), vec2(15.5 / 16.0)));
-	vUv = uMode == 4 ? aUv + vec2(uTime * 0.01) : aUv;
+	// RenderTypes.energySwirl: the texture scrolled by the layer's own offsets (TextureTransform translation)
+	vUv = aUv + uUvOffset;
 	// entity.vsh / item.vsh GLINT: the texture matrix applied to the model's own texture coordinates
 	vGlintUv = (uGlintMatrix * vec3(aUv, 1.0)).xy;
 	// OverlayTexture: hurt = red at 0.7 alpha, white flash fades the picture to white.
@@ -644,6 +645,17 @@ const NIL_UUID = '00000000-0000-0000-0000-000000000000';
 function tntSwell(fuse) {
 	const g = Math.min(1, Math.max(0, 1 - fuse / 10)) ** 4;
 	return g * 0.3;
+}
+
+/**
+ * AbstractMinecartRenderer.submit: a tiny offset from the id (MinecartRenderState.offsetSeed), so minecarts in the
+ * same place do not flicker into each other.
+ */
+function minecartJitter(id) {
+	const seed = BigInt.asIntN(64, BigInt(id || 0) * 493286711n);
+	const offsetSeed = BigInt.asIntN(64, seed * seed * 4392167121n + seed * 98761n);
+	const part = shift => ((Number((offsetSeed >> BigInt(shift)) & 7n) + 0.5) / 8 - 0.5) * 0.004;
+	return [part(16), part(20), part(24)];
 }
 
 /** TntRenderer.isLit: the white flash, every other 5 ticks of the fuse. */
@@ -1230,6 +1242,8 @@ export class EntityRenderer {
 				walk: num('walk'), walkSpeed: num('walkSpeed'), age: num('age'), deathTime: num('deathTime'),
 				swimAmount: num('swimAmount'), flyingTicks: num('flyingTicks'),
 				rowL: num('rowL'), rowR: num('rowR'), hurtTime: num('hurtTime'), damage: num('damage'), bubble: num('bubble'),
+				rail: ea.rail && eb.rail ? [lerp(ea.rail[0], eb.rail[0], t), lerp(ea.rail[1], eb.rail[1], t), lerp(ea.rail[2], eb.rail[2], t),
+					lerpAngle(ea.rail[3], eb.rail[3], t), lerp(ea.rail[4], eb.rail[4], t)] : eb.rail,
 				d: lerpData(ea.d, eb.d, t),
 			});
 		}
@@ -1296,19 +1310,20 @@ export class EntityRenderer {
 	 * Records that the vertices emitted since `start` use this texture / mode (and, while a glowing entity is
 	 * drawn, its outline colour).
 	 */
-	batch(texture, mode, start, cull = true, glint = 0) {
+	batch(texture, mode, start, cull = true, glint = 0, uv = null) {
 		const count = this.sink.count - start.v;
 		const skinCount = this.sink.draws.length - start.s;
 		if (count <= 0 && skinCount <= 0) return;
 		const outline = this.outline;
+		const u = uv ? uv[0] : 0, v = uv ? uv[1] : 0;
 		const last = this.batches[this.batches.length - 1];
 		if (last && last.texture === texture && last.mode === mode && last.cull === cull && last.glint === glint && last.outline === outline
-			&& last.start + last.count === start.v && last.skinStart + last.skinCount === start.s) {
+			&& last.u === u && last.v === v && last.start + last.count === start.v && last.skinStart + last.skinCount === start.s) {
 			last.count += count;
 			last.skinCount += skinCount;
 			return;
 		}
-		this.batches.push({ texture, mode, start: start.v, count, skinStart: start.s, skinCount, cull, glint, outline });
+		this.batches.push({ texture, mode, start: start.v, count, skinStart: start.s, skinCount, cull, glint, outline, u, v });
 	}
 
 	/** The GPU copy of a model's quads (GPU skinning), made the first time the model is drawn. */
@@ -1698,6 +1713,8 @@ export class EntityRenderer {
 			case 'llama_spit': return this.drawSimple(pos, style, 'llama_spit#main', 'llama/llama_spit', e.yaw);
 			case 'fishing_bobber': return this.drawFishingHook(e, pos, style);
 			case 'evoker_fangs': return this.drawEvokerFangs(e, pos, style, now);
+			// NoopRenderer: only the particles of its client tick (particles.js)
+			case 'area_effect_cloud': return;
 			default: break;
 		}
 		if (THROWN[type]) return this.drawThrown(pos, style, THROWN[type]);
@@ -1864,8 +1881,8 @@ export class EntityRenderer {
 			}
 			equipmentPose(model.parts, e, anim);
 			if (!base) base = model;
-			// LivingEntityRenderer: an invisible mob's body is not drawn, its equipment layers are.
-			if (e.invisible && !layer.equipment) continue;
+			// LivingEntityRenderer: an invisible mob's body is not drawn, its equipment layers and energy swirls are.
+			if (e.invisible && !layer.equipment && !layer.swirl) continue;
 			const start = this.sink.mark();
 			// getModelTint (e.g. a wet wolf) tints the entity's own model, not the layers drawn over it.
 			const color = layer.color || (model === base && layer === mob.layers[0] && anim.tint) || [1, 1, 1, 1];
@@ -1881,7 +1898,9 @@ export class EntityRenderer {
 			emitModel(this.sink, model, lm, { ...layerStyle, color });
 			const mode = MODES[layer.mode] ?? MODE_CUTOUT;
 			const glint = layer.foil && (e.foil & layer.foil) ? GLINT_ARMOR : 0;
-			this.batch(texture, mode, start, mode !== MODE_NOCULL && mode !== MODE_TRANSLUCENT, glint);
+			// EnergySwirlLayer: the texture offset by xOffset(ageInTicks) % 1 and ageInTicks * 0.01 % 1
+			const uv = layer.swirl ? [layer.swirl(age) % 1, age * 0.01 % 1] : null;
+			this.batch(texture, mode, start, mode !== MODE_NOCULL && mode !== MODE_TRANSLUCENT, glint, uv);
 		}
 		if (!base) return this.drawBox(e, pos, style);
 		// SulfurCubeInnerLayer: the block a sulfur cube holds, upside down inside it, white while the fuse is lit
@@ -2395,6 +2414,12 @@ export class EntityRenderer {
 		this.shadowFor(e, pos, 0.8, this.world);
 	}
 
+	/**
+	 * AbstractMinecartRenderer: jittered a little by the id (offsetSeed), sitting on its rail and tilted along it
+	 * (oldRender, the rail position and angles from the server) or turned by its own rotation (newRender, experimental
+	 * minecarts), rocking when hit, with the block it carries (a lit furnace, TNT flashing and swelling on its fuse
+	 * like TntMinecartRenderer) three quarters big at its display offset.
+	 */
 	drawMinecart(e, type, pos, style) {
 		const layer = type === 'minecart' ? 'minecart#main' : type + '#main';
 		const model = this.library.get('minecraft:' + layer) || this.library.get('minecraft:minecart#main');
@@ -2402,21 +2427,52 @@ export class EntityRenderer {
 		if (!model || !texture) return this.drawBox(e, pos, style);
 		model.reset();
 		const m = mat4();
-		translate(m, pos[0], pos[1] + 0.375, pos[2]);
-		rotate(m, 1, (180 - (e.yaw || 0)) * DEG);
-		rotate(m, 2, -(e.pitch || 0) * DEG);
-		const inside = { chest_minecart: 'minecraft:chest', furnace_minecart: 'minecraft:furnace', tnt_minecart: 'minecraft:tnt', hopper_minecart: 'minecraft:hopper', spawner_minecart: 'minecraft:spawner', command_block_minecart: 'minecraft:command_block' }[type];
-		if (inside) {
-			const b = new Float32Array(m);
+		translate(m, pos[0], pos[1], pos[2]);
+		const jitter = minecartJitter(e.id);
+		translate(m, jitter[0], jitter[1], jitter[2]);
+		if (e.newCart) {
+			rotate(m, 1, (e.yaw || 0) * DEG);
+			rotate(m, 2, -(e.pitch || 0) * DEG);
+			translate(m, 0, 0.375, 0);
+		} else {
+			let yRot = e.yaw || 0, xRot = e.pitch || 0;
+			if (e.rail) {
+				translate(m, e.rail[0], e.rail[1], e.rail[2]);
+				yRot = e.rail[3];
+				xRot = e.rail[4];
+			}
+			translate(m, 0, 0.375, 0);
+			rotate(m, 1, (180 - yRot) * DEG);
+			rotate(m, 2, -xRot * DEG);
+		}
+		const hurt = e.hurtTime || 0;
+		if (hurt > 0) rotate(m, 0, Math.sin(hurt) * hurt * Math.max(0, e.damage || 0) / 10 * (e.hurtDir || 1) * DEG);
+		if (e.db !== undefined) {
+			const b = Float32Array.from(m);
 			scale(b, 0.75);
-			translate(b, -0.5, (6 - 8) / 16, 0.5);
+			translate(b, -0.5, ((e.dOff ?? 6) - 8) / 16, 0.5);
 			rotate(b, 1, 90 * DEG);
-			this.emitBlock(inside === 'minecraft:chest' ? null : inside, b, style, inside === 'minecraft:chest');
+			let blockStyle = style;
+			if (type === 'tnt_minecart') {
+				// MinecartTntRenderState.fuseRemainingInTicks: getFuse() + 1 while primed, else -1
+				const fuse = e.d && typeof e.d.fuse === 'number' && e.d.fuse > -1 ? e.d.fuse + 1 : -1;
+				if (fuse > -1 && fuse < 10) {
+					const swell = tntSwell(fuse);
+					translate(b, -swell * 0.5, 0, -swell * 0.5);
+					scale(b, 1 + swell);
+				}
+				blockStyle = { ...style, overlay: [0, fuse > -1 && tntLit(fuse) ? 1 : 0] };
+			}
+			const mesh = this.blockStateMesh(e.db, this.world);
+			const info = this.world && this.world.infos[e.db];
+			if (mesh) this.emitItem(mesh, b, blockStyle);
+			else if (info && info.name.endsWith('chest')) this.emitBlock(null, b, blockStyle, true);
 		}
 		scale(m, -1, -1, 1);
 		const start = this.sink.mark();
 		emitModel(this.sink, model, m, style);
 		this.batch(texture, MODE_CUTOUT, start);
+		this.shadowFor(e, pos, 0.7, this.world);
 	}
 
 	drawEndCrystal(e, pos, style) {
@@ -2901,10 +2957,9 @@ export class EntityRenderer {
 		const bobOffset = (e.id * 0.618) % (Math.PI * 2);
 		const bob = Math.sin(age / 10 + bobOffset) * 0.1 + 0.1;
 		const m = mat4();
-		// ItemEntityRenderer: bob, spin, then the model's "ground" transform resting on its lowest point.
-		translate(m, pos[0], pos[1] + bob + (!mesh || mesh.kind === 'block' ? 0.0625 : 0.125), pos[2]);
-		rotate(m, 1, age / 20 + bobOffset);
 		if (shield) {
+			translate(m, pos[0], pos[1] + bob + 0.125, pos[2]);
+			rotate(m, 1, age / 20 + bobOffset);
 			this.drawShield(m, 'ground', e.foil & FOIL_ITEM ? { ...style, glint: GLINT_ITEM } : style, e.itemPatterns);
 			this.shadowFor(e, pos, 0.15, this.world, 0.75);
 			return;
@@ -2912,8 +2967,46 @@ export class EntityRenderer {
 		const fallback = mesh.kind === 'block'
 			? { translation: [0, 3, 0], scale: [0.25, 0.25, 0.25] }
 			: { translation: [0, 2, 0], scale: [0.5, 0.5, 0.5] };
-		this.applyDisplay(m, this.displayTransform(e.item, 'ground', fallback, mesh.modelId), false);
-		this.emitItem(mesh, m, e.foil & FOIL_ITEM ? { ...style, glint: GLINT_ITEM } : style, e.itemPatterns);
+		const transform = this.displayTransform(e.item, 'ground', fallback, mesh.modelId);
+		const box = this.itemBox(mesh, transform);
+		// ItemEntityRenderer.submit: bob, resting the model's lowest point 1/16 above the ground, and spin
+		translate(m, pos[0], pos[1] + bob - box[1] + 0.0625, pos[2]);
+		rotate(m, 1, age / 20 + bobOffset);
+		const itemStyle = e.foil & FOIL_ITEM ? { ...style, glint: GLINT_ITEM } : style;
+		const submit = im => {
+			this.applyDisplay(im, transform, false);
+			this.emitItem(mesh, im, itemStyle, e.itemPatterns);
+		};
+		// submitMultipleFromCount: more copies for bigger stacks (ItemClusterRenderState.getRenderedAmount), scattered
+		// by a random seeded with the item (getSeedForItemStack); flat items are stacked front to back
+		const amount = e.n || 1;
+		const random = this.clusterRandom || (this.clusterRandom = new JavaRandom());
+		random.setSeedNumber(e.seed || 0);
+		const depth = box[5] - box[2];
+		if (depth > 0.0625) {
+			submit(Float32Array.from(m));
+			for (let i = 1; i < amount; i++) {
+				const im = Float32Array.from(m);
+				const xo = (random.nextFloat() * 2 - 1) * 0.15;
+				const yo = (random.nextFloat() * 2 - 1) * 0.15;
+				const zo = (random.nextFloat() * 2 - 1) * 0.15;
+				translate(im, xo, yo, zo);
+				submit(im);
+			}
+		} else {
+			const offsetZ = depth * 1.5;
+			translate(m, 0, 0, -(offsetZ * (amount - 1) / 2));
+			submit(Float32Array.from(m));
+			translate(m, 0, 0, offsetZ);
+			for (let i = 1; i < amount; i++) {
+				const im = Float32Array.from(m);
+				const xo = (random.nextFloat() * 2 - 1) * 0.15 * 0.5;
+				const yo = (random.nextFloat() * 2 - 1) * 0.15 * 0.5;
+				translate(im, xo, yo, 0);
+				submit(im);
+				translate(m, 0, 0, offsetZ);
+			}
+		}
 		this.shadowFor(e, pos, 0.15, this.world, 0.75);
 	}
 
@@ -4017,22 +4110,24 @@ export class EntityRenderer {
 	}
 
 	/**
-	 * ItemStackRenderState.getModelBoundingBox, its height: the lowest and highest point of the item's model after
-	 * its display transform (a special model counts as its whole block).
+	 * ItemStackRenderState.getModelBoundingBox: [minX, minY, minZ, maxX, maxY, maxZ] of the item's model after its
+	 * display transform (a special model counts as its whole block).
 	 */
-	itemHeight(mesh, transform) {
+	itemBox(mesh, transform) {
 		let cache = this.itemHeights.get(mesh);
 		if (!cache) this.itemHeights.set(mesh, cache = new Map());
 		const key = JSON.stringify(transform);
-		let height = cache.get(key);
-		if (height) return height;
+		let box = cache.get(key);
+		if (box) return box;
 		const m = mat4();
 		this.applyDisplay(m, transform, false);
-		let minY = Infinity, maxY = -Infinity;
+		box = [Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity];
 		const point = (x, y, z) => {
-			const ty = m[1] * x + m[5] * y + m[9] * z + m[13];
-			if (ty < minY) minY = ty;
-			if (ty > maxY) maxY = ty;
+			for (let a = 0; a < 3; a++) {
+				const t = m[a] * x + m[4 + a] * y + m[8 + a] * z + m[12 + a];
+				if (t < box[a]) box[a] = t;
+				if (t > box[3 + a]) box[3 + a] = t;
+			}
 		};
 		if (mesh.quads) {
 			const data = mesh.quads.data;
@@ -4040,9 +4135,15 @@ export class EntityRenderer {
 		} else {
 			for (let c = 0; c < 8; c++) point(c & 1, c >> 1 & 1, c >> 2 & 1);
 		}
-		height = minY <= maxY ? [minY, maxY] : [0, 0];
-		cache.set(key, height);
-		return height;
+		if (!(box[0] <= box[3])) box = [0, 0, 0, 0, 0, 0];
+		cache.set(key, box);
+		return box;
+	}
+
+	/** The lowest and highest point of the item's model after its display transform. */
+	itemHeight(mesh, transform) {
+		const box = this.itemBox(mesh, transform);
+		return [box[1], box[4]];
 	}
 
 	/**
@@ -4309,7 +4410,7 @@ export class EntityRenderer {
 		setFog(gl, u, frame.fog);
 		gl.uniform3fv(u.uLight0, LIGHT0);
 		gl.uniform3fv(u.uLight1, LIGHT1);
-		gl.uniform1f(u.uTime, frame.time * 20);
+		gl.uniform2f(u.uUvOffset, 0, 0);
 		gl.activeTexture(gl.TEXTURE1);
 		gl.bindTexture(gl.TEXTURE_2D, this.renderer.lightmap);
 		gl.uniform1i(u.uLightmap, 1);
@@ -4334,7 +4435,7 @@ export class EntityRenderer {
 		}
 		gl.uniform1f(u.uGlintAlpha, GLINT_ALPHA);
 		gl.uniform1i(u.uGlintTexture, 5);
-		let glintOn = -1;
+		let glintOn = -1, uvU = 0, uvV = 0;
 		const drawBatches = filter => {
 			for (const b of this.batches) {
 				if (!filter(b)) continue;
@@ -4350,6 +4451,10 @@ export class EntityRenderer {
 					gl.uniform1i(u.uGlint, glintOn);
 				}
 				gl.uniform1i(u.uMode, b.mode);
+				if (b.u !== uvU || b.v !== uvV) {
+					uvU = b.u; uvV = b.v;
+					gl.uniform2f(u.uUvOffset, uvU, uvV);
+				}
 				if (b.cull) gl.enable(gl.CULL_FACE); else gl.disable(gl.CULL_FACE);
 				gl.bindTexture(gl.TEXTURE_2D, b.texture);
 				this.drawBatch(b, u, true);
@@ -4422,7 +4527,7 @@ export class EntityRenderer {
 		for (const e of list) {
 			if (e.invisible || e.dead) continue;
 			const type = strip(e.type);
-			if (type === 'item' || type === 'experience_orb' || type === 'lightning_bolt' || type.endsWith('arrow')) continue;
+			if (type === 'item' || type === 'experience_orb' || type === 'lightning_bolt' || type === 'area_effect_cloud' || type.endsWith('arrow')) continue;
 			// Players and mobs whose custom name is always visible, like in the game; every mob with "mob labels".
 			const named = type === 'player' || (!!e.name && !!e.nameVisible);
 			if (named ? !this.showLabels : !this.showMobLabels) continue;

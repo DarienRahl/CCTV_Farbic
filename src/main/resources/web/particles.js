@@ -174,6 +174,13 @@ class QuadParticle extends Particle {
 	setColor(r, g, b) {
 		this.rCol = r; this.gCol = g; this.bCol = b;
 	}
+
+	/** SingleQuadParticle.setPower */
+	setPower(power) {
+		this.xd *= power;
+		this.yd = (this.yd - 0.1) * power + 0.1;
+		this.zd *= power;
+	}
 }
 
 // --- the game's particle classes -------------------------------------------------------------------------
@@ -1193,17 +1200,57 @@ class SpellParticle extends QuadParticle {
 		this.originalAlpha = alpha;
 	}
 
-	/** SingleQuadParticle.setPower */
-	setPower(power) {
-		this.xd *= power;
-		this.yd = (this.yd - 0.1) * power + 0.1;
-		this.zd *= power;
-	}
-
 	tick() {
 		super.tick();
 		this.setSpriteFromAge(this.sprites);
 		this.alpha = lerp(0.05, this.alpha, this.originalAlpha);
+	}
+}
+
+/**
+ * DragonBreathParticle: a purple puff (opaque) growing over its first ticks, drifting with its speed and, once it
+ * has touched the ground, rising slowly.
+ */
+class DragonBreathParticle extends QuadParticle {
+	constructor(level, x, y, z, xa, ya, za, sprites) {
+		super(level, x, y, z, undefined, undefined, undefined, sprites.first());
+		this.friction = 0.96;
+		this.xd = xa; this.yd = ya; this.zd = za;
+		this.rCol = 0.7176471 + nextFloat() * (0.8745098 - 0.7176471);
+		this.gCol = 0;
+		this.bCol = 0.8235294 + nextFloat() * (0.9764706 - 0.8235294);
+		this.quadSize *= 0.75;
+		this.lifetime = Math.trunc(20 / (nextFloat() * 0.8 + 0.2));
+		this.hasHitGround = false;
+		this.hasPhysics = false;
+		this.sprites = sprites;
+		this.setSpriteFromAge(sprites);
+	}
+
+	tick() {
+		this.xo = this.x; this.yo = this.y; this.zo = this.z;
+		if (this.age++ >= this.lifetime) {
+			this.remove();
+			return;
+		}
+		this.setSpriteFromAge(this.sprites);
+		if (this.onGround) {
+			this.yd = 0;
+			this.hasHitGround = true;
+		}
+		if (this.hasHitGround) this.yd += 0.002;
+		this.move(this.xd, this.yd, this.zd);
+		if (this.y === this.yo) {
+			this.xd *= 1.1;
+			this.zd *= 1.1;
+		}
+		this.xd *= this.friction;
+		this.zd *= this.friction;
+		if (this.hasHitGround) this.yd *= this.friction;
+	}
+
+	quadSizeAt(a) {
+		return this.quadSize * clamp((this.age + a) / this.lifetime * 32, 0, 1);
 	}
 }
 
@@ -1472,6 +1519,12 @@ const PROVIDERS = {
 	effect: (l, x, y, z, xa, ya, za, s, o) => spell(new SpellParticle(l, x, y, z, xa, ya, za, s), o, true),
 	instant_effect: (l, x, y, z, xa, ya, za, s, o) => spell(new SpellParticle(l, x, y, z, xa, ya, za, s), o, true),
 	entity_effect: (l, x, y, z, xa, ya, za, s, o) => spell(new SpellParticle(l, x, y, z, xa, ya, za, s), o, false),
+	// DragonBreathParticle.Provider (PowerParticleOption)
+	dragon_breath: (l, x, y, z, xa, ya, za, s, o) => {
+		const p = new DragonBreathParticle(l, x, y, z, xa, ya, za, s);
+		p.setPower(o && typeof o.power === 'number' ? o.power : 1);
+		return p;
+	},
 	witch: (l, x, y, z, xa, ya, za, s) => {
 		const b = nextFloat() * 0.5 + 0.35;
 		return tint(new SpellParticle(l, x, y, z, xa, ya, za, s), [b, 0, b]);
@@ -1978,6 +2031,9 @@ function particleOptions(raw) {
 	return options;
 }
 
+/** AreaEffectCloud.DEFAULT_PARTICLE: a white entity effect. */
+const WHITE_EFFECT = particleOptions({ color: -1 });
+
 /** AbstractCandleBlock.addParticlesAndSound */
 function candleFlame(level, x, y, z) {
 	const chance = nextFloat();
@@ -2402,6 +2458,9 @@ export class Particles {
 				case 'minecraft:panda':
 					this.pandaParticles(level, e, seen);
 					break;
+				case 'minecraft:area_effect_cloud':
+					if (e.cloud) this.cloudParticles(level, e);
+					break;
 				case 'minecraft:sniffer': {
 					// Sniffer.emitDiggingParticles: while the nose is in the ground, pieces of the block under it
 					// and now and then the block's hit sound
@@ -2420,6 +2479,35 @@ export class Particles {
 		}
 		for (const id of this.rockets.keys()) if (!seen.has(id)) this.rockets.delete(id);
 		for (const id of this.sneezing) if (!seen.has(id)) this.sneezing.delete(id);
+	}
+
+	/**
+	 * AreaEffectCloud.clientTick: every tick about pi r^2 particles spread over the cloud's disc (two in its middle
+	 * now and then while it waits), always visible; potion clouds' entity effects stand still, the others drift.
+	 */
+	cloudParticles(level, e) {
+		const cloud = e.cloud;
+		const waiting = !!cloud.wait;
+		if (waiting && nextBoolean()) return;
+		const type = cloud.p;
+		const options = particleOptions(cloud.o);
+		const count = waiting ? 2 : Math.ceil(Math.PI * cloud.r * cloud.r);
+		const radius = waiting ? 0.2 : cloud.r;
+		const effect = type === 'minecraft:entity_effect';
+		for (let i = 0; i < Math.min(count, 4096); i++) {
+			const angle = nextFloat() * Math.PI * 2;
+			const distance = Math.sqrt(nextFloat()) * radius;
+			const x = e.x + Math.cos(angle) * distance, y = e.y, z = e.z + Math.sin(angle) * distance;
+			if (effect) {
+				// the waiting cloud's white puffs (DEFAULT_PARTICLE) among its colour
+				const white = waiting && nextBoolean();
+				this.addFx(level, type, x, y, z, 0, 0, 0, white ? WHITE_EFFECT : options, true);
+			} else if (waiting) {
+				this.addFx(level, type, x, y, z, 0, 0, 0, options, true);
+			} else {
+				this.addFx(level, type, x, y, z, (0.5 - nextDouble()) * 0.15, 0.01, (0.5 - nextDouble()) * 0.15, options, true);
+			}
+		}
 	}
 
 	/** Panda.addEatingParticles (every fifth tick of eating: crumbs of what it holds) and Panda.afterSneeze. */

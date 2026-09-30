@@ -78,6 +78,9 @@ class StreamReader(threading.Thread):
         self.mannequin = None
         self.sulfur_cube = None
         self.worn_heads = {}
+        self.minecart = None
+        self.cloud = None
+        self.stack = None
         self.foil = set()
         self.glowing = set()
         self.leashed = set()
@@ -129,6 +132,12 @@ class StreamReader(threading.Thread):
                                     self.mannequin = e
                                 if e["type"] == "minecraft:sulfur_cube":
                                     self.sulfur_cube = e
+                                if e["type"] == "minecraft:furnace_minecart":
+                                    self.minecart = e
+                                if e["type"] == "minecraft:area_effect_cloud":
+                                    self.cloud = e
+                                if e["type"] == "minecraft:item" and e.get("n"):
+                                    self.stack = e
                                 if e.get("helm") or e.get("skull"):
                                     self.worn_heads[e["type"]] = e
                                 if e["type"] in ("minecraft:text_display", "minecraft:block_display", "minecraft:item_display"):
@@ -329,6 +338,11 @@ def main():
                  'components:{"minecraft:profile":"Notch"}}}}')
     # a sulfur cube holding a block of TNT (drawn inside it, SulfurCubeInnerLayer)
     rcon.command('summon minecraft:sulfur_cube 5 -60 -2 {NoAI:1b,equipment:{body:{id:"minecraft:tnt",count:1}}}')
+    # a furnace minecart (AbstractMinecartRenderer's display block), a stack of 20 cobblestone on the ground (three
+    # copies, ItemEntityRenderer) and a lingering poison cloud (AreaEffectCloud's particles)
+    rcon.command("summon minecraft:furnace_minecart 3 -60 -4")
+    rcon.command('summon minecraft:item 4 -60 -6 {Item:{id:"minecraft:cobblestone",count:20},PickupDelay:32767,Age:-32768}')
+    rcon.command('summon minecraft:area_effect_cloud 0 -60 -3 {Radius:2f,Duration:12000,potion_contents:{potion:"minecraft:poison"}}')
 
     rcon.command("cctv create ci -1 -56 -8 10 30")
     # a camera under water, in the pool (the water fog and the underwater overlay, screenshot.mjs)
@@ -495,9 +509,11 @@ def main():
         failures.append("example post shaders were not installed")
 
     env = stream.first.get("env") or {}
-    for key in ("sky", "fog", "sunAngle", "skyFactor", "ambient", "blockTint"):
+    for key in ("sky", "fog", "sunAngle", "skyFactor", "ambient", "blockTint", "borderTint"):
         if key not in env:
             failures.append(f"env sample has no {key}")
+    if len(env.get("border", [])) != 4:
+        failures.append(f"env sample has no world border (got {env.get('border')})")
     print("block tags:", {name: sorted(tags) for name, tags in stream.block_tags.items()}, flush=True)
     for block, tag in (("minecraft:sand", "minecraft:triggers_ambient_desert_sand_block_sounds"),
                        ("minecraft:pale_oak_log", "minecraft:pale_oak_logs")):
@@ -556,6 +572,14 @@ def main():
     print("sulfur cube:", json.dumps(stream.sulfur_cube), flush=True)
     if "cb" not in (stream.sulfur_cube or {}):
         failures.append(f"the block held by the sulfur cube was not streamed (got {stream.sulfur_cube})")
+    print("minecart:", json.dumps(stream.minecart), "stack:", json.dumps(stream.stack), "cloud:", json.dumps(stream.cloud), flush=True)
+    if "db" not in (stream.minecart or {}) or "dOff" not in (stream.minecart or {}):
+        failures.append(f"the furnace minecart was not streamed with its display block (got {stream.minecart})")
+    if (stream.stack or {}).get("n") != 3 or "seed" not in (stream.stack or {}):
+        failures.append(f"the stack of cobblestone was not streamed as three copies with its seed (got {stream.stack})")
+    cloud = (stream.cloud or {}).get("cloud", {})
+    if cloud.get("p") != "minecraft:entity_effect" or not cloud.get("r") or "color" not in cloud.get("o", {}):
+        failures.append(f"the poison cloud was not streamed with its radius and coloured particle (got {stream.cloud})")
     if not any(b[0] == 0 and b[1] == -60 and b[2] == 0 for b in stream.block_updates):
         failures.append("instant block update (mixin) did not arrive")
     print("animation states:", sorted(stream.animation_states), "entity events:", sorted(stream.entity_events), flush=True)

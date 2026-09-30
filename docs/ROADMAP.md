@@ -259,6 +259,22 @@ to the milestone it belongs to. The roadmap on the README page is drawn from thi
       coloured custom names), the scoreboard's below_name objective under players' names, teams that hide name
       tags, no tag on a mob that is ridden, and the name_tag_distance and below_name_distance attributes
 
+## 1.7 — the world around the camera
+
+- [x] **The world border** (WorldBorderRenderer): the scrolling force field on the border's walls within the render
+      distance, fading in as the camera comes near, blue while it stands, green while it grows and red while it
+      shrinks, and following the border as it moves
+- [x] **Stacks on the ground** (ItemEntityRenderer.submitMultipleFromCount): bigger stacks show up to five copies,
+      scattered by the game's seed for the item, flat items stacked front to back; every dropped item rests 1/16
+      above the ground by its model's real size
+- [x] **Lingering potion and dragon's breath clouds** (AreaEffectCloud's client tick): the particles over the
+      cloud's radius in the potion's colour, the few white and coloured puffs while it waits
+- [x] **The wither's armour** at half health (WitherArmorLayer) and the charged creeper's aura drawn like
+      EnergySwirlLayer: grey, scrolled by each layer's own offsets, and still shown on an invisible creeper
+- [x] **Minecarts like AbstractMinecartRenderer**: sitting on their rail and tilted along slopes, rocking when
+      hit, the block they carry at its display offset (lit furnaces, custom display blocks), TNT minecarts swelling
+      and flashing on their fuse, and the id's tiny offset that keeps carts in one place from flickering
+
 ## Later
 
 - [x] **Recording and timelapse** of a camera in the browser: a video with the game's sounds, or one picture
