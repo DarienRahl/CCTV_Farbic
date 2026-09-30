@@ -32,9 +32,9 @@
 </p>
 
 Place a camera with `/cctv create lobby`, open `http://your-server:8100/cam/lobby` and watch it live — 20 updates
-a second, in any browser, on any device. Blocks, mobs, particles, the sky and the game's font are drawn like
-Minecraft 26.3 from its own `client.jar`, with 3D sounds and background music, shaders and post effects, a video
-wall, recordings and timelapses, and your worlds' custom paintings, discs and resource packs.
+a second, in any browser, on any device. Blocks, mobs, holograms, particles, the sky and the game's font are
+drawn like Minecraft 26.3 from its own `client.jar`, with 3D sounds and background music, shaders and post
+effects, a video wall, recordings and timelapses, and your worlds' custom paintings, discs and resource packs.
 
 ## What you get
 
@@ -67,7 +67,7 @@ own code and read from its `client.jar`.
 
 ### 🐑 Every mob, animated
 All mob models with their variants, armour and equipment, the game's keyframe animations, entity events,
-shadows and name tags in the game's font.
+shadows and name tags in the game's font — and the holograms, mannequins and shelves servers decorate with.
 
 </td>
 <td valign="top">
@@ -309,10 +309,10 @@ What is done and what comes next, milestone by milestone (the full plan with its
 
 </details>
 
-<img src="docs/images/roadmap/1-5.svg" width="100%" alt="1.5 — everything the game shows: started, 6 of 6 done">
+<img src="docs/images/roadmap/1-5.svg" width="100%" alt="1.5 — everything the game shows: released 1.5.0, 6 of 6 done">
 
 <details>
-<summary><b>1.5 — everything the game shows</b> · started · 6 of 6 done</summary>
+<summary><b>1.5 — everything the game shows</b> · released 1.5.0 · 6 of 6 done</summary>
 
 - [x] **Display entities** like DisplayRenderer: block, item and text displays (the holograms, signs and decorations of servers) with their transformation interpolated like the game (Transformation.slerp), billboards facing the camera, brightness overrides, shadows, view range and teleport gliding; text displays with the game's font, colours, bold, italic, underline and strikethrough, line wrapping, alignment, background and see-through text (the cameras' own markers stay hidden)
 - [x] **Shelves** like ShelfRenderer: the three items standing on a shelf, set on its middle by their model's bounding box or on its bottom when the shelf is powered

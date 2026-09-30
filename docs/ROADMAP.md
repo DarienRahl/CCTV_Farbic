@@ -218,7 +218,7 @@ to the milestone it belongs to. The roadmap on the README page is drawn from thi
 - [x] **Budgets in CI**: server milliseconds per camera tick, bytes per section message, the page's time
       per frame (also in `/api/status`: tick time, sections sent, kept and compacted)
 
-## 1.5 — everything the game shows
+## 1.5 — everything the game shows (released: 1.5.0)
 
 - [x] **Display entities** like DisplayRenderer: block, item and text displays (the holograms, signs and decorations
       of servers) with their transformation interpolated like the game (Transformation.slerp), billboards facing
