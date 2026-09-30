@@ -118,7 +118,7 @@ jobs:
       - name: virtual display, software OpenGL and the comparison's Python packages
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq xvfb libgl1-mesa-dri libglx-mesa0 mesa-utils > /dev/null
+          sudo apt-get install -y -qq xvfb libgl1-mesa-dri libglx-mesa0 mesa-utils mesa-vulkan-drivers libvulkan1 vulkan-tools > /dev/null
           pip install --quiet pillow
       - name: install playwright
         working-directory: .github/e2e
@@ -126,15 +126,10 @@ jobs:
           npm install --no-save --no-package-lock playwright@1 > /dev/null
           npx playwright install --with-deps chromium > /dev/null 2>&1
       - name: the game's and the viewer's picture
+        timeout-minutes: 30
         run: |
           chmod +x ./gradlew
-          (cd .github/e2e && exec timeout 2400 node reference.mjs ../../build/run/clientGameTest/reference) > reference-viewer.log 2>&1 &
-          viewer=$!
-          status=0
-          xvfb-run -a -s "-screen 0 1280x720x24" ./gradlew runClientGameTest --no-daemon --no-configuration-cache || status=$?
-          kill $viewer 2>/dev/null || true
-          cat reference-viewer.log
-          exit $status
+          .github/e2e/reference.sh
       - name: compare
         if: always()
         run: python3 .github/e2e/compare_reference.py build/run/clientGameTest/reference
@@ -146,5 +141,5 @@ jobs:
           path: |
             build/run/clientGameTest/reference/
             build/run/clientGameTest/screenshots/
-            build/run/clientGameTest/logs/latest.log
+            game.log
             reference-viewer.log

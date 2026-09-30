@@ -14,6 +14,8 @@ import sys
 from PIL import Image, ImageChops, ImageFilter
 
 directory = sys.argv[1]
+if not os.path.exists(os.path.join(directory, "ready.json")) or not os.path.exists(os.path.join(directory, "viewer.png")):
+    sys.exit("no pictures to compare: the game test or the viewer did not get as far (see the logs above)")
 info = json.load(open(os.path.join(directory, "ready.json")))
 game = Image.open(info["game"]).convert("RGB")
 viewer = Image.open(os.path.join(directory, "viewer.png")).convert("RGB")
