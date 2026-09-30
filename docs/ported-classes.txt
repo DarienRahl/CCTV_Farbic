@@ -453,3 +453,7 @@ net/minecraft/world/level/block/entity/vault/VaultClientData
 net/minecraft/client/renderer/entity/OminousItemSpawnerRenderer
 net/minecraft/client/renderer/entity/CushionRenderer
 net/minecraft/client/renderer/entity/DragonFireballRenderer
+# armour stands (mobs.js armorStand, CLIENT.armor_stand; entities.js drawMob; EntityEncoder writeArmorStand)
+net/minecraft/client/model/object/armorstand/ArmorStandModel
+net/minecraft/client/model/object/armorstand/ArmorStandArmorModel
+net/minecraft/client/renderer/entity/ArmorStandRenderer

@@ -1797,7 +1797,11 @@ export class EntityRenderer {
 		}
 		// AvatarRenderer.isEntityUpsideDown: players and mannequins only while they show their cape
 		const upsideDown = (e.name === 'Dinnerbone' || e.name === 'Grumm') && (!avatar || e.parts === undefined || !!(e.parts & 1));
-		if (e.dead && e.deathTime > 0) {
+		if (def.anim === 'armorStand') {
+			// ArmorStandRenderer.setupRotations: only the body's turn, wiggling for 5 ticks after a hit (event 32)
+			const wiggle = age - (anim.memory && anim.memory.lastHit !== undefined ? anim.memory.lastHit : -1e9);
+			if (wiggle < 5) rotate(m, 1, Math.sin(wiggle / 1.5 * Math.PI) * 3 * DEG);
+		} else if (e.dead && e.deathTime > 0) {
 			const fall = Math.min(1, Math.sqrt(Math.max(0, (e.deathTime - 1) / 20 * 1.6)));
 			rotate(m, 2, fall * flip * DEG);
 		} else if (e.spin) {
@@ -1887,6 +1891,10 @@ export class EntityRenderer {
 			if (base && model !== base) {
 				mob.anim(model.parts, anim, e);
 				model.copyPose(base);
+				// HumanoidArmorLayer shows its own parts: an armour stand without arms still shows a chestplate's sleeves
+				if (def.anim === 'armorStand' && layer.equipment) {
+					for (const name of ['left_arm', 'right_arm']) if (model.parts[name]) model.parts[name].visible = true;
+				}
 			} else {
 				mob.anim(model.parts, anim, e);
 			}
@@ -1947,10 +1955,12 @@ export class EntityRenderer {
 		];
 		if (e.mainArm === 'left') held.reverse();
 		const [inRight, inLeft] = held;
-		if (inRight.item && base.parts.right_arm && base.parts.right_arm.visible) {
+		// ArmorStandModel.translateToHand: an armour stand without arms still holds its items
+		const armsShown = side => base.parts[side] && (base.parts[side].visible || def.anim === 'armorStand');
+		if (inRight.item && armsShown('right_arm')) {
 			this.drawHeld(base, m, 'right_arm', inRight.item, inRight.foil ? { ...style, glint: GLINT_ITEM } : style, 1, inRight.patterns, inRight.props, e.armR === 'block');
 		}
-		if (inLeft.item && base.parts.left_arm && base.parts.left_arm.visible) {
+		if (inLeft.item && armsShown('left_arm')) {
 			this.drawHeld(base, m, 'left_arm', inLeft.item, inLeft.foil ? { ...style, glint: GLINT_ITEM } : style, -1, inLeft.patterns, inLeft.props, e.armL === 'block');
 		}
 

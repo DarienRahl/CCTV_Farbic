@@ -28,10 +28,40 @@ on:
       compare_with:
         description: Older version; decompiles the game classes the viewer ports (docs/ported-classes.txt) in both versions and prints the differences
         default: ''
+  # watch-minecraft compares the ported classes of a new version with the current one
+  workflow_call:
+    inputs:
+      version:
+        type: string
+        default: '26.3'
+      compare_with:
+        type: string
+        default: ''
+      list:
+        type: string
+        default: ''
+      uses:
+        type: string
+        default: ''
+      javap:
+        type: string
+        default: ''
+      decompile:
+        type: string
+        default: ''
+      extract:
+        type: string
+        default: ''
+    outputs:
+      changes:
+        description: Markdown summary of the changes in the ported classes (with compare_with)
+        value: ${{ jobs.inspect.outputs.changes }}
 
 jobs:
   inspect:
     runs-on: ubuntu-24.04
+    outputs:
+      changes: ${{ steps.diff.outputs.changes }}
     steps:
       - name: checkout repository
         uses: actions/checkout@v6
@@ -105,6 +135,7 @@ jobs:
           name: extracted
           path: extracted.zip
       - name: diff ported classes
+        id: diff
         if: inputs.compare_with != ''
         env:
           OLD: ${{ inputs.compare_with }}
@@ -122,3 +153,6 @@ jobs:
           decompile client.jar "$NEW"
           echo "Changes in the ported game classes from $OLD to $NEW:"
           diff -ru "src-$OLD" "src-$NEW" || true
+          python3 repo/.github/scripts/ported_changes.py "src-$OLD" "src-$NEW" repo/docs/ported-classes.txt "$OLD" "$NEW" > ported-changes.md
+          cat ported-changes.md >> "$GITHUB_STEP_SUMMARY"
+          { echo "changes<<PORTED_CHANGES_END"; head -c 50000 ported-changes.md; echo; echo "PORTED_CHANGES_END"; } >> "$GITHUB_OUTPUT"

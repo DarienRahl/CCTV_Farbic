@@ -1434,7 +1434,32 @@ const ANIMS = {
 			if (p.hat) p.hat.y += 5;
 		}
 	},
-	armorStand() {},
+	/** ArmorStandArmorModel and ArmorStandModel.setupAnim: the stand's pose, arms and base plate */
+	armorStand(p, a, e) {
+		const d = (e && e.d) || {};
+		const pose = d.pose || {};
+		const set = (part, r) => {
+			if (!part) return;
+			part.xRot = r[0] * DEG; part.yRot = r[1] * DEG; part.zRot = r[2] * DEG;
+		};
+		// ArmorStand.DEFAULT_*_POSE
+		const body = pose.b || [0, 0, 0];
+		set(p.head, pose.h || [0, 0, 0]);
+		set(p.body, body);
+		set(p.left_arm, pose.la || [-10, 0, -10]);
+		set(p.right_arm, pose.ra || [-15, 0, 10]);
+		set(p.left_leg, pose.ll || [-1, 0, -1]);
+		set(p.right_leg, pose.rl || [1, 0, 1]);
+		set(p.right_body_stick, body);
+		set(p.left_body_stick, body);
+		set(p.shoulder_stick, body);
+		if (p.left_arm) p.left_arm.visible = !!d.arms;
+		if (p.right_arm) p.right_arm.visible = !!d.arms;
+		if (p.base_plate) {
+			p.base_plate.visible = !d.noBase;
+			p.base_plate.yRot = -(e.yaw || 0) * DEG;
+		}
+	},
 	/** AbstractBoatModel.animatePaddle with the rowing times (AbstractBoat.getRowingTime). */
 	boat(p, a, e) {
 		const paddle = (part, time, side) => {
@@ -1657,6 +1682,12 @@ export const CLIENT = {
 			if (!inWater) m.spikes = Math.random();
 			else if (moving) m.spikes += (0 - m.spikes) * 0.25;
 			else m.spikes += (1 - m.spikes) * 0.06;
+		},
+	},
+	/** ArmorStand.handleEntityEvent: 32 when hit (ArmorStandRenderer wiggles it) */
+	armor_stand: {
+		event(e, st, id, tick) {
+			if (id === 32) st.memory.lastHit = tick;
 		},
 	},
 	/** Warden.handleEntityEvent and the client part of Warden.tick */

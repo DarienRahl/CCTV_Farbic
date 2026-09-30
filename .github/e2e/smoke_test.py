@@ -82,6 +82,7 @@ class StreamReader(threading.Thread):
         self.cloud = None
         self.stack = None
         self.ominous = None
+        self.posed_stand = None
         self.foil = set()
         self.glowing = set()
         self.leashed = set()
@@ -141,6 +142,8 @@ class StreamReader(threading.Thread):
                                     self.stack = e
                                 if e["type"] == "minecraft:ominous_item_spawner":
                                     self.ominous = e
+                                if e["type"] == "minecraft:armor_stand" and "pose" in e.get("d", {}):
+                                    self.posed_stand = e
                                 if e.get("helm") or e.get("skull"):
                                     self.worn_heads[e["type"]] = e
                                 if e["type"] in ("minecraft:text_display", "minecraft:block_display", "minecraft:item_display"):
@@ -346,6 +349,8 @@ def main():
     rcon.command("summon minecraft:furnace_minecart 3 -60 -4")
     rcon.command('summon minecraft:item 4 -60 -6 {Item:{id:"minecraft:cobblestone",count:20},PickupDelay:32767,Age:-32768}')
     rcon.command('summon minecraft:area_effect_cloud 0 -60 -3 {Radius:2f,Duration:12000,potion_contents:{potion:"minecraft:poison"}}')
+    # a posed armour stand with arms and no base plate (ArmorStandModel)
+    rcon.command('summon minecraft:armor_stand -4 -60 8 {ShowArms:1b,NoBasePlate:1b,Pose:{Head:[-15f,25f,0f],RightArm:[-100f,0f,0f]}}')
     # an ominous item spawner holding three diamonds (OminousItemSpawnerRenderer draws them like a dropped stack)
     rcon.command('summon minecraft:ominous_item_spawner 5 -58 -6 {item:{id:"minecraft:diamond",count:3},spawn_item_after_ticks:1000000L}')
 
@@ -587,6 +592,10 @@ def main():
         failures.append(f"the furnace minecart was not streamed with its display block (got {stream.minecart})")
     if (stream.stack or {}).get("n") != 3 or "seed" not in (stream.stack or {}):
         failures.append(f"the stack of cobblestone was not streamed as three copies with its seed (got {stream.stack})")
+    print("posed armour stand:", json.dumps(stream.posed_stand), flush=True)
+    posed = (stream.posed_stand or {}).get("d", {})
+    if posed.get("pose", {}).get("h") != [-15, 25, 0] or posed.get("pose", {}).get("ra") != [-100, 0, 0] or not posed.get("noBase") or not posed.get("arms"):
+        failures.append(f"the posed armour stand was not streamed with its pose, arms and missing base plate (got {stream.posed_stand})")
     print("ominous item spawner:", json.dumps(stream.ominous), flush=True)
     if (stream.ominous or {}).get("item") != "minecraft:diamond" or (stream.ominous or {}).get("n") != 2:
         failures.append(f"the ominous item spawner was not streamed with its diamonds as two copies (got {stream.ominous})")

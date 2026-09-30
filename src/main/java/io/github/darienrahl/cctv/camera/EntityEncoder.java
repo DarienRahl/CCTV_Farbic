@@ -22,6 +22,7 @@ import com.mojang.authlib.GameProfile;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
+import net.minecraft.core.Rotations;
 import net.minecraft.core.component.DataComponentType;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.particles.ColorParticleOption;
@@ -47,6 +48,7 @@ import net.minecraft.world.entity.LightningBolt;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Pose;
 import net.minecraft.world.entity.ai.attributes.Attributes;
+import net.minecraft.world.entity.decoration.ArmorStand;
 import net.minecraft.world.entity.decoration.ItemFrame;
 import net.minecraft.world.entity.decoration.Mannequin;
 import net.minecraft.world.entity.item.ItemEntity;
@@ -1267,6 +1269,9 @@ final class EntityEncoder {
 				state.json().field(amount.key(), value, 3);
 			}
 		}
+		if (entity instanceof ArmorStand stand) {
+			writeArmorStand(state, stand);
+		}
 		if (entity instanceof AbstractIllager illager && illager.getArmPose() == AbstractIllager.IllagerArmPose.CROSSBOW_CHARGE) {
 			// IllagerRenderer: how long this crossbow takes to load (quick charge)
 			state.json().field("chargeTicks", (double) CrossbowItem.getChargeDuration(illager.getUseItem(), illager), 2);
@@ -1284,6 +1289,38 @@ final class EntityEncoder {
 			}
 		}
 		state.close();
+	}
+
+	/**
+	 * What ArmorStandRenderer reads besides its arms and size: the poses that differ from the defaults
+	 * ({@code "pose": {"h", "b", "la", "ra", "ll", "rl": [x, y, z] degrees}}), a missing base plate and markers.
+	 */
+	private static void writeArmorStand(State state, ArmorStand stand) {
+		Rotations[] poses = {stand.getHeadPose(), stand.getBodyPose(), stand.getLeftArmPose(), stand.getRightArmPose(),
+				stand.getLeftLegPose(), stand.getRightLegPose()};
+		Rotations[] defaults = {ArmorStand.DEFAULT_HEAD_POSE, ArmorStand.DEFAULT_BODY_POSE, ArmorStand.DEFAULT_LEFT_ARM_POSE,
+				ArmorStand.DEFAULT_RIGHT_ARM_POSE, ArmorStand.DEFAULT_LEFT_LEG_POSE, ArmorStand.DEFAULT_RIGHT_LEG_POSE};
+		String[] keys = {"h", "b", "la", "ra", "ll", "rl"};
+		boolean open = false;
+		for (int i = 0; i < poses.length; i++) {
+			if (poses[i].equals(defaults[i])) {
+				continue;
+			}
+			if (!open) {
+				state.json().name("pose").beginObject();
+				open = true;
+			}
+			state.json().name(keys[i]).beginArray().value(poses[i].x(), 2).value(poses[i].y(), 2).value(poses[i].z(), 2).endArray();
+		}
+		if (open) {
+			state.json().endObject();
+		}
+		if (!stand.showBasePlate()) {
+			state.json().field("noBase", true);
+		}
+		if (stand.isMarker()) {
+			state.json().field("marker", true);
+		}
 	}
 
 	/** The {@code "d"} object, opened before its first field. */

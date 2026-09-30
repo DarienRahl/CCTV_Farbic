@@ -1,0 +1,98 @@
+# Once a week: when Mojang has released a Minecraft version newer than the one the mod is built for and Fabric
+# supports it, tries the update on the branch update/<version> (update-minecraft: the build and the server
+# test), compares the game classes the viewer ports (inspect-minecraft) and opens an issue with both results
+# and what is left to do. Every version is tried once (while its update branch exists). Run it from the
+# Actions tab to check now; "dry run" only writes the comparison to the run's summary.
+
+name: watch-minecraft
+on:
+  schedule:
+    - cron: '23 5 * * 1'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Minecraft version to try instead of the newest release
+        default: ''
+      dry_run:
+        description: Dry run (compare the ported classes only; no branch, no issue)
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+      current: ${{ steps.check.outputs.current }}
+      reason: ${{ steps.check.outputs.reason }}
+    steps:
+      - name: checkout repository
+        uses: actions/checkout@v6
+      - name: is there a newer Minecraft release Fabric supports?
+        id: check
+        env:
+          WANTED: ${{ inputs.version }}
+        run: |
+          set -o pipefail
+          python3 .github/scripts/watch_minecraft.py "$WANTED" | tee -a "$GITHUB_OUTPUT"
+          grep '^reason=' "$GITHUB_OUTPUT" | tail -n 1 | sed 's/^reason=/### /' >> "$GITHUB_STEP_SUMMARY"
+
+  compare:
+    needs: check
+    if: needs.check.outputs.version != ''
+    uses: ./.github/workflows/inspect.yml
+    with:
+      version: ${{ needs.check.outputs.version }}
+      compare_with: ${{ needs.check.outputs.current }}
+
+  update:
+    needs: check
+    if: needs.check.outputs.version != '' && !inputs.dry_run
+    uses: ./.github/workflows/update-minecraft.yml
+    with:
+      version: ${{ needs.check.outputs.version }}
+
+  report:
+    needs: [check, compare, update]
+    if: always() && needs.check.outputs.version != ''
+    runs-on: ubuntu-24.04
+    steps:
+      - name: write the report
+        env:
+          VERSION: ${{ needs.check.outputs.version }}
+          CURRENT: ${{ needs.check.outputs.current }}
+          UPDATE: ${{ needs.update.result }}
+          CHANGES: ${{ needs.compare.outputs.changes }}
+          RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          BRANCH: ${{ github.server_url }}/${{ github.repository }}/tree/update/${{ needs.check.outputs.version }}
+        run: |
+          case "$UPDATE" in
+            success) result="The build and the server test **passed** on [update/$VERSION]($BRANCH): the server side works as is." ;;
+            failure) result="The build or the server test **failed** on [update/$VERSION]($BRANCH): the log names the game APIs that changed (see the server touch points in docs/UPDATING.md)." ;;
+            skipped) result="Dry run: no update branch was made." ;;
+            *) result="The update ended with: $UPDATE." ;;
+          esac
+          {
+            echo "Minecraft $VERSION is out and Fabric supports it (the mod is on $CURRENT)."
+            echo
+            echo "$result"
+            echo
+            if [ -n "$CHANGES" ]; then echo "$CHANGES"; else echo "The comparison of the ported classes did not finish; see the run."; fi
+            echo
+            echo "What is left (docs/UPDATING.md): fix what the build names, port the class changes above into the viewer, look at the"
+            echo "screenshots of the server test, write docs/release-notes and run the release workflow from update/$VERSION."
+            echo
+            echo "[Run]($RUN)"
+          } > report.md
+          cat report.md >> "$GITHUB_STEP_SUMMARY"
+      - name: open an issue
+        if: ${{ !inputs.dry_run }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ needs.check.outputs.version }}
+        run: gh issue create --title "Update to Minecraft $VERSION" --body-file report.md

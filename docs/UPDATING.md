@@ -5,6 +5,16 @@ item models, textures, entity models, the font, sky textures) is read from the g
 `client.jar` at run time, so a new version brings its content along. What remains is a short list
 of game APIs on the server and a set of client classes the viewer ports to JavaScript.
 
+## The weekly watch
+
+The `watch-minecraft` workflow does steps 1 to 4 by itself every Monday: when Mojang has released a
+version newer than `minecraft_version` and Fabric Loader and Fabric API support it, it runs
+`update-minecraft` for it (the branch `update/<version>` with the build and the server test), compares
+the ported classes and opens an issue "Update to Minecraft <version>" with the test result and the
+changed classes grouped by the viewer files they are ported to. Each version is tried once, while its
+`update/<version>` branch exists. Run it from the Actions tab to check at once; with "dry run" it only
+writes the comparison to the run's summary.
+
 ## Procedure
 
 1. **Run the `update-minecraft` workflow** with the new version. It finds the matching Fabric
