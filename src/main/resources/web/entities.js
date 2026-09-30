@@ -1431,7 +1431,7 @@ export class EntityRenderer {
 			case 'trident': return this.drawProjectile(e, pos, style, 'trident#main', 'trident/trident', -90, 90);
 			case 'tnt': return this.drawBlockEntity(e, pos, style, 'minecraft:tnt', 1);
 			case 'falling_block': return this.drawFallingBlock(e, pos, style, world);
-			case 'painting': return this.drawPainting(e, pos, style);
+			case 'painting': return this.drawPainting(e, pos, style, world);
 			case 'item_frame': case 'glow_item_frame': return this.drawItemFrame(e, type, pos, style);
 			case 'leash_knot': return this.drawSimple(pos, style, 'leash_knot#main', 'lead_knot/lead_knot', 0);
 			case 'end_crystal': return this.drawEndCrystal(e, pos, style);
@@ -2001,25 +2001,65 @@ export class EntityRenderer {
 		this.batch(texture, MODE_NOCULL, start, false);
 	}
 
-	drawPainting(e, pos, style) {
+	/**
+	 * PaintingRenderer: the picture on the front of a box 1/16 deep, the back and the edges from the painting
+	 * atlas' "back" sprite, each block of it lit by its own block (extractRenderState's lightCoordsPerBlock).
+	 * Data packs' own paintings take their pictures from the resource packs (namespace:path).
+	 */
+	drawPainting(e, pos, style, world) {
 		const d = e.d || {};
 		const asset = strip(d.asset || d.variant);
-		const w = Number(d.pw) || 1, h = Number(d.ph) || 1;
+		const width = Math.max(1, Math.min(16, Number(d.pw) || 1)), height = Math.max(1, Math.min(16, Number(d.ph) || 1));
 		const front = asset ? this.texture(asset, 'painting') : null;
-		if (!front) return;
-		const angle = { south: 0, west: -90, north: 180, east: 90 }[d.facing || 'south'] ?? 0;
+		const back = this.texture('back', 'painting');
+		if (!front || !back) return;
+		const direction = { south: 0, west: 1, north: 2, east: 3 }[d.facing || 'south'] ?? 0;
 		const m = mat4();
 		translate(m, pos[0], pos[1], pos[2]);
-		rotate(m, 1, angle * DEG);
-		const z = 1 / 32;
-		const quad = new Float32Array([
-			-w / 2, -h / 2, z, 0, 1, w / 2, -h / 2, z, 1, 1,
-			w / 2, h / 2, z, 1, 0, -w / 2, h / 2, z, 0, 0,
-		]);
-		const start = this.sink.count;
-		this.sink.ensure(6);
-		emitQuads(this.sink, quad, m, style);
-		this.batch(front, MODE_CUTOUT, start);
+		rotate(m, 1, (180 - direction * 90) * DEG);
+		const offsetX = -width / 2, offsetY = -height / 2;
+		const lights = [];
+		for (let y = 0; y < height; y++) {
+			for (let x = 0; x < width; x++) {
+				const sx = x + offsetX + 0.5, sy = y + offsetY + 0.5;
+				let bx = Math.floor(e.x), bz = Math.floor(e.z);
+				const by = Math.floor(e.y + sy);
+				if (direction === 2) bx = Math.floor(e.x + sx);
+				else if (direction === 1) bz = Math.floor(e.z - sx);
+				else if (direction === 0) bx = Math.floor(e.x - sx);
+				else bz = Math.floor(e.z + sx);
+				const [sky, block] = world ? world.lightAt(bx, by, bz) : [15, 0];
+				lights.push([block * 16, sky * 16]);
+			}
+		}
+		const z = 0.03125;
+		const cell = (x, y, frontSide) => {
+			const x0 = offsetX + x + 1, x1 = offsetX + x, y0 = offsetY + y + 1, y1 = offsetY + y;
+			if (frontSide) {
+				const u0 = (width - x) / width, u1 = (width - x - 1) / width;
+				const v0 = (height - y) / height, v1 = (height - y - 1) / height;
+				return [x0, y1, -z, u1, v0, x1, y1, -z, u0, v0, x1, y0, -z, u0, v1, x0, y0, -z, u1, v1];
+			}
+			// back (the whole sprite per block), then the edges on the outside (a 1/16 strip of the sprite)
+			const q = [x0, y0, z, 1, 0, x1, y0, z, 0, 0, x1, y1, z, 0, 1, x0, y1, z, 1, 1];
+			const strip = 0.0625;
+			if (y === height - 1) q.push(x0, y0, -z, 0, 0, x1, y0, -z, 1, 0, x1, y0, z, 1, strip, x0, y0, z, 0, strip);
+			if (y === 0) q.push(x0, y1, z, 0, 0, x1, y1, z, 1, 0, x1, y1, -z, 1, strip, x0, y1, -z, 0, strip);
+			if (x === width - 1) q.push(x0, y0, z, strip, 0, x0, y1, z, strip, 1, x0, y1, -z, 0, 1, x0, y0, -z, 0, 0);
+			if (x === 0) q.push(x1, y0, -z, strip, 0, x1, y1, -z, strip, 1, x1, y1, z, 0, 1, x1, y0, z, 0, 0);
+			return q;
+		};
+		for (const [texture, frontSide] of [[front, true], [back, false]]) {
+			const start = this.sink.count;
+			for (let x = 0; x < width; x++) {
+				for (let y = 0; y < height; y++) {
+					const quads = new Float32Array(cell(x, y, frontSide));
+					this.sink.ensure(quads.length / 20 * 6);
+					emitQuads(this.sink, quads, m, { ...style, light: lights[x + y * width], overlay: [0, 0] });
+				}
+			}
+			this.batch(texture, MODE_CUTOUT, start);
+		}
 	}
 
 	// --- items -------------------------------------------------------------------------------------

@@ -19,6 +19,8 @@ import net.minecraft.util.Util;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.ItemStackTemplate;
+import net.minecraft.world.item.JukeboxSong;
+import net.minecraft.world.item.JukeboxSongPlayer;
 import net.minecraft.world.item.component.ResolvableProfile;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
@@ -31,6 +33,7 @@ import net.minecraft.world.level.block.entity.BrushableBlockEntity;
 import net.minecraft.world.level.block.entity.CampfireBlockEntity;
 import net.minecraft.world.level.block.entity.DecoratedPotBlockEntity;
 import net.minecraft.world.level.block.entity.DecoratedPotPattern;
+import net.minecraft.world.level.block.entity.JukeboxBlockEntity;
 import net.minecraft.world.level.block.entity.PotDecorations;
 import net.minecraft.world.level.block.entity.SignBlockEntity;
 import net.minecraft.world.level.block.entity.SignText;
@@ -75,6 +78,7 @@ final class BlockEntityEncoder {
 					case BeaconBlockEntity beacon -> beacon(beacon);
 					case CampfireBlockEntity campfire -> campfire(campfire);
 					case BrushableBlockEntity brushable -> brushable(brushable);
+					case JukeboxBlockEntity jukebox -> jukebox(jukebox);
 					case SpawnerBlockEntity spawner -> spawner(spawner,
 							spawner.getSpawner().getOrCreateDisplayEntity(spawner.getLevel(), spawner.getBlockPos()));
 					case TrialSpawnerBlockEntity trial -> spawner(trial, trial.getTrialSpawner().getStateData()
@@ -265,6 +269,20 @@ final class BlockEntityEncoder {
 		}
 		Holder<DecoratedPotPattern> pattern = item.get().get(DataComponents.PROVIDES_POTTERY_PATTERN);
 		return pattern == null ? null : pattern.value().assetId().toString();
+	}
+
+	/**
+	 * The song a jukebox plays (JukeboxSongPlayer), so a viewer who comes in or turns sounds on later hears it
+	 * from where it is: {@code {"k":"jukebox", "s": sound event, "t": ticks since it started, "l": seconds}}.
+	 */
+	private static @Nullable String jukebox(JukeboxBlockEntity jukebox) {
+		JukeboxSongPlayer player = jukebox.getSongPlayer();
+		JukeboxSong song = player.getSong();
+		if (song == null) {
+			return null;
+		}
+		return begin("jukebox", jukebox).field("s", SoundEncoder.id(song.soundEvent().value()))
+				.field("t", player.getTicksSinceSongStarted()).field("l", song.lengthInSeconds(), 2).endObject().toString();
 	}
 
 	/** The owner of a player head, whose skin it shows: {@code {"k":"head", "uuid", "name"}}. */

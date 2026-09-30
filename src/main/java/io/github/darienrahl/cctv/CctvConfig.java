@@ -65,6 +65,17 @@ public final class CctvConfig {
 	 * game launcher does) or taken from a resource pack in config/cctv/resourcepacks.
 	 */
 	public String language = "en_us";
+	/**
+	 * Use the world's own packs like the game does for players: the assets of the data packs in
+	 * {@code <world>/datapacks} and the world's {@code resources.zip}, so custom paintings, music discs, sounds
+	 * and items show up in the viewer. They sit under the packs in config/cctv/resourcepacks.
+	 */
+	public boolean worldResourcePacks = true;
+	/**
+	 * Download the server resource pack of server.properties ({@code resource-pack}, checked against
+	 * {@code resource-pack-sha1}) once and use it too, between the world's packs and config/cctv/resourcepacks.
+	 */
+	public boolean serverResourcePack = true;
 
 	/** Compress the live stream with gzip when the browser supports it. */
 	public boolean gzip = true;

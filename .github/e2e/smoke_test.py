@@ -86,6 +86,10 @@ class StreamReader(threading.Thread):
         self.names = set()
         self.sign_lines = set()
         self.block_entities = {}
+        # per section: how often it came and the block entity kinds of its latest message (diagnostics)
+        self.section_messages = {}
+        self.jukebox_texts = []
+        self.paintings = set()
         self.beacon_beam = None
         self.animation_states = set()
         self.entity_events = set()
@@ -122,6 +126,9 @@ class StreamReader(threading.Thread):
                                     self.entity_events.add((e["type"], event_id))
                                 if e.get("foil"):
                                     self.foil.add((e["type"], e["foil"]))
+                                if e["type"] == "minecraft:painting":
+                                    d = e.get("d", {})
+                                    self.paintings.add((d.get("asset"), d.get("pw"), d.get("ph"), d.get("facing")))
                                 if e.get("leash"):
                                     self.leashed.add(e["type"])
                                 if "glow" in e:
@@ -141,6 +148,8 @@ class StreamReader(threading.Thread):
                                 key = (fx[6] if fx[0] == "ex" else fx[4] if fx[0] == "be" else (fx[8] or [[None]])[0][0] if fx[0] == "fw"
                                        else "moving" if fx[0] == "pm" else fx[1])
                                 self.effects.add(fx[0] + ":" + str(key))
+                                if fx[0] == "js":
+                                    self.jukebox_texts.append(fx[5] if len(fx) > 5 else None)
                         elif event == "blocks":
                             self.block_updates.extend(data["b"])
                         elif event == "palette":
@@ -149,6 +158,9 @@ class StreamReader(threading.Thread):
                                     self.block_tags.setdefault(entry["n"], set()).update(entry["tg"])
                         elif event == "section":
                             self.sections.add((data["x"], data["y"], data["z"]))
+                            count, _ = self.section_messages.get((data["x"], data["y"], data["z"]), (0, None))
+                            self.section_messages[(data["x"], data["y"], data["z"])] = (
+                                count + 1, [be.get("k") for be in data.get("be", [])])
                             for block_entity in data.get("be", []):
                                 self.block_entities[block_entity.get("k")] = block_entity
                                 if block_entity.get("k") == "beacon" and block_entity.get("s"):
@@ -221,6 +233,8 @@ def main():
     rcon.command("setblock 4 -58 7 minecraft:wall_torch[facing=north]")
     # an item frame on the house wall, facing the camera (Facing 2 = north), with a turned sword
     rcon.command('summon minecraft:item_frame 6 -58 7 {Facing:2b,ItemRotation:1b,Item:{id:"minecraft:diamond_sword",count:1}}')
+    # a painting on the house wall (PaintingRenderer: its picture, back and edges)
+    rcon.command('summon minecraft:painting 3 -59 7 {facing:2b,variant:"minecraft:kebab"}')
     rcon.command("fill -8 -61 6 -4 -61 12 minecraft:water")
     rcon.command("fill -9 -60 3 -9 -60 14 minecraft:oak_fence")
     rcon.command("setblock 1 -60 3 minecraft:chest[facing=north]")
@@ -297,6 +311,9 @@ def main():
     rcon.command("setblock 0 -60 0 minecraft:gold_block")
     # effects the client turns into particles: a broken block (level event 2001) and an explosion behind
     # the camera (the killed sheep below makes the death poof)
+    # a jukebox playing a disc (level event 1010 with Gui.setNowPlaying's text, and the song in its block entity)
+    rcon.command("setblock -1 -60 1 minecraft:jukebox")
+    rcon.command("item replace block -1 -60 1 container.0 with minecraft:music_disc_cat")
     rcon.command("setblock 4 -60 -4 minecraft:stone")
     rcon.command("setblock 4 -60 -4 minecraft:air destroy")
     rcon.command("summon minecraft:tnt -20 -59 -24 {fuse:0}")
@@ -438,6 +455,7 @@ def main():
                          ("fw:large_ball", "the firework rocket's explosion"),
                          ("pm:moving", "the block pushed by the piston"),
                          ("be:minecraft:note_block", "the note block's block event"),
+                         ("js:minecraft:music_disc.cat", "the jukebox song (level event 1010)"),
                          ("s:minecraft:block.note_block.harp", "the note block's sound"),
                          ("s:minecraft:block.stone.break", "the broken block's sound (level event 2001)"),
                          ("s:minecraft:entity.generic.explode", "the explosion's sound"),
@@ -459,6 +477,8 @@ def main():
     print("armour cracks:", sorted(stream.cracks), flush=True)
     if ("minecraft:wolf", "high") not in stream.cracks:
         failures.append("the worn wolf armour was not streamed with its cracks")
+    if ("minecraft:kebab", 1, 1, "north") not in stream.paintings:
+        failures.append(f"the kebab painting was not streamed with its size and facing (got {sorted(stream.paintings, key=str)})")
     if "minecraft:pig" not in stream.leashed:
         failures.append("the pig on a lead was not streamed with its leash")
     if not any(t == "minecraft:armor_stand" and f & 4 for t, f in stream.foil):
@@ -487,8 +507,15 @@ def main():
     brush = stream.block_entities.get("brush", {})
     if brush.get("i") != "minecraft:diamond" or brush.get("d") != "up":
         failures.append(f"the diamond in the brushed suspicious sand was not streamed (got {brush})")
+    if "Now Playing: C418 - cat" not in stream.jukebox_texts:
+        failures.append(f"the jukebox's Now Playing text was not streamed (got {stream.jukebox_texts})")
+    jukebox = stream.block_entities.get("jukebox", {})
+    if jukebox.get("s") != "minecraft:music_disc.cat" or not jukebox.get("l"):
+        failures.append(f"the jukebox's song was not streamed with its block entity (got {jukebox})")
     if stream.block_entities.get("head", {}).get("name") != "Notch":
-        failures.append(f"the player head's owner was not streamed (got {stream.block_entities.get('head')})")
+        failures.append(f"the player head's owner was not streamed (got {stream.block_entities.get('head')}; its section "
+                        f"(0, -4, -1) came {stream.section_messages.get((0, -4, -1))}; "
+                        f"the block: {rcon.command('data get block 3 -60 -1')})")
     for line in ("CCTV", "Camera ci", "Welcome", "edited"):
         if line not in stream.sign_lines:
             failures.append(f"sign text '{line}' was not streamed (got {sorted(stream.sign_lines)})")

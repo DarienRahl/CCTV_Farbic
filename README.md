@@ -268,6 +268,8 @@ can really see. "Mob labels" adds tags for every other mob (its custom name or i
 | `rescanSeconds` | `5` | Full re-check of the area every N seconds (safety net) |
 | `downloadClientAssets` | `true` | Download textures/models from Mojang's `client.jar` |
 | `language` | `en_us` | Language of mob names in the viewer (`pl_pl`, `de_de`…; downloaded from Mojang once) |
+| `worldResourcePacks` | `true` | Use the world's own packs: assets in `<world>/datapacks` and `<world>/resources.zip` |
+| `serverResourcePack` | `true` | Download the `resource-pack` of `server.properties` (checked against its SHA-1) and use it |
 | `gzip` | `true` | Compress the stream |
 | `skins` | `true` | Player skins (the server fetches them from the Mojang API and caches them) |
 | `sounds` | `true` | The game's sounds in the viewer (files downloaded from Mojang when first played, cached) |
@@ -275,8 +277,17 @@ can really see. "Mob labels" adds tags for every other mob (its custom name or i
 | `maxViewersPerCamera` | `16` | Viewer limit per camera |
 | `viewer` | | Viewer defaults: `graphics` (`vanilla`/`shaders`), `shaderQuality` (`low`…`ultra`), `postShader`, `skyboxes` (dimension → name), `clouds` (`fancy`/`fast`/`off`), `labels`, `mobLabels`, `particles`, `mode` (`color`/`mono`/`night`), `cctvEffect`, `fog` (`vanilla`/`smooth`/`atmospheric`/`minimal`), `fov` (30–110, 0 = each camera's), `lockSettings` |
 
-Resource packs (`*.zip`) put into `config/cctv/resourcepacks/` override block textures and models
-in the viewer, for example to match the server's resource pack.
+The viewer uses the same packs as the players, lowest priority first:
+
+1. the assets of the world's data packs (`<world>/datapacks/*`, zipped or unpacked),
+2. the world's own `resources.zip`,
+3. the server resource pack from `server.properties` (downloaded once into `config/cctv/assets/server-packs`),
+4. everything in `config/cctv/resourcepacks/` (`*.zip` or unpacked folders), sorted by name.
+
+So custom content looks and sounds like it does in the game: blocks and items, **custom paintings** of
+data packs (their pictures come from the packs' `textures/painting/`), **custom music discs** (the
+data pack's `jukebox_song` with its sound from the pack's `sounds.json`, and its description in the
+"Now Playing" line), mob textures, sounds and languages. Packs are read when the server starts.
 
 ## How it works
 

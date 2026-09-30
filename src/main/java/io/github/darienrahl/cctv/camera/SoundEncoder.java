@@ -188,11 +188,20 @@ final class SoundEncoder {
 				0.6F + random.nextFloat() * 0.4F, RandomSource.create().nextLong(), false);
 	}
 
-	/** 1010: SimpleSoundInstance.forJukeboxSong (records, volume 4). */
+	/**
+	 * 1010: LevelEventHandler.playJukeboxSong: SimpleSoundInstance.forJukeboxSong (records, volume 4) and
+	 * Gui.setNowPlaying (the song's description in record.nowPlaying). Custom songs of data packs come with
+	 * their sound events and descriptions from the resource packs.
+	 */
 	private static @Nullable String jukebox(ServerLevel level, BlockPos pos, int data) {
 		return level.registryAccess().lookupOrThrow(Registries.JUKEBOX_SONG).get(data)
-				.map(song -> "[\"js\",\"" + id(((JukeboxSong) song.value()).soundEvent().value()) + "\"," + pos.getX() + "," + pos.getY() + ","
-						+ pos.getZ() + "]")
+				.map(song -> {
+					JukeboxSong value = (JukeboxSong) song.value();
+					return new Json(160).beginArray().value("js").value(id(value.soundEvent().value()))
+							.value(pos.getX()).value(pos.getY()).value(pos.getZ())
+							.value(Texts.translate("record.nowPlaying", "Now Playing: %s", value.description()))
+							.endArray().toString();
+				})
 				.orElse(null);
 	}
 }

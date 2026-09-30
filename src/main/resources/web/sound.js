@@ -217,10 +217,39 @@ export class Sounds {
 	ambient(at) {
 		if (!this.enabled || !this.events || !this.ctx || !at.camera) return;
 		this.biomeAmbience(at);
+		this.jukeboxSongs(at.world);
 		this.underwaterAmbience(at);
 		this.bubbleColumn(at);
 		this.endFlash(at);
 		this.entitySounds(at.entities);
+	}
+
+	/**
+	 * Songs already playing when the viewer came in or turned sounds on: started from where the jukebox is
+	 * (JukeboxSongPlayer.ticksSinceSongStarted, streamed with the section) instead of waiting for the next disc.
+	 */
+	jukeboxSongs(world) {
+		if (!world || !world.blockEntityData) return;
+		const now = performance.now();
+		for (const [key, be] of world.blockEntityData) {
+			if (be.k !== 'jukebox' || !be.s || this.jukeboxes.has(key)) continue;
+			const offset = (be.t || 0) / 20 + (now - (be.at || now)) / 1000;
+			if (be.l && offset >= be.l) continue;
+			this.jukebox(be.s, be.x, be.y, be.z, offset);
+		}
+	}
+
+	/** One song per jukebox (LevelEventHandler.playJukeboxSong stops the one before). */
+	jukebox(id, x, y, z, offset = 0) {
+		const key = x + ',' + y + ',' + z;
+		this.stop(this.jukeboxes.get(key));
+		const pending = { pending: true, id };
+		this.jukeboxes.set(key, pending);
+		this.play(id, 'record', 4, 1, randomFor(Math.floor(Math.random() * 2 ** 31)), { x: x + 0.5, y: y + 0.5, z: z + 0.5 }, 0,
+			sound => {
+				if (this.jukeboxes.get(key) === pending) this.jukeboxes.set(key, sound);
+				else this.stop(sound);
+			}, offset);
 	}
 
 	/**
@@ -523,18 +552,16 @@ export class Sounds {
 				break;
 			}
 			case 'js': {
-				// SimpleSoundInstance.forJukeboxSong: records, volume 4, at the block's centre; one song per jukebox
+				// SimpleSoundInstance.forJukeboxSong: records, volume 4, at the block's centre
 				const [, id, x, y, z] = fx;
-				const key = x + ',' + y + ',' + z;
-				this.stop(this.jukeboxes.get(key));
-				this.play(id, 'record', 4, 1, randomFor(Math.floor(Math.random() * 2 ** 31)), { x: x + 0.5, y: y + 0.5, z: z + 0.5 }, 0,
-					sound => this.jukeboxes.set(key, sound));
+				this.jukebox(id, x, y, z);
 				break;
 			}
 			case 'jx': {
+				// stopped: kept as stopped until the next song, so the section's song is not started again
 				const key = fx[1] + ',' + fx[2] + ',' + fx[3];
 				this.stop(this.jukeboxes.get(key));
-				this.jukeboxes.delete(key);
+				this.jukeboxes.set(key, { stopped: true });
 				break;
 			}
 			default:
@@ -574,7 +601,7 @@ export class Sounds {
 	}
 
 	/** SoundEngine.play for a SimpleSoundInstance at a position (at: null for a sound at the listener). */
-	play(id, source, volume, pitch, random, at, wait = 0, started = null) {
+	play(id, source, volume, pitch, random, at, wait = 0, started = null, offset = 0) {
 		const sound = this.pick(this.events[id], random);
 		if (!sound || !sound.name) return;
 		const instanceVolume = volume * sample(sound.volume ?? 1, random);
@@ -585,9 +612,16 @@ export class Sounds {
 		if (at && at.entity === undefined && !at.flat && Math.hypot(at.x - this.listener.x, at.y - this.listener.y, at.z - this.listener.z) > attenuation) return;
 		const [ns, path] = sound.name.includes(':') ? sound.name.split(':') : ['minecraft', sound.name];
 		this.buffer(ns + '/' + path).then(buffer => {
-			if (!buffer || !this.enabled) return;
+			if (!buffer || !this.enabled || offset >= buffer.duration) return;
 			if (this.playing.size >= MAX_PLAYING) {
-				const oldest = this.playing.values().next().value;
+				// the oldest sound makes room, never a song
+				let oldest = null;
+				for (const sound of this.playing) {
+					if (!sound.record) {
+						oldest = sound;
+						break;
+					}
+				}
 				this.stop(oldest);
 			}
 			const ctx = this.ctx;
@@ -611,10 +645,10 @@ export class Sounds {
 				// relative sounds at the listener (Attenuation.NONE): the same volume everywhere
 				node.connect(volumeNode).connect(this.master);
 			}
-			const playing = { source: node, panner, entity: at ? at.entity : undefined };
+			const playing = { source: node, panner, entity: at ? at.entity : undefined, record: source === 'record' };
 			this.playing.add(playing);
 			node.onended = () => this.playing.delete(playing);
-			node.start(ctx.currentTime + wait);
+			node.start(ctx.currentTime + wait, offset);
 			if (started) started(playing);
 		});
 	}

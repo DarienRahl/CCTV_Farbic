@@ -164,6 +164,8 @@ export class World {
 		for (const be of list || []) {
 			if (be.k === 'sign') continue;
 			const key = be.x + ',' + be.y + ',' + be.z;
+			// when the song's ticks were read (sound.js jukeboxSongs)
+			if (be.k === 'jukebox') be.at = performance.now();
 			this.blockEntityData.set(key, be);
 			keys.push(key);
 		}

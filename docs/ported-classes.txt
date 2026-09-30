@@ -45,6 +45,8 @@ net/minecraft/client/resources/palette/PalettedTextureManager
 net/minecraft/client/resources/palette/PaletteMapping
 net/minecraft/client/renderer/texture/SkinTextureDownloader
 net/minecraft/client/renderer/entity/PaintingRenderer
+net/minecraft/world/item/JukeboxSongPlayer
+net/minecraft/client/gui/Gui
 net/minecraft/client/renderer/entity/BoatRenderer
 net/minecraft/client/renderer/entity/MinecartRenderer
 net/minecraft/client/renderer/texture/OverlayTexture

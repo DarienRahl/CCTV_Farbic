@@ -3,7 +3,6 @@ package io.github.darienrahl.cctv.assets;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.io.Reader;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -18,7 +17,6 @@ import java.security.MessageDigest;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Base64;
-import java.util.Enumeration;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -27,8 +25,6 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.regex.Pattern;
 import java.util.zip.GZIPOutputStream;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipFile;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
@@ -45,7 +41,11 @@ import io.github.darienrahl.cctv.web.Json;
  * <p>A dedicated server does not ship textures, so the official client jar of
  * the running version is downloaded once from Mojang (the same way launchers
  * and map renderers such as BlueMap do) and cached in {@code config/cctv/assets}.
- * Resource packs placed in {@code config/cctv/resourcepacks} are applied on top.
+ * Resource packs are applied on top, lowest priority first: the assets of the world's data packs
+ * ({@code <world>/datapacks}), the world's own {@code resources.zip}, the server resource pack of
+ * {@code server.properties} (downloaded and cached) and the packs in {@code config/cctv/resourcepacks}
+ * (zips or unpacked folders), so custom paintings, music discs, sounds and items look and sound like
+ * they do for players.
  * Browsers receive one bundle with block states, block models, block and
  * item textures; entity textures are served one by one on demand.
  */
@@ -60,6 +60,7 @@ public final class ClientAssets implements AutoCloseable {
 	private static final String MANIFEST = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json";
 	private static final String ASSET_OBJECTS = "https://resources.download.minecraft.net/";
 	private static final Pattern ENTITY_PATH = Pattern.compile("^[a-z0-9_./-]{1,128}$");
+	private static final Pattern NAMESPACE = Pattern.compile("^[a-z0-9_.-]{1,64}$");
 	private static final Pattern FONT_PATH = Pattern.compile("^[a-z0-9_./-]{1,128}\\.(json|png)$");
 
 	private final Path dir;
@@ -67,7 +68,11 @@ public final class ClientAssets implements AutoCloseable {
 	private final boolean download;
 	private final String language;
 	private final Logger logger;
-	private final List<ZipFile> sources = new ArrayList<>();
+	private final List<PackSource> sources = new ArrayList<>();
+	private volatile @Nullable Path worldDirectory;
+	private volatile Map<String, String> translations = Map.of();
+	private volatile @Nullable String serverPackUrl;
+	private volatile @Nullable String serverPackSha1;
 	private volatile State state = State.LOADING;
 	private volatile String error = "";
 	private volatile byte[] bundle;
@@ -89,6 +94,37 @@ public final class ClientAssets implements AutoCloseable {
 		this.download = download;
 		this.language = language;
 		this.logger = logger;
+	}
+
+	/**
+	 * The world whose packs apply before the configured ones: the data packs in {@code datapacks/} that carry
+	 * assets and the world's {@code resources.zip}. Call before {@link #start()}.
+	 */
+	public void worldDirectory(Path world) {
+		this.worldDirectory = world;
+	}
+
+	/**
+	 * A text of the game's language files in the configured language (en_us under it, resource packs over the
+	 * client's): {@code jukebox_song.*}, {@code painting.*} and {@code record.*} keys. Null when unknown.
+	 */
+	public @Nullable String translation(String key) {
+		return translations.get(key);
+	}
+
+	/** The server resource pack players are sent (server.properties), downloaded when the assets load. */
+	public void serverPack(@Nullable String url, @Nullable String sha1) {
+		this.serverPackUrl = url;
+		this.serverPackSha1 = sha1;
+	}
+
+	/** Names of the resource packs in use, lowest priority first (the client jar left out). */
+	public synchronized List<String> packNames() {
+		List<String> names = new ArrayList<>();
+		for (int i = 1; i < sources.size(); i++) {
+			names.add(sources.get(i).name());
+		}
+		return names;
 	}
 
 	public void start() {
@@ -185,24 +221,30 @@ public final class ClientAssets implements AutoCloseable {
 				: read("assets/minecraft/textures/font/" + name);
 	}
 
+	/** @param path {@code name} or {@code namespace:name} (textures of data and resource packs' own namespaces) */
 	private byte[] texture(String folder, String path) {
-		if (state != State.READY || !ENTITY_PATH.matcher(path).matches() || path.contains("..")) {
+		String namespace = "minecraft";
+		int colon = path.indexOf(':');
+		if (colon > 0) {
+			namespace = path.substring(0, colon);
+			path = path.substring(colon + 1);
+		}
+		if (state != State.READY || !NAMESPACE.matcher(namespace).matches() || !ENTITY_PATH.matcher(path).matches() || path.contains("..")) {
 			return null;
 		}
-		return read("assets/minecraft/textures/" + folder + "/" + path + ".png");
+		return read("assets/" + namespace + "/textures/" + folder + "/" + path + ".png");
 	}
 
 	private synchronized byte[] read(String name) {
 		// Resource packs first, the client jar last.
 		for (int i = sources.size() - 1; i >= 0; i--) {
-			ZipFile zip = sources.get(i);
-			ZipEntry entry = zip.getEntry(name);
-			if (entry != null) {
-				try (InputStream in = zip.getInputStream(entry)) {
-					return in.readAllBytes();
-				} catch (IOException e) {
-					return null;
+			try {
+				byte[] data = sources.get(i).read(name);
+				if (data != null) {
+					return data;
 				}
+			} catch (IOException e) {
+				return null;
 			}
 		}
 		return null;
@@ -210,9 +252,9 @@ public final class ClientAssets implements AutoCloseable {
 
 	@Override
 	public synchronized void close() {
-		for (ZipFile zip : sources) {
+		for (PackSource source : sources) {
 			try {
-				zip.close();
+				source.close();
 			} catch (IOException ignored) {
 				// Nothing to do.
 			}
@@ -231,18 +273,29 @@ public final class ClientAssets implements AutoCloseable {
 				return;
 			}
 
+			List<Path> packs = new ArrayList<>(worldPacks());
+			Path serverPack = serverPack();
+			if (serverPack != null) {
+				packs.add(serverPack);
+			}
+			Path configured = dir.resolveSibling("resourcepacks");
+			if (Files.isDirectory(configured)) {
+				try (DirectoryStream<Path> stream = Files.newDirectoryStream(configured,
+						path -> path.getFileName().toString().endsWith(".zip") || Files.isDirectory(path.resolve("assets")))) {
+					List<Path> sorted = new ArrayList<>();
+					stream.forEach(sorted::add);
+					sorted.sort(null);
+					packs.addAll(sorted);
+				}
+			}
 			synchronized (this) {
-				sources.add(new ZipFile(jar.toFile()));
-				Path packs = dir.resolveSibling("resourcepacks");
-				if (Files.isDirectory(packs)) {
-					try (DirectoryStream<Path> stream = Files.newDirectoryStream(packs, "*.zip")) {
-						List<Path> sorted = new ArrayList<>();
-						stream.forEach(sorted::add);
-						sorted.sort(null);
-						for (Path pack : sorted) {
-							sources.add(new ZipFile(pack.toFile()));
-							logger.info("CCTV: using resource pack {}", pack.getFileName());
-						}
+				sources.add(PackSource.open(jar));
+				for (Path pack : packs) {
+					try {
+						sources.add(PackSource.open(pack));
+						logger.info("CCTV: using resource pack {}", pack.getFileName());
+					} catch (IOException e) {
+						logger.warn("CCTV: resource pack {} could not be opened: {}", pack, e.toString());
 					}
 				}
 			}
@@ -254,12 +307,46 @@ public final class ClientAssets implements AutoCloseable {
 			logger.info("CCTV: block assets ready ({} KB, {} ms)", bundle.length / 1024, (System.nanoTime() - start) / 1_000_000);
 
 			loadNames();
+			try {
+				loadTranslations();
+			} catch (RuntimeException e) {
+				logger.warn("CCTV: song and painting texts unavailable: {}", e.toString());
+			}
 			loadEntityModels(jar);
 		} catch (Exception e) {
 			error = e.toString();
 			state = State.FAILED;
 			logger.error("CCTV: could not prepare block textures, the viewer falls back to plain colours", e);
 		}
+	}
+
+	/** The world's packs with assets, lowest priority first: data packs (by name), then resources.zip. */
+	private List<Path> worldPacks() {
+		Path world = worldDirectory;
+		List<Path> packs = new ArrayList<>();
+		if (world == null) {
+			return packs;
+		}
+		Path datapacks = world.resolve("datapacks");
+		if (Files.isDirectory(datapacks)) {
+			try (DirectoryStream<Path> stream = Files.newDirectoryStream(datapacks)) {
+				List<Path> sorted = new ArrayList<>();
+				for (Path pack : stream) {
+					if ((Files.isDirectory(pack) || pack.getFileName().toString().endsWith(".zip")) && PackSource.hasAssets(pack)) {
+						sorted.add(pack);
+					}
+				}
+				sorted.sort(null);
+				packs.addAll(sorted);
+			} catch (IOException e) {
+				logger.warn("CCTV: the world's data packs could not be listed: {}", e.toString());
+			}
+		}
+		Path resources = world.resolve("resources.zip");
+		if (Files.isRegularFile(resources)) {
+			packs.add(resources);
+		}
+		return packs;
 	}
 
 	/**
@@ -307,6 +394,60 @@ public final class ClientAssets implements AutoCloseable {
 			names = json.endObject().toString();
 		} catch (Exception e) {
 			logger.warn("CCTV: entity names in '{}' unavailable, English names are used ({})", language, e.toString());
+		}
+	}
+
+	/** Prefixes of the language keys the server side needs (song descriptions, painting titles, "Now Playing"). */
+	private static final String[] TRANSLATED = {"jukebox_song.", "painting.", "record."};
+
+	/**
+	 * ClientLanguage.loadFrom: en_us, then the configured language, each from every source that has it (client
+	 * jar, then the packs in order) and in every namespace, later ones winning.
+	 */
+	private void loadTranslations() {
+		Map<String, String> merged = new java.util.HashMap<>();
+		List<String> languages = language.equals("en_us") ? List.of("en_us") : List.of("en_us", language);
+		List<PackSource> packs;
+		synchronized (this) {
+			packs = new ArrayList<>(sources);
+		}
+		for (String lang : languages) {
+			if (!lang.equals("en_us") && read("assets/minecraft/lang/" + lang + ".json") == null) {
+				// languages outside the client jar come from Mojang's asset index (like the entity names)
+				try {
+					collectTranslations(merged, downloadLanguage());
+				} catch (Exception e) {
+					logger.debug("CCTV: '{}' texts unavailable", lang, e);
+				}
+			}
+			String suffix = "/lang/" + lang + ".json";
+			for (PackSource pack : packs) {
+				for (String file : pack.files()) {
+					if (!file.startsWith("assets/") || !file.endsWith(suffix) || file.indexOf('/', 7) != file.length() - suffix.length()) {
+						continue;
+					}
+					try {
+						collectTranslations(merged, pack.read(file));
+					} catch (IOException | RuntimeException e) {
+						logger.debug("CCTV: skipping {} of {}", file, pack.name(), e);
+					}
+				}
+			}
+		}
+		translations = Map.copyOf(merged);
+	}
+
+	private static void collectTranslations(Map<String, String> into, byte @Nullable [] lang) {
+		if (lang == null) {
+			return;
+		}
+		for (Map.Entry<String, JsonElement> entry : JsonParser.parseString(new String(lang, StandardCharsets.UTF_8)).getAsJsonObject().entrySet()) {
+			for (String prefix : TRANSLATED) {
+				if (entry.getKey().startsWith(prefix) && entry.getValue().isJsonPrimitive()) {
+					into.put(entry.getKey(), entry.getValue().getAsString());
+					break;
+				}
+			}
 		}
 	}
 
@@ -418,13 +559,13 @@ public final class ClientAssets implements AutoCloseable {
 	synchronized List<byte[]> readFromPacks(String name) {
 		List<byte[]> found = new ArrayList<>();
 		for (int i = 1; i < sources.size(); i++) {
-			ZipEntry entry = sources.get(i).getEntry(name);
-			if (entry != null) {
-				try (InputStream in = sources.get(i).getInputStream(entry)) {
-					found.add(in.readAllBytes());
-				} catch (IOException e) {
-					// A broken pack entry is left out.
+			try {
+				byte[] data = sources.get(i).read(name);
+				if (data != null) {
+					found.add(data);
 				}
+			} catch (IOException e) {
+				// A broken pack entry is left out.
 			}
 		}
 		return found;
@@ -434,9 +575,7 @@ public final class ClientAssets implements AutoCloseable {
 	synchronized List<String> packNamespaces() {
 		java.util.TreeSet<String> namespaces = new java.util.TreeSet<>();
 		for (int i = 1; i < sources.size(); i++) {
-			Enumeration<? extends ZipEntry> entries = sources.get(i).entries();
-			while (entries.hasMoreElements()) {
-				String entry = entries.nextElement().getName();
+			for (String entry : sources.get(i).files()) {
 				if (entry.startsWith("assets/") && entry.endsWith("/sounds.json") && entry.indexOf('/', 7) == entry.length() - "/sounds.json".length()) {
 					namespaces.add(entry.substring(7, entry.length() - "/sounds.json".length()));
 				}
@@ -548,17 +687,14 @@ public final class ClientAssets implements AutoCloseable {
 		Map<String, JsonElement> equipment = new LinkedHashMap<>();
 		Map<String, JsonElement> specialItems = new LinkedHashMap<>();
 
-		List<ZipFile> zips;
+		List<PackSource> packs;
 		synchronized (this) {
-			zips = new ArrayList<>(sources);
+			packs = new ArrayList<>(sources);
 		}
 
-		for (ZipFile zip : zips) {
-			Enumeration<? extends ZipEntry> entries = zip.entries();
-			while (entries.hasMoreElements()) {
-				ZipEntry entry = entries.nextElement();
-				String name = entry.getName();
-				if (entry.isDirectory() || !name.startsWith("assets/")) {
+		for (PackSource zip : packs) {
+			for (String name : zip.files()) {
+				if (!name.startsWith("assets/")) {
 					continue;
 				}
 
@@ -571,32 +707,32 @@ public final class ClientAssets implements AutoCloseable {
 
 				try {
 					if (rest.startsWith("blockstates/") && rest.endsWith(".json")) {
-						blockstates.put(namespace + ":" + strip(rest, "blockstates/", ".json"), parse(zip, entry));
+						blockstates.put(namespace + ":" + strip(rest, "blockstates/", ".json"), parse(zip, name));
 					} else if ((rest.startsWith("models/block/") || rest.startsWith("models/item/")) && rest.endsWith(".json")) {
-						models.put(namespace + ":" + strip(rest, "models/", ".json"), parse(zip, entry));
+						models.put(namespace + ":" + strip(rest, "models/", ".json"), parse(zip, name));
 					} else if ((rest.startsWith("textures/block/") || rest.startsWith("textures/item/")) && rest.endsWith(".png")) {
-						textures.put(namespace + ":" + strip(rest, "textures/", ".png"), base64(zip, entry));
+						textures.put(namespace + ":" + strip(rest, "textures/", ".png"), base64(zip, name));
 					} else if ((rest.startsWith("textures/block/") || rest.startsWith("textures/item/")) && rest.endsWith(".png.mcmeta")) {
-						animations.put(namespace + ":" + strip(rest, "textures/", ".png.mcmeta"), parse(zip, entry));
+						animations.put(namespace + ":" + strip(rest, "textures/", ".png.mcmeta"), parse(zip, name));
 					} else if (namespace.equals("minecraft") && rest.startsWith("textures/colormap/") && rest.endsWith(".png")) {
-						colormaps.put(strip(rest, "textures/colormap/", ".png"), base64(zip, entry));
+						colormaps.put(strip(rest, "textures/colormap/", ".png"), base64(zip, name));
 					} else if (namespace.equals("minecraft") && rest.startsWith("textures/environment/") && rest.endsWith(".png")) {
-						environment.put(strip(rest, "textures/environment/", ".png"), base64(zip, entry));
+						environment.put(strip(rest, "textures/environment/", ".png"), base64(zip, name));
 					} else if (rest.startsWith("items/") && rest.endsWith(".json")) {
 						// Items drawn by a SpecialModelRenderer (chests, heads, banners...) or several models (beds)
 						String id = namespace + ":" + strip(rest, "items/", ".json");
-						JsonElement special = findSpecial(parse(zip, entry), 0);
+						JsonElement special = findSpecial(parse(zip, name), 0);
 						if (special != null) {
 							specialItems.put(id, special);
 						} else {
 							specialItems.remove(id);
 						}
 					} else if (rest.startsWith("equipment/") && rest.endsWith(".json")) {
-						equipment.put(namespace + ":" + strip(rest, "equipment/", ".json"), parse(zip, entry));
+						equipment.put(namespace + ":" + strip(rest, "equipment/", ".json"), parse(zip, name));
 					} else if (rest.startsWith("particles/") && rest.endsWith(".json")) {
-						particles.put(namespace + ":" + strip(rest, "particles/", ".json"), parse(zip, entry));
+						particles.put(namespace + ":" + strip(rest, "particles/", ".json"), parse(zip, name));
 					} else if (rest.startsWith("textures/particle/") && rest.endsWith(".png")) {
-						particleTextures.put(namespace + ":" + strip(rest, "textures/particle/", ".png"), base64(zip, entry));
+						particleTextures.put(namespace + ":" + strip(rest, "textures/particle/", ".png"), base64(zip, name));
 					} else if (namespace.equals("minecraft") && rest.startsWith("textures/entity/") && rest.endsWith(".png")) {
 						entityTextures.add(strip(rest, "textures/entity/", ".png"));
 					}
@@ -712,15 +848,90 @@ public final class ClientAssets implements AutoCloseable {
 		return path.substring(prefix.length(), path.length() - suffix.length());
 	}
 
-	private static JsonElement parse(ZipFile zip, ZipEntry entry) throws IOException {
-		try (InputStreamReader reader = new InputStreamReader(zip.getInputStream(entry), StandardCharsets.UTF_8)) {
-			return JsonParser.parseReader(reader);
+	private static JsonElement parse(PackSource pack, String file) throws IOException {
+		byte[] data = pack.read(file);
+		if (data == null) {
+			throw new IOException("missing " + file);
 		}
+		return JsonParser.parseString(new String(data, StandardCharsets.UTF_8));
 	}
 
-	private static String base64(ZipFile zip, ZipEntry entry) throws IOException {
-		try (InputStream in = zip.getInputStream(entry)) {
-			return Base64.getEncoder().encodeToString(in.readAllBytes());
+	private static String base64(PackSource pack, String file) throws IOException {
+		byte[] data = pack.read(file);
+		if (data == null) {
+			throw new IOException("missing " + file);
+		}
+		return Base64.getEncoder().encodeToString(data);
+	}
+
+	/** Vanilla clients refuse server packs above 250 MiB (DownloadQueue / ServerPackManager). */
+	private static final long MAX_SERVER_PACK = 250L * 1024 * 1024;
+
+	/**
+	 * The server resource pack, like the client's DownloadedPackSource: downloaded once per hash into
+	 * {@code config/cctv/assets/server-packs} (checked against the hash when server.properties has one), the
+	 * cached copy when the download fails. Null when there is none.
+	 */
+	private @Nullable Path serverPack() {
+		String url = serverPackUrl;
+		if (url == null || url.isBlank()) {
+			return null;
+		}
+		String sha1 = serverPackSha1 == null ? "" : serverPackSha1.trim().toLowerCase(java.util.Locale.ROOT);
+		boolean hashed = sha1.matches("[0-9a-f]{40}");
+		try {
+			URI uri = URI.create(url.trim());
+			if (!"https".equalsIgnoreCase(uri.getScheme()) && !"http".equalsIgnoreCase(uri.getScheme())) {
+				logger.warn("CCTV: the server resource pack URL is not http(s): {}", url);
+				return null;
+			}
+			Path packs = dir.resolve("server-packs");
+			Files.createDirectories(packs);
+			String key = hashed ? sha1
+					: HexFormat.of().formatHex(MessageDigest.getInstance("SHA-1").digest(url.getBytes(StandardCharsets.UTF_8)));
+			Path file = packs.resolve(key + ".zip");
+			if (hashed && Files.isRegularFile(file)) {
+				return file;
+			}
+			if (!download) {
+				return Files.isRegularFile(file) ? file : null;
+			}
+			try {
+				Path part = packs.resolve(key + ".zip.part");
+				HttpResponse<InputStream> response = httpClient().send(HttpRequest.newBuilder(uri).timeout(Duration.ofMinutes(5))
+						.header("User-Agent", "CCTV-Fabric (server resource pack)").build(), HttpResponse.BodyHandlers.ofInputStream());
+				if (response.statusCode() != 200) {
+					response.body().close();
+					throw new IOException("HTTP " + response.statusCode());
+				}
+				MessageDigest digest = MessageDigest.getInstance("SHA-1");
+				long size = 0;
+				try (InputStream in = response.body(); var out = Files.newOutputStream(part)) {
+					byte[] buffer = new byte[65536];
+					int read;
+					while ((read = in.read(buffer)) > 0) {
+						size += read;
+						if (size > MAX_SERVER_PACK) {
+							throw new IOException("larger than 250 MiB");
+						}
+						digest.update(buffer, 0, read);
+						out.write(buffer, 0, read);
+					}
+				}
+				String actual = HexFormat.of().formatHex(digest.digest());
+				if (hashed && !actual.equals(sha1)) {
+					Files.deleteIfExists(part);
+					throw new IOException("its SHA-1 is " + actual + ", server.properties says " + sha1);
+				}
+				Files.move(part, file, StandardCopyOption.REPLACE_EXISTING);
+				logger.info("CCTV: downloaded the server resource pack ({} KB)", size / 1024);
+			} catch (Exception e) {
+				logger.warn("CCTV: the server resource pack could not be downloaded from {}: {}", url, e.toString());
+			}
+			return Files.isRegularFile(file) ? file : null;
+		} catch (Exception e) {
+			logger.warn("CCTV: the server resource pack is not used: {}", e.toString());
+			return null;
 		}
 	}
 }

@@ -835,13 +835,15 @@ final class CameraSession {
 		entry.inFlight++;
 		int gen = generation;
 		workers.execute(() -> {
-			SectionCapture data;
+			SectionCapture data = null;
 			try {
 				data = snapshot.decode();
-			} catch (RuntimeException e) {
-				data = null;
+			} catch (RuntimeException | LinkageError | AssertionError e) {
+				Problems.report(null, "decoding a section", e);
+			} finally {
+				// always answered, or the section would count as being read forever
+				results.add(new Result(gen, entry, data));
 			}
-			results.add(new Result(gen, entry, data));
 		});
 	}
 

@@ -70,6 +70,7 @@ public final class CameraManager implements CameraDirectory {
 		this.store = store;
 		this.assets = assets;
 		this.logger = logger;
+		Texts.lookup = assets::translation;
 		AtomicInteger threads = new AtomicInteger();
 		this.workers = Executors.newFixedThreadPool(config.workerThreads, task -> {
 			Thread thread = new Thread(task, "cctv-worker-" + threads.incrementAndGet());

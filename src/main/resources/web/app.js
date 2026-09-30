@@ -347,6 +347,7 @@ function connect() {
 		if (data.fx) {
 			particles.queueEffects(data.t, data.fx);
 			sounds.queue(data.t, data.fx, data.e);
+			for (const fx of data.fx) if (fx[0] === 'js' && fx[5]) showNowPlaying(fx[5]);
 		}
 	});
 	on('env', data => environment.push(data, performance.now()));
@@ -575,6 +576,38 @@ function updateHud(now) {
 	}
 }
 
+// Gui.setNowPlaying: "Now Playing: <song>" for 60 ticks, fading out over the last 20, its colour going round
+// the hue circle (Mth.hsvToArgb(time / 50, 0.7, 0.6)) with the text's shadow a quarter as bright
+const nowPlayingEl = $('now-playing');
+let nowPlaying = null;
+
+function showNowPlaying(text) {
+	if (!nowPlayingEl) return;
+	nowPlayingEl.textContent = text;
+	nowPlaying = { start: performance.now() };
+}
+
+function hsvToRgb(hue, saturation, value) {
+	const sector = Math.floor(hue * 6) % 6, f = hue * 6 - Math.floor(hue * 6);
+	const p = value * (1 - saturation), q = value * (1 - f * saturation), t = value * (1 - (1 - f) * saturation);
+	return [[value, t, p], [q, value, p], [p, value, t], [p, q, value], [t, p, value], [value, p, q]][sector].map(c => Math.floor(c * 255));
+}
+
+function drawNowPlaying(now) {
+	if (!nowPlaying) return;
+	const time = 60 - (now - nowPlaying.start) / 50;
+	const alpha = Math.min(255, Math.floor(time * 255 / 20));
+	if (alpha <= 8) {
+		nowPlayingEl.hidden = true;
+		if (time <= 0) nowPlaying = null;
+		return;
+	}
+	const [r, g, b] = hsvToRgb(time / 50, 0.7, 0.6);
+	nowPlayingEl.hidden = false;
+	nowPlayingEl.style.color = `rgba(${r}, ${g}, ${b}, ${alpha / 255})`;
+	nowPlayingEl.style.textShadow = `0.125em 0.125em 0 rgba(${r >> 2}, ${g >> 2}, ${b >> 2}, ${alpha / 255})`;
+}
+
 function frame(now) {
 	requestAnimationFrame(frame);
 	if (embed && (!onScreen || document.hidden)) return;
@@ -586,6 +619,7 @@ function frame(now) {
 
 	const aspect = renderer.resize();
 	updateHud(now);
+	drawNowPlaying(now);
 
 	const c = state.camera;
 	if (!c) {
