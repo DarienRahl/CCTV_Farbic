@@ -7,6 +7,8 @@ net/minecraft/client/renderer/chunk/SectionCompiler
 net/minecraft/client/renderer/block/ModelBlockRenderer
 net/minecraft/client/renderer/block/BlockModelLighter
 net/minecraft/client/renderer/block/FluidRenderer
+net/minecraft/client/renderer/block/FluidStateModelSet
+net/minecraft/world/level/material/FlowingFluid
 net/minecraft/client/resources/model/cuboid/FaceBakery
 net/minecraft/client/renderer/BiomeColors
 net/minecraft/client/color/block/BlockColors

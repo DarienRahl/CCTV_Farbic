@@ -151,7 +151,7 @@ const WAVING_LEAVES = /_leaves$|^vine$|^cave_vines(_plant)?$|^weeping_vines(_pla
 
 /** Server palette flags. */
 const F_AIR = 1, F_OPAQUE = 2, F_WATER = 4, F_LAVA = 8, F_NO_COLLISION = 16, F_FULL_COLLISION = 32, F_LIGHT_PERMEABLE = 64,
-	F_NO_MODEL = 128, F_EMISSIVE = 256, F_SOLID = 512, F_WATER_OVERLAY = 1024;
+	F_NO_MODEL = 128, F_EMISSIVE = 256, F_SOLID = 512, F_WATER_OVERLAY = 1024, F_BLOCKS_FLUID_FLOW = 2048;
 
 const INVISIBLE = new Set(['minecraft:barrier', 'minecraft:light', 'minecraft:structure_void', 'minecraft:moving_piston']);
 
@@ -176,6 +176,7 @@ export function describeState(entry, parseProps, classifyColors) {
 		emissive: (flags & F_EMISSIVE) !== 0,
 		solid: (flags & F_SOLID) !== 0,
 		waterOverlay: (flags & F_WATER_OVERLAY) !== 0,
+		blocksFluidFlow: (flags & F_BLOCKS_FLUID_FLOW) !== 0,
 		water: (flags & F_WATER) !== 0,
 		lava: (flags & F_LAVA) !== 0,
 		fluidAmount: entry.lv || 8,
@@ -185,6 +186,7 @@ export function describeState(entry, parseProps, classifyColors) {
 		offset: entry.o || null,
 		seedY: entry.sy || 0,
 		occludes: opaque ? 63 : (entry.fo || 0),
+		fluidCover: entry.fc || null,
 		skip: entry.k || 0,
 		boxes: entry.b || [],
 		mapColor: entry.c || 0,
@@ -840,11 +842,20 @@ export class Mesher {
 		return sum / weight;
 	}
 
-	/** Neighbour face shape covers the fluid face (isFaceOccludedByState, full faces only). */
+	/**
+	 * isFaceOccludedByState: the face of `info` that a fluid face looking in `direction` touches hides it. A whole
+	 * block face hides every fluid face but a lower surface; other shapes (Shapes.blockOccludes) hide a side face
+	 * up to the height the server worked out (fc), the bottom face when they cover it and never a lower surface.
+	 */
 	occludedBy(direction, height, info) {
 		if (!info) return false;
-		if (!(info.occludes & (1 << OPPOSITE[direction]))) return false;
-		return direction !== UP || height === 1;
+		const face = OPPOSITE[direction];
+		if (info.occludes & (1 << face)) return direction !== UP || height === 1;
+		const cover = info.fluidCover ? info.fluidCover[face] : 0;
+		if (!cover) return false;
+		if (direction === UP) return height >= 1 && cover >= 1;
+		if (direction === DOWN) return cover >= 1;
+		return height <= cover;
 	}
 
 	flow(type, p, own) {
@@ -857,7 +868,7 @@ export class Mesher {
 			let height = nt === type ? Math.min(8, ninfo.fluidAmount) / 9 : 0;
 			let distance = 0;
 			if (height === 0) {
-				if (!ninfo || ninfo.noCollision || ninfo.air) {
+				if (!ninfo || !ninfo.blocksFluidFlow) {
 					const below = this.info(np + STEP[DOWN]);
 					const bt = this.fluidOf(below);
 					if (bt === type || bt === 0) {
@@ -900,7 +911,8 @@ export class Mesher {
 		const sprites = this.fluids ? (type === 1 ? this.fluids.water : this.fluids.lava) : null;
 		const infoAt = d => this.info(p + STEP[d]);
 		const same = d => this.fluidOf(infoAt(d)) === type;
-		const selfOccluded = d => !!(info.occludes & (1 << d));
+		// isFaceOccludedBySelf: the block the fluid is in (waterlogged stairs, slabs...) hides the face
+		const selfOccluded = d => this.occludedBy(OPPOSITE[d], 1, info);
 		const renderUp = !same(UP);
 		const renderDown = !same(DOWN) && !selfOccluded(DOWN) && !this.occludedBy(DOWN, 0.8888889, infoAt(DOWN));
 		const renderN = !same(NORTH) && !selfOccluded(NORTH);

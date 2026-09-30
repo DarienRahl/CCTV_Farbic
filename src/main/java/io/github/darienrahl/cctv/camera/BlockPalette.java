@@ -17,6 +17,8 @@ import net.minecraft.core.Direction;
 import net.minecraft.core.particles.ColorParticleOption;
 import net.minecraft.core.particles.ParticleOptions;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.resources.Identifier;
 import net.minecraft.tags.BlockTags;
 import net.minecraft.tags.FluidTags;
 import net.minecraft.tags.TagKey;
@@ -61,6 +63,13 @@ final class BlockPalette {
 	static final int FLAG_SOLID = 512;
 	/** Water next to it shows the water overlay texture (glass, ice, leaves...). */
 	static final int FLAG_WATER_OVERLAY = 1024;
+	/** In #blocks_fluid_flow: a fluid does not look past it at the fluid below for its flow (FlowingFluid.getFlow). */
+	static final int FLAG_BLOCKS_FLUID_FLOW = 2048;
+
+	private static final TagKey<Block> BLOCKS_FLUID_FLOW = TagKey.create(Registries.BLOCK,
+			Identifier.withDefaultNamespace("blocks_fluid_flow"));
+	/** FluidRenderer's MAX_FLUID_HEIGHT: the height a fluid's bottom face is tested with. */
+	private static final float MAX_FLUID_HEIGHT = 0.8888889F;
 
 	private static final BlockPos SEED_PROBE = new BlockPos(5, 70, 9);
 
@@ -131,6 +140,9 @@ final class BlockPalette {
 			}
 			if (state.getBlock() instanceof HalfTransparentBlock || state.getBlock() instanceof LeavesBlock) {
 				flags |= FLAG_WATER_OVERLAY;
+			}
+			if (state.is(BLOCKS_FLUID_FLOW)) {
+				flags |= FLAG_BLOCKS_FLUID_FLOW;
 			}
 		} catch (RuntimeException ignored) {
 			// Keep what is known.
@@ -388,6 +400,61 @@ final class BlockPalette {
 		}
 		if (skip != 0) {
 			json.field("k", skip);
+		}
+
+		writeFluidCover(json, state);
+	}
+
+	/**
+	 * How the faces that are neither empty nor a whole block hide a fluid next to them or inside the block
+	 * (FluidRenderer.isFaceOccludedByState with Shapes.blockOccludes): {@code fc} per face in 3D data order, for a
+	 * side the height up to which a fluid's side face is hidden, for the top and bottom 1 when they hide a whole
+	 * fluid face. Worked out with the game's own occlusion test, so any shape comes out as in the game.
+	 */
+	private static void writeFluidCover(Json json, BlockState state) {
+		float[] cover = new float[6];
+		boolean any = false;
+		for (Direction face : Direction.values()) {
+			try {
+				VoxelShape occluder = state.getFaceOcclusionShape(face);
+				if (occluder.isEmpty() || occluder == Shapes.block()) {
+					continue;
+				}
+				// the fluid looks at this face from the other side (or from inside the block for its own faces)
+				Direction towards = face.getOpposite();
+				float covered = 0;
+				if (face.getAxis() == Direction.Axis.Y) {
+					float height = towards == Direction.DOWN ? MAX_FLUID_HEIGHT : 1.0F;
+					covered = Shapes.blockOccludes(Shapes.box(0, 0, 0, 1, height, 1), occluder, towards) ? 1 : 0;
+				} else {
+					List<Double> heights = new ArrayList<>();
+					for (AABB box : occluder.toAabbs()) {
+						if (!heights.contains(box.maxY)) {
+							heights.add(box.maxY);
+						}
+					}
+					heights.sort(null);
+					for (double height : heights) {
+						if (height <= 0 || !Shapes.blockOccludes(Shapes.box(0, 0, 0, 1, height, 1), occluder, towards)) {
+							break;
+						}
+						covered = (float) height;
+					}
+				}
+				if (covered > 0) {
+					cover[face.get3DDataValue()] = covered;
+					any = true;
+				}
+			} catch (RuntimeException ignored) {
+				// Not hidden.
+			}
+		}
+		if (any) {
+			json.name("fc").beginArray();
+			for (float value : cover) {
+				json.value(value, 4);
+			}
+			json.endArray();
 		}
 	}
 

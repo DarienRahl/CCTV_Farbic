@@ -69,6 +69,7 @@ class StreamReader(threading.Thread):
     def __init__(self, camera):
         super().__init__(daemon=True)
         self.block_tags = {}
+        self.palette = {}
         self.url = f"{WEB}/api/cameras/{camera}/stream"
         self.events = {}
         self.first = {}
@@ -154,6 +155,7 @@ class StreamReader(threading.Thread):
                             self.block_updates.extend(data["b"])
                         elif event == "palette":
                             for entry in data.get("s", []):
+                                self.palette[(entry.get("n"), entry.get("s", ""))] = entry
                                 if entry.get("tg"):
                                     self.block_tags.setdefault(entry["n"], set()).update(entry["tg"])
                         elif event == "section":
@@ -236,6 +238,8 @@ def main():
     # a painting on the house wall (PaintingRenderer: its picture, back and edges)
     rcon.command('summon minecraft:painting 3 -59 7 {facing:2b,variant:"minecraft:kebab"}')
     rcon.command("fill -8 -61 6 -4 -61 12 minecraft:water")
+    # a slab at the pool's edge (FluidRenderer hides the water's side face only as high as the slab covers it)
+    rcon.command("setblock -3 -61 9 minecraft:stone_slab[type=bottom]")
     rcon.command("fill -9 -60 3 -9 -60 14 minecraft:oak_fence")
     rcon.command("setblock 1 -60 3 minecraft:chest[facing=north]")
     # a lit campfire: its smoke column is the viewer's surest particle (screenshot.mjs checks it)
@@ -429,6 +433,15 @@ def main():
                        ("minecraft:pale_oak_log", "minecraft:pale_oak_logs")):
         if tag not in stream.block_tags.get(block, set()):
             failures.append(f"the palette entry of {block} does not list the tag {tag}")
+    # FluidRenderer's face occlusion by shapes that are not whole blocks and FlowingFluid's #blocks_fluid_flow
+    slab = next((e for (n, props), e in stream.palette.items() if n == "minecraft:stone_slab" and "type=bottom" in props
+                 and "waterlogged=false" in props), None)
+    sign = next((e for (n, props), e in stream.palette.items() if n == "minecraft:oak_sign"), None)
+    print("fluid palette hints:", json.dumps(slab), json.dumps(sign), flush=True)
+    if not slab or [round(v, 3) for v in (slab.get("fc") or [0] * 6)[2:]] != [0.5] * 4:
+        failures.append(f"the bottom slab's palette entry does not say how high it hides fluids: {slab}")
+    if not sign or not sign.get("f", 0) & 2048:
+        failures.append(f"the oak sign's palette entry is not marked as blocking fluid flow: {sign}")
     if env.get("drip") != "minecraft:dripping_dripstone_water":
         failures.append(f"env sample does not say what dry stalactites drip: {env.get('drip')}")
     # the overworld's ambient sounds: cave sounds in the dark (AmbientMoodSettings.LEGACY_CAVE_SETTINGS)

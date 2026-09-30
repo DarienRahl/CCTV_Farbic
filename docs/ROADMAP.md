@@ -175,7 +175,10 @@ to the milestone it belongs to. The roadmap on the README page is drawn from thi
       items of later versions look like the game's
 - [x] **Occlusion culling like the game** (VisGraph per section in the meshing workers, SectionOcclusionGraph's walk
       from the camera with its source directions and the far sections' ray check)
-- [ ] Terrain: remaining fluid edge cases
+- [x] **Fluids like FluidRenderer in every case**: faces hidden by slabs, stairs and other partial shapes as far
+      as the game's Shapes.blockOccludes hides them (worked out on the server per block state), waterlogged blocks
+      hiding their own faces, and the flow direction past `#blocks_fluid_flow` blocks (signs, pressure plates,
+      banners...) like FlowingFluid.getFlow
 - [x] **Camera in water, lava and powder snow**: the underwater overlay (ScreenEffectRenderer, as bright as the
       light at the camera) and the fog of each (LavaFogEnvironment, PowderedSnowFogEnvironment)
 
