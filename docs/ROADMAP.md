@@ -171,8 +171,7 @@ to the milestone it belongs to. The roadmap on the README page is drawn from thi
 - [x] Your own field of view (30–110°), distance fog modes and 11 built-in post effects
 - [x] The Biome Blend option (off to 15x15)
 - [x] **Items like ItemModelResolver**: every item's definition (`items/*.json`: model, composite, condition,
-      select, range_dispatch, special) with its tints (dye, potion, firework, map colour, grass, constant, custom
-      model data), so dyed leather, potions and tipped arrows, loaded crossbows, trimmed armour, clocks and new
+      select, range_dispatch, special) with its tints (dye, potion, firework, grass, constant, custom model data), so dyed leather, potions and tipped arrows, loaded crossbows, trimmed armour, clocks and new
       items of later versions look like the game's
 - [ ] Terrain: the game's chunk occlusion culling (visibility graph), remaining fluid edge cases
 - [x] **Camera in water, lava and powder snow**: the underwater overlay (ScreenEffectRenderer, as bright as the

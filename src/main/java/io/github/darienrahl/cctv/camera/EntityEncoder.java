@@ -54,7 +54,6 @@ import net.minecraft.world.item.component.ChargedProjectiles;
 import net.minecraft.world.item.component.CustomModelData;
 import net.minecraft.world.item.component.DyedItemColor;
 import net.minecraft.world.item.component.FireworkExplosion;
-import net.minecraft.world.item.component.MapItemColor;
 import net.minecraft.world.item.equipment.Equippable;
 import net.minecraft.world.item.equipment.trim.ArmorTrim;
 import net.minecraft.world.level.block.Block;
@@ -593,7 +592,7 @@ final class EntityEncoder {
 
 	/**
 	 * What the item's model definition and tints read from the stack ({@code <name>P}, only when there is any):
-	 * c dyed colour, p potion colour, f firework star colour, m map colour, t trim material, ch crossbow charge
+	 * c dyed colour, p potion colour, f firework star colour, t trim material, ch crossbow charge
 	 * ("arrow"/"rocket"), cmd custom model data {f, b, s, c}, d damage (0-1), b broken.
 	 */
 	private static void writeItemProperties(Json json, String name, ItemStack stack) {
@@ -623,11 +622,6 @@ final class EntityEncoder {
 				}
 				int n = star.colors().size();
 				props.field("f", (int) (r / n) << 16 | (int) (g / n) << 8 | (int) (b / n));
-				any = true;
-			}
-			MapItemColor map = stack.get(DataComponents.MAP_COLOR);
-			if (map != null) {
-				props.field("m", map.rgb());
 				any = true;
 			}
 			ArmorTrim trim = stack.get(DataComponents.TRIM);
