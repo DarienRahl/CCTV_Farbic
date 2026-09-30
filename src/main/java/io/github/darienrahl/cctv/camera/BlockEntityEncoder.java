@@ -168,7 +168,6 @@ final class BlockEntityEncoder {
 				.field("w", display.getBbWidth(), 3).field("h", display.getBbHeight(), 3).endObject().toString();
 	}
 
-	/** Food cooking on a campfire, one item id (or null) per slot: {@code {"k":"campfire", "i": [...]}}; empty ones are left out. */
 	/** Suspicious sand and gravel while being brushed: the item inside and the side it comes out of. */
 	private static @Nullable String brushable(BrushableBlockEntity brushable) {
 		Direction side = brushable.getHitDirection();
@@ -182,6 +181,7 @@ final class BlockEntityEncoder {
 				.endObject().toString();
 	}
 
+	/** Food cooking on a campfire, one item id (or null) per slot: {@code {"k":"campfire", "i": [...]}}; empty ones are left out. */
 	private static @Nullable String campfire(CampfireBlockEntity campfire) {
 		List<ItemStack> items = campfire.getItems();
 		if (items.stream().allMatch(ItemStack::isEmpty)) {

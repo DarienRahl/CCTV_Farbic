@@ -235,10 +235,10 @@ def main():
     rcon.command("setblock -3 -61 11 minecraft:end_portal")
     rcon.command("setblock 1 -60 -3 minecraft:enchanting_table")
     rcon.command("setblock -2 -60 -3 minecraft:lectern[facing=north,has_book=true]")
-    # suspicious sand brushed from above, a diamond showing (BrushableBlockRenderer), and a conduit (its shell)
-    rcon.command('setblock 6 -60 0 minecraft:suspicious_sand[dusted=2]'
-                 '{item:{id:"minecraft:diamond",count:1},hit_direction:1}')
+    # suspicious sand brushed from above, a diamond showing (BrushableBlockRenderer), and a conduit (its shell);
+    # the side it is brushed from is set further down, because the block's first tick clears it (nobody brushes)
     rcon.command("setblock 7 -60 0 minecraft:conduit")
+    rcon.command('setblock 6 -60 0 minecraft:suspicious_sand[dusted=2]{item:{id:"minecraft:diamond",count:1}}')
     # a spawner with a zombie turning inside (no player near, so it spawns nothing)
     rcon.command('setblock -4 -60 -5 minecraft:spawner{SpawnData:{entity:{id:"minecraft:zombie"}}}')
     rcon.command("place feature minecraft:oak -6 -60 18")
@@ -294,6 +294,7 @@ def main():
     rcon.command("setblock 5 -60 -5 minecraft:note_block")
     rcon.command("setblock 5 -60 -6 minecraft:redstone_block")
     rcon.command('data merge block -3 -60 0 {front_text:{messages:["CCTV","edited","",""]}}')
+    rcon.command("data merge block 6 -60 0 {hit_direction:1}")
     rcon.command("kill @e[type=minecraft:sheep]")
     time.sleep(4)
 
