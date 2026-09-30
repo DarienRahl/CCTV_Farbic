@@ -10,7 +10,8 @@ import subprocess
 import sys
 
 VIDEO = sys.argv[1]
-print(subprocess.run(["ffprobe", "-hide_banner", VIDEO], capture_output=True, text=True).stderr, flush=True)
+# (ffmpeg without an output prints the streams; the static build of the workflow has no ffprobe)
+print(subprocess.run(["ffmpeg", "-hide_banner", "-i", VIDEO], capture_output=True, text=True).stderr, flush=True)
 loudness = subprocess.run(["ffmpeg", "-hide_banner", "-i", VIDEO, "-af", "volumedetect", "-f", "null", "-"],
                           capture_output=True, text=True).stderr
 print("\n".join(line for line in loudness.splitlines() if "volume" in line), flush=True)

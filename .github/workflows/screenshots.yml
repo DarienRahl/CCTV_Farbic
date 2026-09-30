@@ -64,9 +64,12 @@ jobs:
           pip install --quiet pillow
           python3 .github/e2e/readme_images.py .github/e2e/shots docs/images/screenshots
       - name: install ffmpeg
+        # a static build from PyPI (imageio-ffmpeg): no apt-get, whose mirrors are sometimes very slow
+        timeout-minutes: 5
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq ffmpeg > /dev/null
+          pip install --quiet imageio-ffmpeg
+          sudo ln -sf "$(python3 -c 'import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())')" /usr/local/bin/ffmpeg
+          ffmpeg -hide_banner -version | head -1
       - name: record the party (the README's video)
         working-directory: .github/e2e
         run: |
