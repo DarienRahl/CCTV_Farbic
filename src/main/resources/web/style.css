@@ -299,6 +299,16 @@ body.embed .hud {
 	font-size: 12px;
 }
 
+body.clean .hud,
+body.clean #toolbar,
+body.clean #now-playing,
+body.clean #message,
+body.clean #loading,
+body.clean #fx,
+body.clean #noise {
+	display: none !important;
+}
+
 body.embed .hud .sub {
 	font-size: 10px;
 }

@@ -96,3 +96,55 @@ jobs:
           path: |
             server.log
             .github/e2e/*.png
+
+  # Reference renders: the game itself (a Fabric client game test under a virtual display) and the viewer take a
+  # picture of the same scene from the same eyes; both go into the job summary and the "reference-renders" artifact
+  # side by side with a difference score. Informational while it settles in.
+  reference-renders:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    continue-on-error: true
+    steps:
+      - name: checkout repository
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref }}
+      - name: setup jdk
+        uses: actions/setup-java@v5
+        with:
+          java-version: '25'
+          distribution: 'microsoft'
+      - name: virtual display, software OpenGL and the comparison's Python packages
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xvfb libgl1-mesa-dri libglx-mesa0 mesa-utils > /dev/null
+          pip install --quiet pillow
+      - name: install playwright
+        working-directory: .github/e2e
+        run: |
+          npm install --no-save --no-package-lock playwright@1 > /dev/null
+          npx playwright install --with-deps chromium > /dev/null 2>&1
+      - name: the game's and the viewer's picture
+        run: |
+          chmod +x ./gradlew
+          (cd .github/e2e && exec timeout 2400 node reference.mjs ../../build/run/clientGameTest/reference) > reference-viewer.log 2>&1 &
+          viewer=$!
+          status=0
+          xvfb-run -a -s "-screen 0 1280x720x24" ./gradlew runClientGameTest --no-daemon --no-configuration-cache || status=$?
+          kill $viewer 2>/dev/null || true
+          cat reference-viewer.log
+          exit $status
+      - name: compare
+        if: always()
+        run: python3 .github/e2e/compare_reference.py build/run/clientGameTest/reference
+      - name: upload results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: reference-renders
+          path: |
+            build/run/clientGameTest/reference/
+            build/run/clientGameTest/screenshots/
+            build/run/clientGameTest/logs/latest.log
+            reference-viewer.log

@@ -1,0 +1,17 @@
+{
+	"schemaVersion": 1,
+	"id": "cctv-reference-renders",
+	"version": "1.0.0",
+	"name": "CCTV reference renders",
+	"description": "CI only: the game's picture of a scene next to the CCTV viewer's picture of it.",
+	"environment": "client",
+	"entrypoints": {
+		"fabric-client-gametest": [
+			"io.github.darienrahl.cctv.gametest.ReferenceRenders"
+		]
+	},
+	"depends": {
+		"cctv": "*",
+		"fabric-api": "*"
+	}
+}

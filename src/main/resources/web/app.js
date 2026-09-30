@@ -35,6 +35,8 @@ const loadingText = $('loading-text');
 const messageEl = $('message');
 
 document.body.classList.toggle('embed', embed);
+// ?clean: only the picture, without the camera overlay and toolbar (reference renders in CI)
+document.body.classList.toggle('clean', params.has('clean'));
 
 // Video wall tiles (embed): nothing is drawn while the tile is off screen or the tab is hidden, the frame rate
 // is capped (lower for small tiles) and the picture uses one pixel per CSS pixel. The stream keeps running, so

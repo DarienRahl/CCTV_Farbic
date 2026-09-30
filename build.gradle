@@ -54,3 +54,20 @@ loom {
 		}
 	}
 }
+
+// Reference renders (CI): a client game test in src/gametest builds a scene in single player, takes the game's
+// picture and puts a camera at the same spot for the viewer's picture (runClientGameTest, see build.yml).
+fabricApi {
+	configureTests {
+		createSourceSet = true
+		modId = "cctv-reference-renders"
+		enableGameTests = false
+		enableClientGameTests = true
+		eula = true
+	}
+}
+
+tasks.matching { it.name == "runClientGameTest" }.configureEach {
+	// the network synchronizer of client game tests can fail on CI machines (Fabric's documentation)
+	jvmArgs "-Dfabric.client.gametest.disableNetworkSynchronizer=true"
+}
