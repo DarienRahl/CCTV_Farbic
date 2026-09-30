@@ -287,3 +287,11 @@ net/minecraft/client/renderer/blockentity/BrushableBlockRenderer
 net/minecraft/client/renderer/entity/FishingHookRenderer
 net/minecraft/client/renderer/entity/layers/WolfArmorLayer
 net/minecraft/world/entity/Crackiness
+# items with special models (entities.js drawSpecialItem, compositeMesh; ClientAssets "specialItems")
+net/minecraft/client/renderer/item/SpecialModelWrapper
+net/minecraft/client/renderer/special/ChestSpecialRenderer
+net/minecraft/client/renderer/special/ShulkerBoxSpecialRenderer
+net/minecraft/client/renderer/special/SkullSpecialRenderer
+net/minecraft/client/renderer/special/BannerSpecialRenderer
+net/minecraft/client/renderer/special/ConduitSpecialRenderer
+net/minecraft/client/renderer/special/CopperGolemStatueSpecialRenderer

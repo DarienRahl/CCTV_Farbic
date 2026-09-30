@@ -531,7 +531,8 @@ public final class ClientAssets implements AutoCloseable {
 	/**
 	 * {"version", "blockstates": {id: json}, "models": {id: json}, "textures": {id: base64 png},
 	 * "animations": {id: mcmeta}, "colormaps": {name: base64 png}, "environment": {path: base64 png}
-	 * (sun, moon, clouds), "particles": {id: particle definition}, "particleTextures": {id: base64 png}}.
+	 * (sun, moon, clouds), "particles": {id: particle definition}, "particleTextures": {id: base64 png},
+	 * "equipment": {asset: layers}, "specialItems": {item id: special or composite item model}}.
 	 * Later sources override earlier ones.
 	 */
 	private byte[] buildBundle() throws IOException {
@@ -545,6 +546,7 @@ public final class ClientAssets implements AutoCloseable {
 		Map<String, String> particleTextures = new LinkedHashMap<>();
 		TreeSet<String> entityTextures = new TreeSet<>();
 		Map<String, JsonElement> equipment = new LinkedHashMap<>();
+		Map<String, JsonElement> specialItems = new LinkedHashMap<>();
 
 		List<ZipFile> zips;
 		synchronized (this) {
@@ -580,6 +582,15 @@ public final class ClientAssets implements AutoCloseable {
 						colormaps.put(strip(rest, "textures/colormap/", ".png"), base64(zip, entry));
 					} else if (namespace.equals("minecraft") && rest.startsWith("textures/environment/") && rest.endsWith(".png")) {
 						environment.put(strip(rest, "textures/environment/", ".png"), base64(zip, entry));
+					} else if (rest.startsWith("items/") && rest.endsWith(".json")) {
+						// Items drawn by a SpecialModelRenderer (chests, heads, banners...) or several models (beds)
+						String id = namespace + ":" + strip(rest, "items/", ".json");
+						JsonElement special = findSpecial(parse(zip, entry), 0);
+						if (special != null) {
+							specialItems.put(id, special);
+						} else {
+							specialItems.remove(id);
+						}
 					} else if (rest.startsWith("equipment/") && rest.endsWith(".json")) {
 						equipment.put(namespace + ":" + strip(rest, "equipment/", ".json"), parse(zip, entry));
 					} else if (rest.startsWith("particles/") && rest.endsWith(".json")) {
@@ -646,12 +657,49 @@ public final class ClientAssets implements AutoCloseable {
 		JsonObject particleTextureObject = new JsonObject();
 		particleTextures.forEach(particleTextureObject::addProperty);
 		root.add("particleTextures", particleTextureObject);
+		// Item definitions' "minecraft:special" ({"base", "model": {"type"...}, "transformation"}) and
+		// "minecraft:composite" ({"models": [...]}) item models
+		root.add("specialItems", toObject(specialItems));
 
 		JsonArray list = new JsonArray();
 		entityTextures.forEach(list::add);
 		entityList = list.toString();
 
 		return root.toString().getBytes(StandardCharsets.UTF_8);
+	}
+
+	/**
+	 * The first "minecraft:special" or "minecraft:composite" item model in an item definition (it may sit inside
+	 * selects and conditions): the items that are not simply one model, like chests, heads, banners and beds.
+	 */
+	private static @Nullable JsonElement findSpecial(JsonElement element, int depth) {
+		if (depth > 16) {
+			return null;
+		}
+		if (element.isJsonObject()) {
+			JsonObject object = element.getAsJsonObject();
+			JsonElement type = object.get("type");
+			if (type != null && type.isJsonPrimitive()) {
+				String name = type.getAsString().replace("minecraft:", "");
+				if (name.equals("special") || name.equals("composite")) {
+					return object;
+				}
+			}
+			for (Map.Entry<String, JsonElement> child : object.entrySet()) {
+				JsonElement found = findSpecial(child.getValue(), depth + 1);
+				if (found != null) {
+					return found;
+				}
+			}
+		} else if (element.isJsonArray()) {
+			for (JsonElement child : element.getAsJsonArray()) {
+				JsonElement found = findSpecial(child, depth + 1);
+				if (found != null) {
+					return found;
+				}
+			}
+		}
+		return null;
 	}
 
 	private static JsonObject toObject(Map<String, JsonElement> map) {

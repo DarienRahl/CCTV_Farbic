@@ -111,7 +111,8 @@ class StreamReader(threading.Thread):
                         self.first.setdefault(event, data)
                         if event == "entities":
                             self.entity_types.update(e["type"] for e in data["e"])
-                            self.items.update(e.get("item") for e in data["e"] if e["type"] == "minecraft:item")
+                            self.items.update((e.get("item"), round(e["x"]), round(e["y"]), round(e["z"]))
+                                              for e in data["e"] if e["type"] == "minecraft:item")
                             for e in data["e"]:
                                 for name in e.get("anim", {}):
                                     self.animation_states.add((e["type"], name))

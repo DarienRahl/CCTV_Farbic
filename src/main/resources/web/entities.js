@@ -71,6 +71,38 @@ const DECAL_UV = {
 
 /** Shields are drawn by ShieldSpecialRenderer, not from a sprite. */
 const isShield = item => /^(minecraft:)?shield$/.test(item || '');
+/** Special item models the viewer draws (drawSpecialItem); others fall back to a sprite, block model or box. */
+const SPECIAL_ITEM_TYPES = new Set(['chest', 'shulker_box', 'conduit', 'head', 'player_head', 'banner', 'decorated_pot', 'bell',
+	'copper_golem_statue', 'trident']);
+/** SkullBlock.Type of a head item: its model layer and texture below textures/entity. */
+const SPECIAL_HEADS = {
+	skeleton: ['skeleton_skull', 'skeleton/skeleton'], wither_skeleton: ['wither_skeleton_skull', 'skeleton/wither_skeleton'],
+	zombie: ['zombie_head', 'zombie/zombie'], creeper: ['creeper_head', 'creeper/creeper'], piglin: ['piglin_head', 'piglin/piglin'],
+	dragon: ['dragon_skull', 'enderdragon/dragon'], player: ['player_head', 'player/wide/steve'],
+};
+
+/** Transformation (translation, left rotation, scale, right rotation; quaternions or axis and angle) as a matrix. */
+function transformationMatrix(t) {
+	const quaternion = q => {
+		if (!q) return mat4();
+		let [x, y, z, w] = Array.isArray(q) ? q : [0, 0, 0, 1];
+		if (!Array.isArray(q) && q.axis) {
+			const len = Math.hypot(q.axis[0], q.axis[1], q.axis[2]) || 1, s = Math.sin((q.angle || 0) / 2);
+			[x, y, z, w] = [q.axis[0] / len * s, q.axis[1] / len * s, q.axis[2] / len * s, Math.cos((q.angle || 0) / 2)];
+		}
+		const r = mat4();
+		r[0] = 1 - 2 * (y * y + z * z); r[1] = 2 * (x * y + z * w); r[2] = 2 * (x * z - y * w);
+		r[4] = 2 * (x * y - z * w); r[5] = 1 - 2 * (x * x + z * z); r[6] = 2 * (y * z + x * w);
+		r[8] = 2 * (x * z + y * w); r[9] = 2 * (y * z - x * w); r[10] = 1 - 2 * (x * x + y * y);
+		return r;
+	};
+	const tr = t.translation || [0, 0, 0], sc = t.scale || [1, 1, 1];
+	const m = mat4();
+	translate(m, tr[0], tr[1], tr[2]);
+	const left = mul(m, quaternion(t.left_rotation));
+	scale(left, sc[0], sc[1], sc[2]);
+	return mul(left, quaternion(t.right_rotation));
+}
 /** models/item/shield.json display transforms, for a bundle without item models. */
 const SHIELD_DISPLAY = {
 	thirdperson_righthand: { rotation: [0, 90, 0], translation: [10, 6, -4], scale: [1, 1, 1] },
@@ -1684,7 +1716,13 @@ export class EntityRenderer {
 		const ns = id.slice(0, colon), name = id.slice(colon + 1);
 		const models = this.assets.models;
 		const sprite = this.assets.sprites.get(ns + ':item/' + name);
-		if (sprite) {
+		const special = this.specialItem(id);
+		if (special && strip(special.type) === 'composite') {
+			mesh = this.compositeMesh(special);
+		} else if (special && SPECIAL_ITEM_TYPES.has(strip(special.model && special.model.type)) && !(sprite && strip(special.model.type) === 'trident')) {
+			// SpecialModelWrapper: drawn by the special renderer (a trident keeps its flat sprite off hand)
+			mesh = { kind: 'block', special };
+		} else if (sprite) {
 			mesh = { kind: 'sprite', quads: this.extrude(sprite) };
 		} else if (models && this.assets.bundle.blockstates[id]) {
 			const dispatch = models.dispatch(id, { __item: true });
@@ -1707,6 +1745,121 @@ export class EntityRenderer {
 		}
 		this.itemMeshes.set(itemId, mesh);
 		return mesh;
+	}
+
+	/** The item definition's special or composite model (items/*.json of the game), or null. */
+	specialItem(id) {
+		const items = this.assets && this.assets.bundle.specialItems;
+		return (items && items[id.includes(':') ? id : 'minecraft:' + id]) || null;
+	}
+
+	/** CompositeModel of plain models (beds: the head, and the foot one block further), each moved by its transformation. */
+	compositeMesh(spec) {
+		const models = this.assets.models;
+		if (!models) return null;
+		const list = [], offsets = [];
+		for (const child of spec.models || []) {
+			if (strip(child.type) !== 'model' || !child.model) return null;
+			const baked = models.bakeVariant({ model: child.model.includes(':') ? child.model : 'minecraft:' + child.model });
+			const t = (child.transformation && child.transformation.translation) || [0, 0, 0];
+			for (const quads of baked.quads) {
+				for (const q of quads) {
+					list.push({ q, tint: [1, 1, 1] });
+					offsets.push(t);
+				}
+			}
+		}
+		if (!list.length) return null;
+		const quads = this.blockQuads(list);
+		offsets.forEach((t, i) => {
+			for (let k = 0; k < 4; k++) {
+				const o = i * 20 + k * 5;
+				quads.data[o] += t[0]; quads.data[o + 1] += t[1]; quads.data[o + 2] += t[2];
+			}
+		});
+		return { kind: 'block', quads };
+	}
+
+	/**
+	 * The special renderers of items (ChestSpecialRenderer, ShulkerBoxSpecialRenderer, SkullSpecialRenderer,
+	 * BannerSpecialRenderer...): their entity model in the item's space, moved by the definition's transformation,
+	 * resting and animated like an unopened block of its kind.
+	 */
+	drawSpecialItem(spec, m, style, patterns) {
+		const model = spec.model || {};
+		const lm = spec.transformation ? mul(m, transformationMatrix(spec.transformation)) : Float32Array.from(m);
+		const emit = (layer, texturePath, pose = null, color = null, mode = MODE_CUTOUT) => {
+			const entityModel = this.library.get(layer);
+			const texture = this.texture(texturePath);
+			if (!entityModel || !texture) return false;
+			entityModel.reset();
+			if (pose) pose(entityModel.parts);
+			const start = this.sink.count;
+			emitModel(this.sink, entityModel, lm, color ? { ...style, color } : style);
+			this.batch(texture, mode, start, false, style.glint || 0);
+			return true;
+		};
+		const texture = String(model.texture || '').replace(/^[a-z0-9_.-]+:/, '');
+		switch (strip(model.type)) {
+			case 'chest': {
+				// ChestModel.setupAnim(openness)
+				const type = strip(model.chest_type || 'single');
+				const open = Number(model.openness) || 0;
+				emit(type === 'single' ? 'minecraft:chest#main' : 'minecraft:double_chest_' + type + '#main', 'chest/' + texture, parts => {
+					if (parts.lid) parts.lid.xRot = -(open * Math.PI / 2);
+					if (parts.lock) parts.lock.xRot = -(open * Math.PI / 2);
+				});
+				break;
+			}
+			case 'shulker_box': {
+				const open = Number(model.openness) || 0;
+				emit('minecraft:shulker_box#main', 'shulker/' + (texture || 'shulker'), parts => {
+					if (!parts.lid || !open) return;
+					parts.lid.y = 24 - open * 0.5 * 16;
+					parts.lid.yRot = 270 * open * DEG;
+				});
+				break;
+			}
+			case 'conduit':
+				emit('minecraft:conduit#shell', 'conduit/base');
+				break;
+			case 'head':
+			case 'player_head': {
+				const head = SPECIAL_HEADS[strip(model.type) === 'player_head' ? 'player' : model.kind] || SPECIAL_HEADS.skeleton;
+				emit('minecraft:' + head[0] + '#main', texture ? texture.replace(/^textures\/entity\//, '').replace(/\.png$/, '') : head[1],
+					parts => { if (parts.head) parts.head.yRot = 0; });
+				break;
+			}
+			case 'banner': {
+				const base = model.attachment === 'wall' ? 'minecraft:wall_banner' : 'minecraft:standing_banner';
+				const sway = parts => { if (parts.flag) parts.flag.xRot = (-0.0125 + 0.01) * Math.PI; };
+				emit(base + '#main', 'banner/banner_base');
+				emit(base + '#flag', 'banner/banner_base', sway);
+				emit(base + '#flag', 'banner/base', sway, dyeRgb(model.color || 'white'), MODE_TRANSLUCENT);
+				for (const [asset, color] of (patterns && patterns.p) || []) {
+					emit(base + '#flag', 'banner/' + String(asset).replace(/^[a-z0-9_.-]+:/, ''), sway, dyeRgb(color), MODE_TRANSLUCENT);
+				}
+				break;
+			}
+			case 'decorated_pot':
+				emit('minecraft:decorated_pot_base#main', 'decorated_pot/decorated_pot_base');
+				emit('minecraft:decorated_pot_sides#main', 'decorated_pot/decorated_pot_side');
+				break;
+			case 'bell':
+				emit('minecraft:bell#main', 'bell/bell_body');
+				break;
+			case 'copper_golem_statue': {
+				const pose = strip(model.pose || 'standing');
+				emit('minecraft:copper_golem' + (pose === 'standing' ? '' : '_' + pose) + '#main',
+					texture.replace(/^textures\/entity\//, '').replace(/\.png$/, '') || 'copper_golem/copper_golem');
+				break;
+			}
+			case 'trident':
+				emit('minecraft:trident#main', 'trident/trident');
+				break;
+			default:
+				break;
+		}
 	}
 
 	itemTint(name) {
@@ -1759,7 +1912,8 @@ export class EntityRenderer {
 	}
 
 	/** Emits an item mesh with the given transform (model space 0..1). */
-	emitItem(mesh, m, style) {
+	emitItem(mesh, m, style, patterns = null) {
+		if (mesh.special) return this.drawSpecialItem(mesh.special, m, style, patterns);
 		const start = this.sink.count;
 		const data = mesh.quads.data;
 		this.sink.ensure(data.length / 20 * 6);
@@ -1794,7 +1948,7 @@ export class EntityRenderer {
 			? { translation: [0, 3, 0], scale: [0.25, 0.25, 0.25] }
 			: { translation: [0, 2, 0], scale: [0.5, 0.5, 0.5] };
 		this.applyDisplay(m, this.displayTransform(e.item, 'ground', fallback), false);
-		this.emitItem(mesh, m, e.foil & FOIL_ITEM ? { ...style, glint: GLINT_ITEM } : style);
+		this.emitItem(mesh, m, e.foil & FOIL_ITEM ? { ...style, glint: GLINT_ITEM } : style, e.itemPatterns);
 		this.shadowFor(e, pos, 0.15, this.world, 0.75);
 	}
 
@@ -1837,6 +1991,9 @@ export class EntityRenderer {
 		const colon = id.indexOf(':');
 		let current = id.slice(0, colon) + ':item/' + id.slice(colon + 1);
 		if (!models[current]) current = id.slice(0, colon) + ':block/' + id.slice(colon + 1);
+		// a special model takes its display transforms from its "base" model
+		const special = this.specialItem(id);
+		if (special && special.base) current = special.base.includes(':') ? special.base : 'minecraft:' + special.base;
 		for (let depth = 0; current && depth < 16; depth++) {
 			const model = models[current];
 			if (!model) break;
@@ -1876,7 +2033,7 @@ export class EntityRenderer {
 			: { rotation: [0, 0, 0], translation: [0, 3, 1], scale: [0.55, 0.55, 0.55] };
 		// ItemTransform.apply(leftHand): the left hand mirrors the translation and the Y and Z turns
 		this.applyDisplay(pm, this.displayTransform(item, slot, fallback), side < 0);
-		this.emitItem(mesh, pm, style);
+		this.emitItem(mesh, pm, style, patterns);
 	}
 
 	/**
@@ -1958,7 +2115,7 @@ export class EntityRenderer {
 				// getLightCoords: a glow frame lights its item at 15728880 (full)
 				const itemStyle = glow ? { ...style, light: [240, 240] } : { ...style };
 				if (e.foil & FOIL_ITEM) itemStyle.glint = GLINT_ITEM;
-				this.emitItem(mesh, m, itemStyle);
+				this.emitItem(mesh, m, itemStyle, e.itemPatterns);
 			}
 		}
 	}
