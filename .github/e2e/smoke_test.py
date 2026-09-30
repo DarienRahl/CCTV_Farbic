@@ -270,7 +270,7 @@ def main():
     rcon.command("summon minecraft:breeze 6 -60 2 {NoAI:1b}")
     # poses the viewer takes from the entities' state (FoxModel sleeping, IllagerModel holding a crossbow)
     rcon.command("summon minecraft:fox -6 -60 5 {Sleeping:1b,NoAI:1b}")
-    rcon.command("summon minecraft:pillager 7 -60 9 {NoAI:1b}")
+    rcon.command('summon minecraft:pillager 7 -60 9 {NoAI:1b,equipment:{mainhand:{id:"minecraft:crossbow",count:1}}}')
     rcon.command("item replace entity @e[type=minecraft:armor_stand,limit=1] armor.head"
                  " with minecraft:golden_helmet[enchantments={'minecraft:protection':1}]")
     # a dyed leather chestplate with a gold coast trim (equipment layers, dye and trim palette)
@@ -378,6 +378,13 @@ def main():
                      "FrogAnimation.FROG_CROAK", "BreezeAnimation.IDLE"):
             if name not in animations:
                 failures.append(f"keyframe animation {name} missing")
+        # which layers and textures each entity type's renderer uses (EntityRendererMap, from the bytecode)
+        renderers = models.get("renderers", {})
+        print("entity renderers:", len(renderers), {k: renderers.get(k) for k in ("minecraft:fox", "minecraft:mule", "minecraft:giant")},
+              flush=True)
+        fox = renderers.get("minecraft:fox", {})
+        if "minecraft:fox#main" not in fox.get("l", []) or "fox/fox" not in fox.get("t", []) or fox.get("s") != 0.4:
+            failures.append("the fox's renderer was not read from the client jar")
         # The animations as the viewer gets them, for local viewer tests (decode: base64 -d | gunzip).
         packed = base64.b64encode(gzip.compress(json.dumps(animations, separators=(",", ":")).encode())).decode()
         for i in range(0, len(packed), 4000):

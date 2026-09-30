@@ -221,6 +221,7 @@ export function emitQuads(sink, q, m, style) {
 export class ModelLibrary {
 	constructor() {
 		this.layers = null;
+		this.renderers = {};
 		this.cache = new Map();
 		this.animations = {};
 		this.animationCache = new Map();
@@ -234,6 +235,8 @@ export class ModelLibrary {
 					const json = await response.json();
 					this.layers = json.layers || {};
 					this.animations = json.animations || {};
+					// entity type -> the model layers, textures and shadow its renderer uses (EntityRendererMap)
+					this.renderers = json.renderers || {};
 					return true;
 				}
 				if (response.status === 404) return false;

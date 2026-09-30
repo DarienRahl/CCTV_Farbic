@@ -2073,12 +2073,33 @@ export class EntityRenderer {
 	 */
 	autoMob(type) {
 		if (!this.library.layers || !this.entityList || !this.entityList.size) return undefined;
+		const mapped = this.library.renderers && this.library.renderers['minecraft:' + type];
+		const byRenderer = mapped ? this.rendererMob(mapped) : null;
+		if (byRenderer) return byRenderer;
 		if (!/^[a-z0-9_]+$/.test(type) || !this.library.get('minecraft:' + type + '#main')) return null;
 		const texture = [type + '/' + type, type].find(t => this.entityList.has(t))
 			|| [...this.entityList].sort().find(t => t.startsWith(type + '/'));
 		if (!texture) return null;
 		const baby = this.library.get('minecraft:' + type + '_baby#main') ? type + '_baby#main' : null;
 		return { layer: e => (e.baby && baby ? baby : type + '#main'), texture, shadow: 0.5, anim: 'generic', auto: true };
+	}
+
+	/**
+	 * A mob drawn the way its renderer in the client jar says (EntityRendererMap): its first adult and baby
+	 * "#main" model layers, its first adult and baby textures and its shadow radius, with a generic walk.
+	 */
+	rendererMob(mapped) {
+		const layers = (mapped.l || []).filter(id => id.endsWith('#main') && this.library.get(id));
+		const textures = (mapped.t || []).filter(t => this.entityList.has(t));
+		const adultLayer = layers.find(id => !id.includes('baby')), babyLayer = layers.find(id => id.includes('baby'));
+		const adultTexture = textures.find(t => !t.includes('baby')), babyTexture = textures.find(t => t.includes('baby'));
+		if (!adultLayer || !adultTexture) return null;
+		const strip = id => id.replace(/^minecraft:/, '');
+		return {
+			layer: e => strip(e.baby && babyLayer ? babyLayer : adultLayer),
+			texture: e => (e.baby && babyLayer && babyTexture ? babyTexture : adultTexture),
+			shadow: typeof mapped.s === 'number' ? mapped.s : 0.5, anim: 'generic', auto: true,
+		};
 	}
 
 	/** The item definition's special or composite model (items/*.json of the game), or null. */

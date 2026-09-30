@@ -5,7 +5,7 @@
   <a href="https://github.com/DarienRahl/CCTV_Farbic/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/DarienRahl/CCTV_Farbic?style=for-the-badge&amp;label=release&amp;color=5d8c3e"></a>
   <img alt="Minecraft 26.3" src="https://img.shields.io/badge/minecraft-26.3-866043?style=for-the-badge">
   <img alt="Fabric, server side only" src="https://img.shields.io/badge/fabric-server%20side%20only-8b8b8b?style=for-the-badge">
-  <a href="#roadmap"><img alt="Roadmap" src="https://img.shields.io/badge/roadmap-54%2F62%20done-80ff20?style=for-the-badge"></a>
+  <a href="#roadmap"><img alt="Roadmap" src="https://img.shields.io/badge/roadmap-55%2F62%20done-80ff20?style=for-the-badge"></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-555555?style=for-the-badge"></a>
 </p>
 <!-- badges:end -->
@@ -49,7 +49,7 @@ in a web browser: players, mobs, opening doors and placed blocks show up right a
 ## Roadmap
 
 <!-- roadmap:start -->
-<p align="center"><img src="docs/images/roadmap/banner.svg" width="100%" alt="CCTV roadmap: 54 of 62 done"></p>
+<p align="center"><img src="docs/images/roadmap/banner.svg" width="100%" alt="CCTV roadmap: 55 of 62 done"></p>
 
 What is done and what comes next, milestone by milestone (the full plan with its principles is in
 [docs/ROADMAP.md](docs/ROADMAP.md)).
@@ -69,10 +69,10 @@ What is done and what comes next, milestone by milestone (the full plan with its
 
 </details>
 
-<img src="docs/images/roadmap/1-2.svg" width="100%" alt="1.2 — easy updates: released 1.2.0, 9 of 10 done">
+<img src="docs/images/roadmap/1-2.svg" width="100%" alt="1.2 — easy updates: released 1.2.0, 10 of 10 done">
 
 <details>
-<summary><b>1.2 — easy updates</b> · released 1.2.0 · 9 of 10 done</summary>
+<summary><b>1.2 — easy updates</b> · released 1.2.0 · 10 of 10 done</summary>
 
 - [x] `docs/UPDATING.md`: the step-by-step update procedure and the list of game touch points
 - [x] **Update workflow** (`update-minecraft.yml`): for a given game version it resolves Fabric Loader, Fabric API and Loom, bumps `gradle.properties` and `fabric.mod.json`, builds, runs the server test and pushes an `update/<version>` branch with a report
@@ -81,7 +81,7 @@ What is done and what comes next, milestone by milestone (the full plan with its
 - [x] **Keyframe animations from the game**: every `AnimationDefinition` in `client.jar` is read at run time and played by a port of `KeyframeAnimation`; the server reports running `AnimationState`s and entity events. Warden, sniffer, frog, camel, armadillo, bat, breeze, creaking, rabbit, copper golem, nautilus and baby axolotl move like in the game
 - [x] Entity names from the game's language file, in any game language (`language` setting)
 - [x] **Mobs the viewer does not know yet** (a newer game version's) are drawn with the game's model layer and texture found by its naming (`<name>#main`, `textures/entity/<name>/…`) and a generic walk, instead of a box
-- [ ] **Automatic entity mapping**: read `EntityRenderers` from `client.jar` (bytecode) to map each entity type to its exact model layers and textures; the hand-written table only overrides
+- [x] **Automatic entity mapping**: `EntityRenderers` and the renderers are read from `client.jar` (bytecode) to map each entity type to its model layers, textures and shadow; mobs the hand-written table does not know are drawn with them (the table only overrides)
 - [x] Client-side animations from entity events: iron golem, ravager, hoglin and zoglin attacks, the ravager's stun and roar, sheep eating grass, wolves shaking off water and begging, goats ramming (events are queued, so none is lost when the viewer draws fewer frames than it gets)
 - [x] More of them: evoker fangs biting and the evoker's casting hands with their spell particles, illagers celebrating and holding or loading crossbows, horses and donkeys rearing, grazing and swishing their tails, foxes sitting, sleeping, stalking and pouncing with the item in their mouth (and its crumbs), pandas sitting with bamboo, rolling, lying on their back and sneezing, the iron golem offering a poppy (the amounts the game's entity tick computes are sent and interpolated, so the poses move like the game's)
 

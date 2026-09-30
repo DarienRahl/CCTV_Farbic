@@ -328,3 +328,6 @@ net/minecraft/client/model/effects/EvokerFangsModel
 net/minecraft/client/renderer/entity/EvokerFangsRenderer
 net/minecraft/world/entity/projectile/EvokerFangs
 net/minecraft/world/entity/animal/fox/Fox
+# automatic entity mapping (assets/EntityRendererMap: bytecode of the registrations and the renderers)
+net/minecraft/client/renderer/entity/EntityRenderers
+net/minecraft/client/model/geom/ModelLayers

@@ -56,8 +56,9 @@ to the milestone it belongs to. The roadmap on the README page is drawn from thi
 - [x] **Mobs the viewer does not know yet** (a newer game version's) are drawn with the game's model layer
       and texture found by its naming (`<name>#main`, `textures/entity/<name>/…`) and a generic walk,
       instead of a box
-- [ ] **Automatic entity mapping**: read `EntityRenderers` from `client.jar` (bytecode) to map each
-      entity type to its exact model layers and textures; the hand-written table only overrides
+- [x] **Automatic entity mapping**: `EntityRenderers` and the renderers are read from `client.jar` (bytecode) to
+      map each entity type to its model layers, textures and shadow; mobs the hand-written table does not
+      know are drawn with them (the table only overrides)
 - [x] Client-side animations from entity events: iron golem, ravager, hoglin and zoglin attacks,
       the ravager's stun and roar, sheep eating grass, wolves shaking off water and begging, goats
       ramming (events are queued, so none is lost when the viewer draws fewer frames than it gets)

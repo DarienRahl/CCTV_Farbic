@@ -31,7 +31,7 @@ import io.github.darienrahl.cctv.web.Json;
  */
 final class EntityModels {
 	/** Version of the extracted JSON; part of the cache file name so a new mod version re-extracts. */
-	static final int FORMAT = 2;
+	static final int FORMAT = 3;
 
 	private static final String ANIMATION_DEFINITIONS = "net/minecraft/client/animation/definitions/";
 
@@ -39,7 +39,8 @@ final class EntityModels {
 	}
 
 	/**
-	 * @return {@code {"layers": {"minecraft:horse#main": part}, "animations": {"WardenAnimation.WARDEN_ROAR": animation}}}
+	 * @return {@code {"layers": {"minecraft:horse#main": part}, "animations": {"WardenAnimation.WARDEN_ROAR": animation},
+	 *         "renderers": {"minecraft:horse": renderer}}} (see {@link EntityRendererMap})
 	 *         where a part is
 	 *         {@code {p:[x,y,z], r:[xRot,yRot,zRot], s:[sx,sy,sz]?, q:[x,y,z,u,v x4 per quad...], c:{name: part}}}
 	 *         in model pixels (y down, like the client) and an animation is written by {@link AnimationWriter},
@@ -83,6 +84,13 @@ final class EntityModels {
 			String animations = animations(clientJar, loader, logger);
 			if (animations != null) {
 				json.name("animations").raw(animations);
+			}
+			String renderers;
+			try (ZipFile zip = new ZipFile(clientJar.toFile())) {
+				renderers = EntityRendererMap.extract(zip, loader, logger);
+			}
+			if (renderers != null) {
+				json.name("renderers").raw(renderers);
 			}
 			json.endObject();
 			logger.info("CCTV: read {} entity models from the client jar", count);
