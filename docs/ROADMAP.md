@@ -141,7 +141,9 @@ to the milestone it belongs to. The roadmap on the README page is drawn from thi
 - [x] **Maps in item frames** (MapRenderer: the map's picture and the decorations shown on frames); item
       frames turned like the game's and invisible frames showing their item; old 64x32 skins converted like
       SkinTextureDownloader
-- [ ] Entity details: fishing lines, glowing outlines, wolf armour cracks, names of map markers
+- [x] **Fishing lines** (FishingHookRenderer: the hook facing the camera and the sagging black line to the
+      hand holding the rod) and **wolf armour cracks** (WolfArmorLayer with Crackiness.WOLF_ARMOR)
+- [ ] Entity details: glowing outlines, names of map markers
 - [ ] Terrain: the game's chunk occlusion culling (visibility graph), remaining fluid edge cases, the
       biome blend setting
 - [ ] Camera in water, lava and powder snow: the game's overlays and fog

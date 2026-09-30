@@ -283,3 +283,7 @@ net/minecraft/world/level/block/entity/ConduitBlockEntity
 net/minecraft/client/renderer/blockentity/TheEndGatewayRenderer
 net/minecraft/world/level/block/entity/TheEndGatewayBlockEntity
 net/minecraft/client/renderer/blockentity/BrushableBlockRenderer
+# fishing lines, wolf armour cracks (entities.js drawFishingHook; mobs.js wolfArmor; EntityEncoder "fish", "k")
+net/minecraft/client/renderer/entity/FishingHookRenderer
+net/minecraft/client/renderer/entity/layers/WolfArmorLayer
+net/minecraft/world/entity/Crackiness

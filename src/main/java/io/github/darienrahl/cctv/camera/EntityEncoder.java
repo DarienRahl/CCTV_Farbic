@@ -25,8 +25,11 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.util.StringRepresentable;
 import net.minecraft.world.entity.AnimationState;
 import net.minecraft.world.effect.MobEffectInstance;
+import net.minecraft.world.entity.Crackiness;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.entity.HumanoidArm;
 import net.minecraft.world.entity.Leashable;
 import net.minecraft.world.entity.LightningBolt;
 import net.minecraft.world.entity.LivingEntity;
@@ -36,8 +39,10 @@ import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.monster.Guardian;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.player.PlayerModelPart;
+import net.minecraft.world.entity.projectile.FishingHook;
 import net.minecraft.world.entity.vehicle.boat.AbstractBoat;
 import net.minecraft.world.item.DyeColor;
+import net.minecraft.world.item.FishingRodItem;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.component.DyedItemColor;
 import net.minecraft.world.item.equipment.Equippable;
@@ -305,6 +310,14 @@ final class EntityEncoder {
 			}
 		}
 
+		if (entity instanceof FishingHook hook && hook.getPlayerOwner() != null) {
+			// FishingHookRenderer: the line runs to the hand holding the rod (getHoldingArm) below the owner's eyes
+			Player owner = hook.getPlayerOwner();
+			HumanoidArm arm = owner.getMainHandItem().getItem() instanceof FishingRodItem ? owner.getMainArm() : owner.getMainArm().getOpposite();
+			json.name("fish").beginArray().value(owner.getId()).value(arm == HumanoidArm.RIGHT ? 1 : -1)
+					.value(owner.getEyeHeight(), 3).endArray();
+		}
+
 		Pose pose = entity.getPose();
 		if (pose != Pose.STANDING) {
 			json.field("pose", pose.name().toLowerCase(Locale.ROOT));
@@ -538,7 +551,8 @@ final class EntityEncoder {
 	/**
 	 * What EquipmentLayerRenderer needs of each worn piece, as "eq" [head, chest, legs, feet, body] (null for
 	 * nothing to draw): the equipment asset ("a", its layers are equipment/*.json of the client), the dye
-	 * ("c", DyedItemColor) and the trim ("t": pattern, its texture, material, the material's palette, decal).
+	 * ("c", DyedItemColor), the trim ("t": pattern, its texture, material, the material's palette, decal) and
+	 * how cracked a wolf's armour is ("k": low, medium or high, Crackiness.WOLF_ARMOR).
 	 */
 	private static void writeEquipment(Json json, LivingEntity living) {
 		ItemStack[] stacks = new ItemStack[EQUIPMENT.length];
@@ -556,12 +570,20 @@ final class EntityEncoder {
 			return;
 		}
 		json.name("eq").beginArray();
-		for (ItemStack stack : stacks) {
+		for (int i = 0; i < stacks.length; i++) {
+			ItemStack stack = stacks[i];
 			if (stack == null) {
 				json.value((String) null);
 				continue;
 			}
 			json.beginObject().field("a", stack.get(DataComponents.EQUIPPABLE).assetId().get().identifier().toString());
+			if (EQUIPMENT[i] == EquipmentSlot.BODY && living.getType() == EntityType.WOLF) {
+				// WolfArmorLayer.maybeRenderCracks
+				Crackiness.Level cracks = Crackiness.WOLF_ARMOR.byDamage(stack);
+				if (cracks != Crackiness.Level.NONE) {
+					json.field("k", cracks.name().toLowerCase(Locale.ROOT));
+				}
+			}
 			DyedItemColor dye = stack.get(DataComponents.DYED_COLOR);
 			if (dye != null) {
 				json.field("c", dye.rgb());

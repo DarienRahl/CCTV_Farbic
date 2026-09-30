@@ -970,6 +970,7 @@ export class EntityRenderer {
 		const now = frame.now;
 		const o = frame.origin, cam = frame.camPos;
 		this.cameraWorld = [o[0] + cam[0], o[1] + cam[1], o[2] + cam[2]];
+		this.frame = frame;
 		this.byId = new Map();
 		for (const e of list) this.byId.set(e.id, e);
 		let visible = 0;
@@ -984,7 +985,10 @@ export class EntityRenderer {
 			// other invisible entities show nothing.
 			const showsInvisible = isKnownMob(type) || type === 'item_frame' || type === 'glow_item_frame';
 			if (e.invisible && !e.burning && !showsInvisible) continue;
-			const radius = Math.max(e.w || 1, e.h || 1) + 1;
+			let radius = Math.max(e.w || 1, e.h || 1) + 1;
+			// FishingHookRenderer.affectedByCulling: the line to the rod shows while the hook is off screen
+			const angler = e.fish && this.byId.get(e.fish[0]);
+			if (angler) radius = Math.max(radius, Math.hypot(angler.x - e.x, angler.y - e.y, angler.z - e.z) + 2);
 			if (!frame.frustum(rx, ry + (e.h || 1) / 2, rz, radius * (type === 'happy_ghast' || type === 'ghast' ? 2 : 1))) continue;
 			if (Math.hypot(rx, rz) > frame.fogEnd + 8) continue;
 			visible++;
@@ -1147,6 +1151,7 @@ export class EntityRenderer {
 			case 'wither_skull': return this.drawSimple(pos, style, 'wither_skull#main', 'wither/wither', e.yaw);
 			case 'shulker_bullet': return this.drawSimple(pos, { ...style, light: [240, 240] }, 'shulker_bullet#main', 'shulker/spark', now / 50 * 9);
 			case 'llama_spit': return this.drawSimple(pos, style, 'llama_spit#main', 'llama/llama_spit', e.yaw);
+			case 'fishing_bobber': return this.drawFishingHook(e, pos, style);
 			default: break;
 		}
 		if (THROWN[type]) return this.drawThrown(pos, style, THROWN[type]);
@@ -1367,6 +1372,77 @@ export class EntityRenderer {
 		this.batch(texture, MODE_CUTOUT, start, false);
 	}
 
+	/**
+	 * FishingHookRenderer: the hook sprite facing the camera, half a block big, and the black line from it to the
+	 * hand holding the rod, 16 pieces of a curve sagging towards the hook; drawn only while a player owns the hook.
+	 */
+	drawFishingHook(e, pos, style) {
+		const owner = e.fish && this.byId && this.byId.get(e.fish[0]);
+		if (!owner) return;
+		const frame = this.frame;
+		const view = frame.viewRotation;
+		const right = [view[0], view[4], view[8]], up = [view[1], view[5], view[9]], back = [view[2], view[6], view[10]];
+		const texture = this.texture('fishing/fishing_hook');
+		if (texture) {
+			const m = mat4();
+			for (let i = 0; i < 3; i++) {
+				m[i] = right[i] * 0.5; m[4 + i] = up[i] * 0.5; m[8 + i] = back[i] * 0.5; m[12 + i] = pos[i];
+			}
+			const start = this.sink.count;
+			this.sink.ensure(6);
+			emitQuads(this.sink, [-0.5, -0.5, 0, 0, 1, 0.5, -0.5, 0, 1, 1, 0.5, 0.5, 0, 1, 0, -0.5, 0.5, 0, 0, 0], m, style);
+			// setNormal(pose, 0, 1, 0): the camera's up
+			const out = this.sink.data;
+			for (let v = start; v < this.sink.count; v++) {
+				out[v * FLOATS + 3] = up[0]; out[v * FLOATS + 4] = up[1]; out[v * FLOATS + 5] = up[2];
+			}
+			this.batch(texture, MODE_CUTOUT, start, false);
+		}
+
+		// getPlayerHandPos (third person): below the eyes, in front of the body and to the side of the rod's arm
+		const o = frame.origin, cam = frame.camPos;
+		const ownerScale = owner.scale || 1;
+		const yaw = (owner.body ?? owner.yaw ?? 0) * DEG;
+		const sin = Math.sin(yaw), cos = Math.cos(yaw);
+		const rightOffset = e.fish[1] * 0.35 * ownerScale, forwardOffset = 0.8 * ownerScale;
+		const yOffset = owner.pose === 'crouching' ? -0.1875 : 0;
+		const hand = [
+			owner.x - o[0] - cam[0] - cos * rightOffset - sin * forwardOffset,
+			owner.y - o[1] - cam[1] + (e.fish[2] ?? 1.62 * ownerScale) + yOffset - 0.45 * ownerScale,
+			owner.z - o[2] - cam[2] - sin * rightOffset + cos * forwardOffset,
+		];
+		const xa = hand[0] - pos[0], ya = hand[1] - (pos[1] + 0.25), za = hand[2] - pos[2];
+		const points = [];
+		for (let i = 0; i <= 16; i++) {
+			const a = i / 16;
+			points.push([pos[0] + xa * a, pos[1] + ya * (a * a + a) * 0.5 + 0.25, pos[2] + za * a]);
+		}
+		// RenderTypes.lines at Window.getAppropriateLineWidth pixels: a ribbon across the view, as wide on screen
+		const lineWidth = Math.max(2.5, (frame.width || 1920) / 1920 * 2.5);
+		const perPixel = 2 / ((frame.projection ? frame.projection[5] : 1) * (frame.height || 1080));
+		const edges = points.map((p, i) => {
+			const a = points[Math.max(0, i - 1)], b = points[Math.min(16, i + 1)];
+			const t = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+			// across the line and the view ray
+			let sx = t[1] * p[2] - t[2] * p[1], sy = t[2] * p[0] - t[0] * p[2], sz = t[0] * p[1] - t[1] * p[0];
+			const len = Math.hypot(sx, sy, sz);
+			if (len < 1e-9) return [p, p];
+			const depth = Math.max(0.05, -(p[0] * back[0] + p[1] * back[1] + p[2] * back[2]));
+			const half = lineWidth * 0.5 * depth * perPixel / len;
+			sx *= half; sy *= half; sz *= half;
+			return [[p[0] - sx, p[1] - sy, p[2] - sz], [p[0] + sx, p[1] + sy, p[2] + sz]];
+		});
+		const quads = [];
+		for (let i = 0; i < 16; i++) {
+			const [a0, a1] = edges[i], [b0, b1] = edges[i + 1];
+			quads.push(...a0, 0.5, 0.5, ...b0, 0.5, 0.5, ...b1, 0.5, 0.5, ...a1, 0.5, 0.5);
+		}
+		const start = this.sink.count;
+		this.sink.ensure(16 * 6);
+		emitQuads(this.sink, quads, mat4(), { color: [0, 0, 0, 1], light: [240, 240], overlay: [0, 0] });
+		this.batch(this.white, MODE_NOCULL, start, false);
+	}
+
 	/** The model of a block state by id (as falling blocks and carried blocks show it), cached. */
 	blockStateMesh(id, world) {
 		const info = id !== undefined && world ? world.infos[id] : null;
@@ -1446,7 +1522,7 @@ export class EntityRenderer {
 
 	drawBox(e, pos, style) {
 		// Unknown entity: its hitbox as a plain box, so it is at least visible.
-		this.boxed.add(e.type);
+		this.boxed.add(e.item ? e.type + ' (' + e.item + ')' : e.type);
 		const w = (e.w || 0.6) / 2, h = e.h || 0.6;
 		const q = [];
 		const corners = [[-w, 0, -w], [w, 0, -w], [w, h, -w], [-w, h, -w], [-w, 0, w], [w, 0, w], [w, h, w], [-w, h, w]];

@@ -5,7 +5,7 @@
   <a href="https://github.com/DarienRahl/CCTV_Farbic/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/DarienRahl/CCTV_Farbic?style=for-the-badge&amp;label=release&amp;color=5d8c3e"></a>
   <img alt="Minecraft 26.3" src="https://img.shields.io/badge/minecraft-26.3-866043?style=for-the-badge">
   <img alt="Fabric, server side only" src="https://img.shields.io/badge/fabric-server%20side%20only-8b8b8b?style=for-the-badge">
-  <a href="#roadmap"><img alt="Roadmap" src="https://img.shields.io/badge/roadmap-44%2F58%20done-80ff20?style=for-the-badge"></a>
+  <a href="#roadmap"><img alt="Roadmap" src="https://img.shields.io/badge/roadmap-45%2F59%20done-80ff20?style=for-the-badge"></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-555555?style=for-the-badge"></a>
 </p>
 <!-- badges:end -->
@@ -49,7 +49,7 @@ in a web browser: players, mobs, opening doors and placed blocks show up right a
 ## Roadmap
 
 <!-- roadmap:start -->
-<p align="center"><img src="docs/images/roadmap/banner.svg" width="100%" alt="CCTV roadmap: 44 of 58 done"></p>
+<p align="center"><img src="docs/images/roadmap/banner.svg" width="100%" alt="CCTV roadmap: 45 of 59 done"></p>
 
 What is done and what comes next, milestone by milestone (the full plan with its principles is in
 [docs/ROADMAP.md](docs/ROADMAP.md)).
@@ -86,10 +86,10 @@ What is done and what comes next, milestone by milestone (the full plan with its
 
 </details>
 
-<img src="docs/images/roadmap/1-3.svg" width="100%" alt="1.3 — 1:1 picture: in progress - 1.3.2 is out, 29 of 35 done">
+<img src="docs/images/roadmap/1-3.svg" width="100%" alt="1.3 — 1:1 picture: in progress - 1.3.2 is out, 30 of 36 done">
 
 <details open>
-<summary><b>1.3 — 1:1 picture</b> · in progress - 1.3.2 is out · 29 of 35 done</summary>
+<summary><b>1.3 — 1:1 picture</b> · in progress - 1.3.2 is out · 30 of 36 done</summary>
 
 - [ ] **Reference renders in CI**: a Fabric client game test builds the CI scene in single player, takes a screenshot from the camera position with the game, and the viewer takes one from the same camera; both are published side by side with a difference score
 - [x] **Signs and hanging signs** with their text in the game font (text sent by the server; boards and beds are block models in 26.3 and were already drawn)
@@ -123,7 +123,8 @@ What is done and what comes next, milestone by milestone (the full plan with its
 - [x] **Leashes** (LeashFeatureRenderer: the crossed ribbons from the entity to the holder's hand or the knot, sagging, lit at both ends; the four ropes of a happy ghast's harness)
 - [x] **Armour like EquipmentLayerRenderer**: the layers of the game's `equipment/*.json` (new materials come with the game), dyed leather armour, **armour trims** recoloured with the trim material's palette (the 26.3 PalettedTextureManager), body armour on horses, undead horses, wolves, llamas, nautiluses and happy ghasts
 - [x] **Maps in item frames** (MapRenderer: the map's picture and the decorations shown on frames); item frames turned like the game's and invisible frames showing their item; old 64x32 skins converted like SkinTextureDownloader
-- [ ] Entity details: fishing lines, glowing outlines, wolf armour cracks, names of map markers
+- [x] **Fishing lines** (FishingHookRenderer: the hook facing the camera and the sagging black line to the hand holding the rod) and **wolf armour cracks** (WolfArmorLayer with Crackiness.WOLF_ARMOR)
+- [ ] Entity details: glowing outlines, names of map markers
 - [ ] Terrain: the game's chunk occlusion culling (visibility graph), remaining fluid edge cases, the biome blend setting
 - [ ] Camera in water, lava and powder snow: the game's overlays and fog
 

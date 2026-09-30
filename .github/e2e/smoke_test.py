@@ -76,6 +76,8 @@ class StreamReader(threading.Thread):
         self.foil = set()
         self.leashed = set()
         self.equipment = set()
+        self.cracks = set()
+        self.items = set()
         self.effects = set()
         self.block_updates = []
         self.sections = set()
@@ -109,6 +111,7 @@ class StreamReader(threading.Thread):
                         self.first.setdefault(event, data)
                         if event == "entities":
                             self.entity_types.update(e["type"] for e in data["e"])
+                            self.items.update(e.get("item") for e in data["e"] if e["type"] == "minecraft:item")
                             for e in data["e"]:
                                 for name in e.get("anim", {}):
                                     self.animation_states.add((e["type"], name))
@@ -122,6 +125,8 @@ class StreamReader(threading.Thread):
                                     if piece:
                                         # equipment asset, whether it is dyed, its trim pattern
                                         self.equipment.add((e["type"], piece["a"], "c" in piece, (piece.get("t") or [None])[0]))
+                                        if piece.get("k"):
+                                            self.cracks.add((e["type"], piece["k"]))
                             self.names.update(e["name"] for e in data["e"] if e.get("nameVisible"))
                             for fx in data.get("fx", []):
                                 # level events by type, entity effects by kind, explosions by particle, fireworks by shape
@@ -260,6 +265,9 @@ def main():
     # a dyed leather chestplate with a gold coast trim (equipment layers, dye and trim palette)
     rcon.command("item replace entity @e[type=minecraft:armor_stand,limit=1] armor.chest"
                  " with minecraft:leather_chestplate[dyed_color=3364095,trim={material:'minecraft:gold',pattern:'minecraft:coast'}]")
+    # a tame wolf in badly worn wolf armour (14 of 64 durability left: the "high" cracks of WolfArmorLayer)
+    rcon.command('summon minecraft:wolf 3 -60 1 {Owner:[I;1,2,3,4],'
+                 'equipment:{body:{id:"minecraft:wolf_armor",count:1,components:{"minecraft:damage":50}}}}')
 
     rcon.command("cctv create ci -1 -56 -8 10 30")
     listing = rcon.command("cctv list")
@@ -300,7 +308,7 @@ def main():
 
     print("events:", stream.events, flush=True)
     print("init:", stream.first.get("init"), flush=True)
-    print("entity types:", sorted(stream.entity_types), flush=True)
+    print("entity types:", sorted(stream.entity_types), "dropped items:", sorted(map(str, stream.items)), flush=True)
     print("block updates:", stream.block_updates[:10], flush=True)
     print("first palette entries:", json.dumps(stream.first.get("palette"))[:800], flush=True)
     print("first env sample:", json.dumps(stream.first.get("env")), flush=True)
@@ -410,6 +418,9 @@ def main():
     print("equipment:", sorted(stream.equipment, key=str), flush=True)
     if ("minecraft:armor_stand", "minecraft:leather", True, "minecraft:coast") not in stream.equipment:
         failures.append("the armour stand's dyed and trimmed leather chestplate was not streamed with its equipment asset")
+    print("armour cracks:", sorted(stream.cracks), flush=True)
+    if ("minecraft:wolf", "high") not in stream.cracks:
+        failures.append("the worn wolf armour was not streamed with its cracks")
     if "minecraft:pig" not in stream.leashed:
         failures.append("the pig on a lead was not streamed with its leash")
     if not any(t == "minecraft:armor_stand" and f & 4 for t, f in stream.foil):

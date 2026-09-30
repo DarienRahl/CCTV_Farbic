@@ -593,6 +593,7 @@ function frame(now) {
 		projection, viewRotation, viewProj, frustum,
 		camPos: eye, origin: o, originMod: [((o[0] % 1024) + 1024) % 1024, o[1], ((o[2] % 1024) + 1024) % 1024],
 		fog, fogEnd: range, sky: skyState, now, time: now / 1000, daylight, rain, sunColor,
+		width: canvas.width, height: canvas.height,
 	};
 	entities.prepare(frameData, list, world, environment);
 

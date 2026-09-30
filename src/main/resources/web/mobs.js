@@ -1308,7 +1308,7 @@ const MOBS = {
 			const mood = e.d && e.d.tame ? '_tame' : e.d && e.d.angry ? '_angry' : '';
 			return 'wolf/wolf' + (v === 'pale' ? '' : '_' + v) + mood + baby(e);
 		},
-		shadow: 0.5, anim: 'wolf', body: e => (e.baby ? [] : bodyLayers(e, 'wolf_body', 'wolf_armor#main')),
+		shadow: 0.5, anim: 'wolf', body: e => (e.baby ? [] : wolfArmor(e)),
 		layers: [
 			{ layer: e => (e.baby ? 'wolf_baby#main' : 'wolf#main'), texture: e => 'wolf/wolf_collar' + baby(e), when: e => e.d && e.d.tame, color: e => dyeRgb(e.d.collar || 'red') },
 		],
@@ -1432,6 +1432,14 @@ function bodyLayers(e, type, layer) {
 	return equipmentLayers(e.eq && e.eq[4], type, layer, 128) || [];
 }
 
+/** WolfArmorLayer: the armour, then its cracks (translucent) once it is worn down (Crackiness.WOLF_ARMOR). */
+function wolfArmor(e) {
+	const layers = bodyLayers(e, 'wolf_body', 'wolf_armor#main');
+	const cracks = layers.length && e.eq[4].k;
+	if (cracks) layers.push({ layer: 'wolf_armor#main', texture: 'wolf/wolf_armor_crackiness_' + cracks, color: null, foil: 0, mode: 'translucent' });
+	return layers;
+}
+
 const VILLAGER_LEVELS = [null, 'stone', 'iron', 'gold', 'emerald', 'diamond'];
 
 /**
@@ -1487,7 +1495,7 @@ export function describeMob(e) {
 	if (def.saddle && e.saddle) { add(def.saddle[0], def.saddle[1]); out[out.length - 1].equipment = true; }
 	// HumanoidArmorLayer and SimpleEquipmentLayer draw with armorCutoutNoCull
 	if (def.armor) out.push(...armorLayers('minecraft:' + def.armor, e).map(l => ({ ...l, mode: 'cutout_nocull', equipment: true })));
-	if (def.body) out.push(...def.body(e).map(l => ({ ...l, layer: 'minecraft:' + l.layer, mode: 'cutout_nocull', equipment: true })));
+	if (def.body) out.push(...def.body(e).map(l => ({ ...l, layer: 'minecraft:' + l.layer, mode: l.mode || 'cutout_nocull', equipment: true })));
 	const chest = strip(e.armor && e.armor[1]);
 	const showCape = def.player && (e.parts === undefined || !!(e.parts & 1));
 	if (def.player && showCape && chest !== 'elytra' && e.uuid) {
