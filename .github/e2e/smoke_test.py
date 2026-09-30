@@ -473,6 +473,7 @@ def main():
 
     stream.close()
     failures += far_terrain_check(rcon)
+    failures += cache_check()
     failures += resubscribe_check()
 
     if failures:
@@ -505,6 +506,72 @@ def far_terrain_check(rcon):
         failures.append("far camera: a section inside the mesa was streamed (buried sections are not skipped)")
     stream.close()
     return failures
+
+
+def hash53(text):
+    """cyrb53 over UTF-16 code units, like the viewer's cache.js and Protocol.hash53."""
+    def imul(a, b):
+        return (a * b) & 0xFFFFFFFF
+    h1, h2 = 0xDEADBEEF, 0x41C6CE57
+    for ch in memoryview(text.encode("utf-16-le")).cast("H"):
+        h1 = imul(h1 ^ ch, 2654435761)
+        h2 = imul(h2 ^ ch, 1597334677)
+    h1 = imul(h1 ^ (h1 >> 16), 2246822507)
+    h1 ^= imul(h2 ^ (h2 >> 13), 3266489909)
+    h2 = imul(h2 ^ (h2 >> 16), 2246822507)
+    h2 ^= imul(h1 ^ (h1 >> 13), 3266489909)
+    return 4294967296 * (2097151 & h2) + h1
+
+
+def read_until_ready(url, on_init=None, timeout=120):
+    """Reads a stream until "ready": (init, {(x, y, z): section message}, [kept (x, y, z)])."""
+    init, sections, kept = None, {}, []
+    deadline = time.time() + timeout
+    with urllib.request.urlopen(url, timeout=60) as response:
+        event = None
+        for raw in response:
+            line = raw.decode().rstrip("\n")
+            if line.startswith("event: "):
+                event = line[7:]
+            elif line.startswith("data: ") and event:
+                text = line[6:]
+                if event == "init":
+                    init = json.loads(text)
+                    if on_init:
+                        on_init(init)
+                elif event == "section":
+                    data = json.loads(text)
+                    sections[(data["x"], data["y"], data["z"])] = text
+                elif event == "keep":
+                    k = json.loads(text)["k"]
+                    kept.extend(tuple(k[i:i + 3]) for i in range(0, len(k), 3))
+                elif event == "ready":
+                    break
+            if time.time() > deadline:
+                break
+    return init, sections, kept
+
+
+def cache_check():
+    """The browser's section cache (cache.js): a viewer that reports the sections it has (with the hash of each
+    message) gets "keep" for the ones that did not change instead of the sections again."""
+    url = f"{WEB}/api/cameras/ci/stream?cache=1"
+    init, first, _ = read_until_ready(url)
+    if not init or "vid" not in init:
+        return ["cache: the stream gave no viewer id for the cache manifest"]
+    manifest = ",".join(f"{x},{y},{z},{hash53(text)}" for (x, y, z), text in first.items())
+
+    def post(second_init):
+        request = urllib.request.Request(f"{WEB}/api/cameras/ci/cache?vid={second_init['vid']}&epoch={second_init['epoch']}",
+                                         data=manifest.encode(), method="POST")
+        urllib.request.urlopen(request, timeout=10).read()
+
+    _, second, kept = read_until_ready(url, on_init=lambda i: threading.Thread(target=post, args=(i,), daemon=True).start())
+    print("section cache:", len(first), "sections the first time,", len(kept), "kept and", len(second),
+          "sent again the second time", flush=True)
+    if not first or len(kept) < len(first) * 0.8:
+        return [f"cache: only {len(kept)} of {len(first)} cached sections were kept"]
+    return []
 
 
 def resubscribe_check():

@@ -12,6 +12,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
+import java.security.SecureRandom;
+import java.util.HexFormat;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -23,6 +25,7 @@ import java.util.zip.GZIPOutputStream;
 import com.sun.net.httpserver.Headers;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 
 import io.github.darienrahl.cctv.CctvConfig;
@@ -58,6 +61,11 @@ import io.github.darienrahl.cctv.assets.GameSounds;
  */
 public final class WebServer {
 	private static final Pattern CAMERA_NAME = Pattern.compile("^[A-Za-z0-9_-]{1,32}$");
+	/** A cache manifest of 60000 sections is about 2 MB. */
+	private static final int MAX_MANIFEST_BYTES = 8 << 20;
+	private static final SecureRandom RANDOM = new SecureRandom();
+	/** Open streams by viewer id, for the requests that come beside them. */
+	private final Map<String, SseViewer> streams = new ConcurrentHashMap<>();
 	private static final Pattern STATIC_FILE = Pattern.compile("^[A-Za-z0-9_-]+\\.(js|css|html|png|svg|ico)$");
 	private static final String TOKEN_COOKIE = "cctv_token";
 
@@ -124,7 +132,8 @@ public final class WebServer {
 			exchange.sendResponseHeaders(204, -1);
 			return;
 		}
-		if (!method.equals("GET") && !method.equals("HEAD")) {
+		boolean post = method.equals("POST");
+		if (!method.equals("GET") && !method.equals("HEAD") && !post) {
 			sendText(exchange, 405, "text/plain", "Method not allowed");
 			return;
 		}
@@ -147,6 +156,15 @@ public final class WebServer {
 			return;
 		}
 
+		if (post) {
+			if (path.startsWith("/api/cameras/") && path.endsWith("/cache")) {
+				cacheManifest(exchange, query);
+			} else {
+				sendText(exchange, 405, "text/plain", "Method not allowed");
+			}
+			return;
+		}
+
 		if (path.equals("/") || path.equals("/index.html")) {
 			serveResource(exchange, "index.html");
 		} else if (path.startsWith("/cam/")) {
@@ -166,7 +184,7 @@ public final class WebServer {
 			sendText(exchange, 200, "application/json; charset=utf-8", directory.camerasJson());
 		} else if (path.startsWith("/api/cameras/") && path.endsWith("/stream")) {
 			String name = path.substring("/api/cameras/".length(), path.length() - "/stream".length());
-			stream(exchange, name);
+			stream(exchange, name, "1".equals(query.get("cache")));
 		} else if (path.startsWith("/skin/")) {
 			skin(exchange, path.substring("/skin/".length()), query.get("name"));
 		} else if (path.startsWith("/cape/")) {
@@ -180,7 +198,61 @@ public final class WebServer {
 		}
 	}
 
-	private void stream(HttpExchange exchange, String name) throws IOException {
+	/**
+	 * POST /api/cameras/{name}/cache?vid=...&epoch=...: the sections a viewer has in its cache ("x,y,z,hash,..."),
+	 * sent after the "init" it got on its stream; the camera then sends only the sections that changed.
+	 */
+	private void cacheManifest(HttpExchange exchange, Map<String, String> query) throws IOException {
+		SseViewer viewer = streams.get(String.valueOf(query.get("vid")));
+		int epoch;
+		try {
+			epoch = Integer.parseInt(String.valueOf(query.get("epoch")));
+		} catch (NumberFormatException e) {
+			epoch = -1;
+		}
+		if (viewer == null || epoch < 0) {
+			sendText(exchange, 404, "text/plain", "Unknown viewer");
+			return;
+		}
+		byte[] body;
+		try (InputStream in = exchange.getRequestBody()) {
+			body = in.readNBytes(MAX_MANIFEST_BYTES + 1);
+		}
+		if (body.length > MAX_MANIFEST_BYTES) {
+			sendText(exchange, 413, "text/plain", "Manifest too large");
+			return;
+		}
+		long[] sections = parseManifest(new String(body, StandardCharsets.US_ASCII));
+		if (sections == null) {
+			sendText(exchange, 400, "text/plain", "Bad manifest");
+			return;
+		}
+		viewer.setCacheManifest(epoch, sections);
+		exchange.sendResponseHeaders(204, -1);
+		exchange.close();
+	}
+
+	/** "x,y,z,hash,x,y,z,hash..." as numbers, or null when malformed. */
+	static long @Nullable [] parseManifest(String text) {
+		if (text.isBlank()) {
+			return new long[0];
+		}
+		String[] parts = text.trim().split(",");
+		if (parts.length % 4 != 0) {
+			return null;
+		}
+		long[] values = new long[parts.length];
+		try {
+			for (int i = 0; i < parts.length; i++) {
+				values[i] = Long.parseLong(parts[i].trim());
+			}
+		} catch (NumberFormatException e) {
+			return null;
+		}
+		return values;
+	}
+
+	private void stream(HttpExchange exchange, String name, boolean cache) throws IOException {
 		Headers headers = exchange.getResponseHeaders();
 		headers.add("Access-Control-Allow-Origin", "*");
 
@@ -189,7 +261,9 @@ public final class WebServer {
 			return;
 		}
 
-		SseViewer viewer = new SseViewer(config.maxQueuedMessages);
+		byte[] idBytes = new byte[12];
+		RANDOM.nextBytes(idBytes);
+		SseViewer viewer = new SseViewer(config.maxQueuedMessages, HexFormat.of().formatHex(idBytes), cache);
 		CameraDirectory.Subscription result = directory.subscribe(name, viewer);
 		if (result == CameraDirectory.Subscription.NOT_FOUND) {
 			sendText(exchange, 404, "text/plain", "Unknown camera");
@@ -216,8 +290,10 @@ public final class WebServer {
 			}
 			out.write("retry: 2000\n\n".getBytes(StandardCharsets.UTF_8));
 			out.flush();
+			streams.put(viewer.id(), viewer);
 			viewer.run(out);
 		} finally {
+			streams.remove(viewer.id());
 			viewer.close();
 		}
 	}

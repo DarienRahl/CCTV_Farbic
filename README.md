@@ -5,7 +5,7 @@
   <a href="https://github.com/DarienRahl/CCTV_Farbic/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/DarienRahl/CCTV_Farbic?style=for-the-badge&amp;label=release&amp;color=5d8c3e"></a>
   <img alt="Minecraft 26.3" src="https://img.shields.io/badge/minecraft-26.3-866043?style=for-the-badge">
   <img alt="Fabric, server side only" src="https://img.shields.io/badge/fabric-server%20side%20only-8b8b8b?style=for-the-badge">
-  <a href="#roadmap"><img alt="Roadmap" src="https://img.shields.io/badge/roadmap-48%2F61%20done-80ff20?style=for-the-badge"></a>
+  <a href="#roadmap"><img alt="Roadmap" src="https://img.shields.io/badge/roadmap-49%2F61%20done-80ff20?style=for-the-badge"></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-555555?style=for-the-badge"></a>
 </p>
 <!-- badges:end -->
@@ -49,7 +49,7 @@ in a web browser: players, mobs, opening doors and placed blocks show up right a
 ## Roadmap
 
 <!-- roadmap:start -->
-<p align="center"><img src="docs/images/roadmap/banner.svg" width="100%" alt="CCTV roadmap: 48 of 61 done"></p>
+<p align="center"><img src="docs/images/roadmap/banner.svg" width="100%" alt="CCTV roadmap: 49 of 61 done"></p>
 
 What is done and what comes next, milestone by milestone (the full plan with its principles is in
 [docs/ROADMAP.md](docs/ROADMAP.md)).
@@ -132,13 +132,13 @@ What is done and what comes next, milestone by milestone (the full plan with its
 
 </details>
 
-<img src="docs/images/roadmap/1-4.svg" width="100%" alt="1.4 — performance: started, 1 of 7 done">
+<img src="docs/images/roadmap/1-4.svg" width="100%" alt="1.4 — performance: started, 2 of 7 done">
 
 <details>
-<summary><b>1.4 — performance</b> · started · 1 of 7 done</summary>
+<summary><b>1.4 — performance</b> · started · 2 of 7 done</summary>
 
 - [ ] Binary section messages instead of JSON with base64 (sections are already palette + run-length encoded and gzipped, so this saves roughly a quarter; lower priority)
-- [ ] **Section cache in the browser** (IndexedDB) keyed by camera and section version: reopening a camera shows the world immediately
+- [x] **Section cache in the browser** (IndexedDB): the viewer keeps the sections it got; after "init" it tells the server which ones it has (position and a hash of the message) and the server answers "keep" for the unchanged ones, so reopening a camera downloads only what changed (`?cache=0` turns it off)
 - [ ] Server memory: far sections kept only in encoded form, re-read when their chunk changes
 - [ ] Occlusion culling (see 1.3) and per-section culling inside merged regions
 - [ ] Entities: skinning on the GPU (bone matrices in a texture) instead of rebuilding vertices on the CPU every frame
@@ -298,6 +298,9 @@ every 5 ticks ──► environment attributes at the camera
   nothing is skipped while the camera itself is underground).
 - A viewer gets the world as fast as its connection takes it: new sections wait while earlier ones
   are still queued, so slow connections never overflow and restart.
+- The browser keeps the sections it received (IndexedDB, up to 60 000 sections). Reopening a camera,
+  or another camera in the same dimension, downloads only the sections that changed since; the rest
+  come from the browser's cache. `?cache=0` in the camera link turns this off.
 - Server cost per camera with viewers: a one-time copy of the sections (spread over ticks), the
   entity list in the camera's range every tick and a few to a few dozen KB/s per viewer (depending
   on the number of entities). A camera without viewers costs nothing (its cache is released after a
@@ -311,7 +314,8 @@ All endpoints support CORS and `?token=` (when a token is set).
 | Endpoint | Content |
 |---|---|
 | `GET /api/cameras` | Camera list (JSON) |
-| `GET /api/cameras/{name}/stream` | SSE stream, events below |
+| `GET /api/cameras/{name}/stream` | SSE stream, events below; `?cache=1` for a viewer with a section cache |
+| `POST /api/cameras/{name}/cache?vid=&epoch=` | The cached sections as `x,y,z,hash,…` (hash: cyrb53 of the section message), after `init` |
 | `GET /assets/bundle.json` | Block states, block models and textures (from client.jar) |
 | `GET /assets/models.json` | Mob model geometry (layers from `LayerDefinitions`) |
 | `GET /assets/entities.json`, `/assets/entity/{path}.png` | Mob textures |
@@ -326,11 +330,13 @@ All endpoints support CORS and `?token=` (when a token is set).
 Stream events:
 
 - `init`: `{camera:{name,dimension,x,y,z,yaw,pitch,fov,range}, sections, biomes:{id:{t,d,w,g?,f?,m}}, entityTicks,
-  dim:{id,skybox,cardinal,hasSky,ambient,endFlashes,minY,height,horizon,zoomSeed}}`; the world is sent from scratch after it;
+  dim:{id,skybox,cardinal,hasSky,ambient,endFlashes,minY,height,horizon,zoomSeed}, vid?, epoch?}`; the world is sent from scratch
+  after it (with `?cache=1` it waits up to 3 s for the cache manifest of this `vid` and `epoch`);
 - `progress`: `{d, t}` loading progress;
 - `palette`: `{s:[{id, n:"minecraft:oak_stairs", s:"facing=north,…", c:mapColor, f:flags, b:[[x0,y0,z0,x1,y1,z1]…], l:light, lv:fluid level, tg?:[block tags]}]}`;
 - `section`: `{x,y,z, p:[id…], r:RLE, sl:sky light RLE, bl:block light RLE, bp:[biomes], bi:4³ indices}`,
   where RLE is base64 of varint pairs `(length, value)` in YZX order;
+- `keep`: `{k:[x,y,z,…]}`, cached sections that did not change (shown from the cache instead of a `section`);
 - `blocks`: `{b:[[x,y,z,id]…]}`, instant block changes;
 - `entities`: `{t:tick, e:[{id,type,x,y,z,yaw,pitch,body,head,w,h,age,walk,walkSpeed,scale?,name?,uuid?,pose?,sneak?,baby?,
   hurt?,dead?,swing?,hand?,offhand?,saddle?,bodyArmor?,armor?,item?,seed?, d:{variant?, markings?, villager?, color?, …}}]}`;

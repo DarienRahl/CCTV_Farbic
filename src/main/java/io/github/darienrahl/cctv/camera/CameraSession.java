@@ -55,6 +55,10 @@ final class CameraSession {
 	private static final int MAX_BACKLOG = 600;
 	/** How far ahead of its first missing section a viewer may receive sections that are already available. */
 	private static final int SYNC_WINDOW = 4096;
+	/** How long a viewer that caches sections gets to say which ones it has before the download starts. */
+	private static final int CACHE_WAIT_TICKS = 60;
+	/** Unchanged cached sections confirmed per viewer and tick (they cost a few bytes each). */
+	private static final int KEEPS_PER_VIEWER_TICK = 4096;
 	/** Distance from a section centre to its corner. */
 	private static final double SECTION_RADIUS = Math.sqrt(3 * 8 * 8);
 	/** Sections this close are always included, even behind the camera. */
@@ -124,6 +128,14 @@ final class CameraSession {
 		/** Every section below this index was handled (sent or nothing to send). */
 		int scanFrom;
 		boolean ready;
+		/** Sections the browser has cached (section key -> hash) from its manifest; null without one. */
+		@Nullable Map<Long, Long> cached;
+		/** Cached sections found unchanged, confirmed in the next "keep" message. */
+		final List<SectionEntry> keeps = new ArrayList<>();
+		/** Number of the last "init" sent: the cache manifest must answer that one. */
+		int epoch;
+		/** Sections wait for the cache manifest until this tick (0: not waiting). */
+		long cacheDeadline;
 
 		ViewerState(Viewer viewer) {
 			this.viewer = viewer;
@@ -269,15 +281,16 @@ final class CameraSession {
 			rebuild(level);
 			for (ViewerState state : viewers) {
 				state.reset();
-				state.viewer.send("init", initJson(tick));
+				sendInit(state, tick);
 			}
 		}
 
 		Viewer joined;
 		while ((joined = pending.poll()) != null) {
 			if (joined.isOpen()) {
-				viewers.add(new ViewerState(joined));
-				joined.send("init", initJson(tick));
+				ViewerState state = new ViewerState(joined);
+				viewers.add(state);
+				sendInit(state, tick);
 				if (level != null) {
 					String env = sampleEnvironment(level, tick);
 					if (env != null) {
@@ -883,13 +896,28 @@ final class CameraSession {
 		for (ViewerState state : viewers) {
 			if (state.has(entry) || entry.order < state.scanFrom) {
 				sendSection(state, entry);
+				flushKeeps(state);
 			}
 		}
 	}
 
 	private void syncViewers(long tick) {
 		for (ViewerState state : viewers) {
+			if (state.viewer.wantsCache() && state.cached == null) {
+				long[] manifest = state.viewer.takeCacheManifest(state.epoch);
+				if (manifest != null) {
+					state.cached = new HashMap<>(manifest.length / 2);
+					for (int i = 0; i + 3 < manifest.length; i += 4) {
+						state.cached.put(key((int) manifest[i], (int) manifest[i + 1], (int) manifest[i + 2]), manifest[i + 3]);
+					}
+					state.cacheDeadline = 0;
+				} else if (tick < state.cacheDeadline) {
+					// the browser is still reading its cache
+					continue;
+				}
+			}
 			int sent = 0;
+			int kept = 0;
 			int allowance = Math.min(SECTIONS_PER_VIEWER_TICK, (MAX_BACKLOG - state.viewer.backlog()) / 2);
 			// Skip everything that is handled; stop at the first section that is still being read.
 			while (state.scanFrom < order.size()) {
@@ -898,23 +926,30 @@ final class CameraSession {
 					break;
 				}
 				if (entry.sendable() && !state.has(entry)) {
-					if (sent >= allowance) {
+					if (sent >= allowance || kept >= KEEPS_PER_VIEWER_TICK) {
 						break;
 					}
-					sendSection(state, entry);
-					sent++;
+					if (sendSection(state, entry)) {
+						kept++;
+					} else {
+						sent++;
+					}
 				}
 				state.scanFrom++;
 			}
 			// Sections further on that are already available do not have to wait for a slow disk read.
 			int end = Math.min(order.size(), state.scanFrom + SYNC_WINDOW);
-			for (int i = state.scanFrom; i < end && sent < allowance; i++) {
+			for (int i = state.scanFrom; i < end && sent < allowance && kept < KEEPS_PER_VIEWER_TICK; i++) {
 				SectionEntry entry = order.get(i);
 				if (entry.sendable() && !state.has(entry)) {
-					sendSection(state, entry);
-					sent++;
+					if (sendSection(state, entry)) {
+						kept++;
+					} else {
+						sent++;
+					}
 				}
 			}
+			flushKeeps(state);
 
 			if (!state.ready && state.scanFrom >= order.size()) {
 				state.ready = true;
@@ -949,6 +984,7 @@ final class CameraSession {
 					sendSection(state, entry);
 				}
 			}
+			flushKeeps(state);
 			if (count == 0) {
 				continue;
 			}
@@ -968,14 +1004,41 @@ final class CameraSession {
 		blockChanges.clear();
 	}
 
-	private void sendSection(ViewerState state, SectionEntry entry) {
+	/**
+	 * Sends a section, or when the browser has this very section cached, only its palette and a "keep" for it.
+	 * @return whether it was kept (cheap) rather than sent
+	 */
+	private boolean sendSection(ViewerState state, SectionEntry entry) {
 		SectionCapture data = entry.data;
 		if (data == null) {
-			return;
+			return false;
 		}
 		sendPalette(state, data.distinct);
-		state.viewer.send("section", data.json(entry.x, entry.y, entry.z));
 		state.sent.set(entry.order);
+		if (state.cached != null) {
+			Long cachedHash = state.cached.remove(key(entry.x, entry.y, entry.z));
+			if (cachedHash != null && cachedHash == data.hash(entry.x, entry.y, entry.z)) {
+				state.keeps.add(entry);
+				return true;
+			}
+		}
+		state.viewer.send("section", data.json(entry.x, entry.y, entry.z));
+		return false;
+	}
+
+	/** "keep": the cached sections the browser can show as they are, {"k": [x, y, z, x, y, z...]}. */
+	private void flushKeeps(ViewerState state) {
+		if (state.keeps.isEmpty()) {
+			return;
+		}
+		Json json = new Json(16 + state.keeps.size() * 16);
+		json.beginObject().name("k").beginArray();
+		for (SectionEntry entry : state.keeps) {
+			json.value(entry.x).value(entry.y).value(entry.z);
+		}
+		json.endArray().endObject();
+		state.viewer.send("keep", json.toString());
+		state.keeps.clear();
 	}
 
 	private void sendPalette(ViewerState state, int[] ids) {
@@ -997,10 +1060,22 @@ final class CameraSession {
 		}
 	}
 
-	private String initJson(long tick) {
+	/** "init" (again after the camera moved or its world was read anew); a caching viewer answers with its manifest. */
+	private void sendInit(ViewerState state, long tick) {
+		state.epoch++;
+		state.cached = null;
+		state.keeps.clear();
+		state.cacheDeadline = state.viewer.wantsCache() ? tick + CACHE_WAIT_TICKS : 0;
+		state.viewer.send("init", initJson(tick, state));
+	}
+
+	private String initJson(long tick, ViewerState state) {
 		Json json = new Json(512);
 		json.beginObject().name("camera");
 		camera.writeJson(json, viewerCount);
+		if (state.viewer.wantsCache()) {
+			json.field("vid", state.viewer.id()).field("epoch", state.epoch);
+		}
 		json.field("sections", order.size())
 				.field("cone", coneDegrees, 1)
 				.field("tick", tick)

@@ -158,8 +158,10 @@ to the milestone it belongs to. The roadmap on the README page is drawn from thi
 
 - [ ] Binary section messages instead of JSON with base64 (sections are already palette +
       run-length encoded and gzipped, so this saves roughly a quarter; lower priority)
-- [ ] **Section cache in the browser** (IndexedDB) keyed by camera and section version: reopening
-      a camera shows the world immediately
+- [x] **Section cache in the browser** (IndexedDB): the viewer keeps the sections it got; after "init" it
+      tells the server which ones it has (position and a hash of the message) and the server answers
+      "keep" for the unchanged ones, so reopening a camera downloads only what changed (`?cache=0` turns it
+      off)
 - [ ] Server memory: far sections kept only in encoded form, re-read when their chunk changes
 - [ ] Occlusion culling (see 1.3) and per-section culling inside merged regions
 - [ ] Entities: skinning on the GPU (bone matrices in a texture) instead of rebuilding vertices on

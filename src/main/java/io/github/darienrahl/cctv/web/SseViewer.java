@@ -8,6 +8,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
+import org.jspecify.annotations.Nullable;
+
 /**
  * Server-Sent Events connection. World messages are queued in order, entity
  * frames are coalesced so only the newest one is ever written.
@@ -22,10 +24,43 @@ final class SseViewer implements Viewer {
 	private final AtomicReference<String> latestEntities = new AtomicReference<>();
 	private final AtomicInteger queuedWorldMessages = new AtomicInteger();
 	private final int maxQueuedMessages;
+	private final String id;
+	private final boolean wantsCache;
+	/** The latest cache manifest and the "init" it answers. */
+	private final AtomicReference<Manifest> manifest = new AtomicReference<>();
 	private volatile boolean open = true;
 
-	SseViewer(int maxQueuedMessages) {
+	private record Manifest(int epoch, long[] sections) {
+	}
+
+	SseViewer(int maxQueuedMessages, String id, boolean wantsCache) {
 		this.maxQueuedMessages = maxQueuedMessages;
+		this.id = id;
+		this.wantsCache = wantsCache;
+	}
+
+	@Override
+	public String id() {
+		return id;
+	}
+
+	@Override
+	public boolean wantsCache() {
+		return wantsCache;
+	}
+
+	/** Web thread: the browser's cache manifest arrived. */
+	void setCacheManifest(int epoch, long[] sections) {
+		manifest.set(new Manifest(epoch, sections));
+	}
+
+	@Override
+	public long @Nullable [] takeCacheManifest(int epoch) {
+		Manifest m = manifest.get();
+		if (m == null || m.epoch() != epoch || !manifest.compareAndSet(m, null)) {
+			return null;
+		}
+		return m.sections();
 	}
 
 	@Override

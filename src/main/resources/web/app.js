@@ -13,6 +13,7 @@ import { WeatherRenderer } from './weather.js';
 import { PostProcessor } from './post.js';
 import { Particles } from './particles.js';
 import { Sounds } from './sound.js';
+import { SectionCache } from './cache.js';
 import { perspective, lookDir, multiply, direction, lerp, transformPoint } from './math.js';
 
 const params = new URLSearchParams(location.search);
@@ -206,8 +207,27 @@ let assetsRequested = false;
 let source = null;
 let retryTimer = null;
 
+// Sections kept in IndexedDB between visits (cache.js); off with ?cache=0.
+const sectionCache = new SectionCache();
+const useCache = sectionCache.available && params.get('cache') !== '0';
+
 function streamUrl() {
-	return '/api/cameras/' + encodeURIComponent(cameraName) + '/stream' + query;
+	const base = '/api/cameras/' + encodeURIComponent(cameraName) + '/stream' + query;
+	return useCache ? base + (query ? '&' : '?') + 'cache=1' : base;
+}
+
+/** Tells the server which sections the cache has near the camera (after each "init"), so it sends only the rest. */
+function sendCacheManifest(init) {
+	const c = init.camera;
+	const center = [Math.floor(c.x / 16), Math.floor(c.y / 16), Math.floor(c.z / 16)];
+	const range = Math.ceil((c.range || 128) / 16) + 1;
+	sectionCache.load(c.dimension, center, range)
+		.catch(() => [])
+		.then(manifest => fetch('/api/cameras/' + encodeURIComponent(cameraName) + '/cache' + query + (query ? '&' : '?')
+			+ 'vid=' + encodeURIComponent(init.vid) + '&epoch=' + init.epoch, {
+			method: 'POST', credentials: 'same-origin', body: manifest.map(m => m.join(',')).join(','),
+		}))
+		.catch(() => {});
 }
 
 function connect() {
@@ -247,6 +267,7 @@ function connect() {
 		state.received = 0;
 		state.total = data.sections || 0;
 		state.ready = false;
+		if (useCache && data.vid) sendCacheManifest(data);
 		$('cam-sub').textContent = `${c.dimension.replace('minecraft:', '')} · ${c.x.toFixed(0)} ${c.y.toFixed(0)} ${c.z.toFixed(0)}`;
 		loadingEl.hidden = false;
 		updateLoading();
@@ -254,9 +275,21 @@ function connect() {
 		setStatus('live');
 	});
 	on('palette', data => world.addPalette(data.s));
-	on('section', data => {
+	on('section', (data, raw) => {
 		world.setSection(data);
+		if (useCache) sectionCache.store(data.x, data.y, data.z, raw);
 		state.received++;
+		updateLoading();
+	});
+	// cached sections the server found unchanged: shown from the cache
+	on('keep', data => {
+		const k = data.k;
+		for (let i = 0; i + 2 < k.length; i += 3) {
+			const raw = sectionCache.take(k[i], k[i + 1], k[i + 2]);
+			if (!raw) continue;
+			world.setSection(JSON.parse(raw));
+			state.received++;
+		}
 		updateLoading();
 	});
 	on('progress', data => {
@@ -269,6 +302,7 @@ function connect() {
 	on('ready', () => {
 		state.ready = true;
 		updateLoading();
+		if (useCache) sectionCache.finish();
 	});
 	on('entities', data => {
 		entities.push(data, state.init ? state.init.entityTicks : 1);
@@ -311,7 +345,7 @@ function loadAssets() {
 function on(event, handler) {
 	source.addEventListener(event, e => {
 		try {
-			handler(JSON.parse(e.data));
+			handler(JSON.parse(e.data), e.data);
 		} catch (err) {
 			console.error('CCTV: bad "' + event + '" message', err);
 		}

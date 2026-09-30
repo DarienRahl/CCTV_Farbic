@@ -48,6 +48,9 @@ final class SectionCapture {
 	/** Sorted distinct block state ids, for the palette sent before the section. */
 	int[] distinct;
 	@Nullable String json;
+	/** The message {@link #hash} was computed for, and its hash. */
+	private @Nullable String hashed;
+	private long hash;
 	/** Block entity details for the viewer (JSON array, e.g. sign text), or {@code null}. */
 	@Nullable String blockEntities;
 	/** Only air with the dimension's default light: the viewer assumes this for sections it never receives. */
@@ -197,6 +200,19 @@ final class SectionCapture {
 			json = Protocol.section(sx, sy, sz, states, sky, block, biomePalette, biomes, blockEntities);
 		}
 		return json;
+	}
+
+	/**
+	 * A 53 bit hash of the section message (cyrb53, also computed by the viewer's cache.js on the message it
+	 * received): a viewer that has a section with the same hash cached does not need it again.
+	 */
+	long hash(int sx, int sy, int sz) {
+		String text = json(sx, sy, sz);
+		if (hashed != text) {
+			hash = Protocol.hash53(text);
+			hashed = text;
+		}
+		return hash;
 	}
 
 	private static byte @Nullable [] packed(@Nullable DataLayer layer) {

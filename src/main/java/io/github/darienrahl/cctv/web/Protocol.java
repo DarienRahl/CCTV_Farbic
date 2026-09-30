@@ -22,6 +22,22 @@ public final class Protocol {
 	private Protocol() {
 	}
 
+	/** cyrb53 of a message's UTF-16 code units, as the viewer computes it (cache.js hash53). */
+	public static long hash53(String text) {
+		int h1 = 0xdeadbeef;
+		int h2 = 0x41c6ce57;
+		for (int i = 0; i < text.length(); i++) {
+			int ch = text.charAt(i);
+			h1 = (h1 ^ ch) * 0x9E3779B1;
+			h2 = (h2 ^ ch) * 0x5F356495;
+		}
+		h1 = (h1 ^ (h1 >>> 16)) * 0x85EBCA6B;
+		h1 ^= (h2 ^ (h2 >>> 13)) * 0xC2B2AE35;
+		h2 = (h2 ^ (h2 >>> 16)) * 0x85EBCA6B;
+		h2 ^= (h1 ^ (h1 >>> 13)) * 0xC2B2AE35;
+		return ((long) (h2 & 0x1FFFFF) << 32) | (h1 & 0xFFFFFFFFL);
+	}
+
 	public static String section(int sx, int sy, int sz, int[] states) {
 		return section(sx, sy, sz, states, null, null, null, null, null);
 	}
