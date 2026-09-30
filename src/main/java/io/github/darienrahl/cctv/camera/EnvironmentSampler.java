@@ -6,6 +6,7 @@ import org.joml.Vector3fc;
 import org.joml.Vector4fc;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.Mth;
 import net.minecraft.util.RandomSource;
@@ -98,6 +99,11 @@ final class EnvironmentSampler {
 		}
 		if (attributes.getValue(EnvironmentAttributes.FIREFLY_BUSH_SOUNDS, pos)) {
 			json.field("fireflies", true);
+		}
+		// what dry stalactites drip (PointedDripstoneBlock.getDripParticle) and whether mud dries out instead
+		json.field("drip", BuiltInRegistries.PARTICLE_TYPE.getKey(attributes.getValue(EnvironmentAttributes.DEFAULT_DRIPSTONE_PARTICLE, pos).getType()).toString());
+		if (attributes.getValue(EnvironmentAttributes.WATER_EVAPORATES, pos)) {
+			json.field("evaporates", true);
 		}
 
 		BlockPos blockPos = BlockPos.containing(pos);

@@ -370,6 +370,8 @@ def main():
                        ("minecraft:pale_oak_log", "minecraft:pale_oak_logs")):
         if tag not in stream.block_tags.get(block, set()):
             failures.append(f"the palette entry of {block} does not list the tag {tag}")
+    if env.get("drip") != "minecraft:dripping_dripstone_water":
+        failures.append(f"env sample does not say what dry stalactites drip: {env.get('drip')}")
     # the overworld's ambient sounds: cave sounds in the dark (AmbientMoodSettings.LEGACY_CAVE_SETTINGS)
     mood = (env.get("amb") or {}).get("mood") or []
     if not mood or mood[0] != "minecraft:ambient.cave":

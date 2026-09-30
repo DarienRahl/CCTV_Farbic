@@ -274,3 +274,6 @@ net/minecraft/world/entity/vehicle/boat/AbstractBoat
 # pistons (entities.js drawPistons; BlockEntityEncoder.movingPiston)
 net/minecraft/world/level/block/piston/PistonMovingBlockEntity
 net/minecraft/client/renderer/blockentity/PistonHeadRenderer
+# drips (particles.js animateBlock, DripParticle providers)
+net/minecraft/world/level/block/PointedDripstoneBlock
+net/minecraft/world/level/block/BeehiveBlock

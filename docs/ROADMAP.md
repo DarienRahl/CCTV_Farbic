@@ -107,8 +107,9 @@ to the milestone it belongs to. The roadmap on the README page is drawn from thi
       **endermen scream** (the jaw drops, they shake, EndermanModel) with the stare sound and hold their
       carried block (CarriedBlockLayer); **boats row** (AbstractBoatModel paddles) and rock when hit;
       the warden's heartbeat speeds up with its anger; portal specks around endermen, smoke around blazes
-- [ ] The rest of the client-only sounds: sniffer searching and digging, dripstone and honey drips
-      landing, background music (optional)
+- [x] Dripstone and honey drips (PointedDripstoneBlock, BeehiveBlock: water or lava from above the
+      stalactite, honey under full hives) with the sound of the drop landing
+- [ ] The rest of the client-only sounds: sniffer searching and digging, background music (optional)
 - [x] **Particles** from `particles/*.json` and their textures: torch, candle and campfire flames
       and smoke, lava pops, drips, portal, falling leaves, spore blossoms, fireflies
 - [x] **Particles from the server**: broken blocks (pieces of the block's texture), explosions and
@@ -119,7 +120,7 @@ to the milestone it belongs to. The roadmap on the README page is drawn from thi
       whirlpools, reverse portal specks, white smoke
 - [x] **Fireworks**: rockets' sparks and their explosions (FireworkParticles: balls, stars, creepers,
       bursts, trails, twinkling, fading colours, the flash) with the blast and twinkle sounds
-- [ ] More particles: item pieces (eating, breaking tools), dripstone and honey drips, sulfur bubbles
+- [ ] More particles: item pieces (eating, breaking tools), sulfur bubbles
 - [x] Fire on burning entities (FlameFeatureRenderer, invisible ones too); invisible mobs show
       their equipment
 - [x] Capes (from the player's Mojang profile, swinging like ClientAvatarState's cloak), elytra

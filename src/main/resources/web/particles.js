@@ -5,7 +5,7 @@
 // (both from the client jar, resource packs apply), drawn as camera-facing quads, lit by the lightmap.
 
 import { program, FOG_GLSL, setFog } from './gl.js';
-import { JavaRandom } from './rng.js';
+import { JavaRandom, positionSeed } from './rng.js';
 import { tintSourceOf, TINT_GRASS, TINT_DOUBLE_GRASS, TINT_FOLIAGE, TINT_DRY_FOLIAGE, TINT_CONSTANT } from './mesher.js';
 
 const MAX_PARTICLES = 16384; // ParticleEngine.MAX_PARTICLES_PER_LAYER
@@ -332,6 +332,8 @@ class DripParticle extends QuadParticle {
 		} else if ((this.kind === 'fall' || this.kind === 'fallLand') && this.onGround) {
 			this.remove();
 			if (this.kind === 'fallLand' && this.land) this.level.add(this.land, this.x, this.y, this.z, 0, 0, 0);
+			// DripstoneFallAndLandParticle / HoneyFallAndLandParticle: the drop is heard landing
+			if (this.landSound) this.level.sound(this.landSound, this.x, this.y, this.z, 'block', 0.3 + nextFloat() * 0.7, 1);
 		}
 	}
 }
@@ -1160,6 +1162,36 @@ const PROVIDERS = {
 		p.lifetime = Math.trunc(28 / (nextFloat() * 0.8 + 0.2));
 		return p;
 	},
+	// pointed dripstone and full beehives (DripParticle providers)
+	dripping_dripstone_water: (l, x, y, z, xa, ya, za, s) => tint(new HangingDrip(l, x, y, z, 'water', 'minecraft:falling_dripstone_water', s.random()), [0.2, 0.3, 1]),
+	falling_dripstone_water: (l, x, y, z, xa, ya, za, s) => {
+		const p = tint(fallLand(new DripParticle(l, x, y, z, 'water', s.random()), 'minecraft:splash'), [0.2, 0.3, 1]);
+		p.landSound = 'minecraft:block.pointed_dripstone.drip_water';
+		return p;
+	},
+	dripping_dripstone_lava: (l, x, y, z, xa, ya, za, s) => new HangingDrip(l, x, y, z, 'lava', 'minecraft:falling_dripstone_lava', s.random(), true),
+	falling_dripstone_lava: (l, x, y, z, xa, ya, za, s) => {
+		const p = tint(fallLand(new DripParticle(l, x, y, z, 'lava', s.random()), 'minecraft:landing_lava'), [1, 0.2857143, 0.083333336]);
+		p.landSound = 'minecraft:block.pointed_dripstone.drip_lava';
+		return p;
+	},
+	dripping_honey: (l, x, y, z, xa, ya, za, s) => {
+		const p = tint(new HangingDrip(l, x, y, z, null, 'minecraft:falling_honey', s.random()), [0.622, 0.508, 0.082]);
+		p.gravity *= 0.01;
+		p.lifetime = 100;
+		return p;
+	},
+	falling_honey: (l, x, y, z, xa, ya, za, s) => {
+		const p = tint(fallLand(new DripParticle(l, x, y, z, null, s.random()), 'minecraft:landing_honey'), [0.582, 0.448, 0.082]);
+		p.gravity = 0.01;
+		p.landSound = 'minecraft:block.beehive.drip';
+		return p;
+	},
+	landing_honey: (l, x, y, z, xa, ya, za, s) => {
+		const p = tint(landing(new DripParticle(l, x, y, z, null, s.random())), [0.522, 0.408, 0.082]);
+		p.lifetime = Math.trunc(128 / (nextFloat() * 0.8 + 0.2));
+		return p;
+	},
 	falling_spore_blossom: (l, x, y, z, xa, ya, za, s) => {
 		const p = tint(new DripParticle(l, x, y, z, null, s.random()), [0.32, 0.5, 0.22]);
 		p.kind = 'fall';
@@ -1337,6 +1369,33 @@ const sturdy = info => !!(info && info.f & FLAG_FULL_COLLISION);
 const isAir = info => !info || !!(info.f & FLAG_AIR);
 /** BlockState.is(tag) for the tags the server lists with the block (BlockPalette.viewerTags). */
 const hasTag = (info, tag) => !!(info && info.tg && info.tg.includes(tag));
+
+/**
+ * PointedDripstoneBlock.getFluidAboveStalactite: 'water', 'lava' or 'none' for the block above the stalactite's
+ * root (up to 10 dripstones up; mud drips water unless water evaporates there), null without a root.
+ */
+function dripstoneFluid(level, x, y, z) {
+	for (let i = 1; i < 11; i++) {
+		const at = level.info(x, y + i, z);
+		if (blockName(at) === 'pointed_dripstone') {
+			if (props(at).vertical_direction !== 'down') return null;
+			continue;
+		}
+		if (blockName(at) === 'mud' && !level.attribute('evaporates')) return 'water';
+		if (at && at.f & FLAG_LAVA) return 'lava';
+		if (at && at.f & FLAG_WATER) return 'water';
+		return 'none';
+	}
+	return null;
+}
+
+/** BlockState.getOffset in x and z (like the mesher: from the position's seed, within the block's limit). */
+function blockOffset(info, x, z) {
+	if (!info || !info.o) return [0, 0];
+	const low = positionSeed(x, 0, z)[1];
+	const max = info.o[0];
+	return [Math.min(max, Math.max(-max, ((low & 15) / 15 - 0.5) * 0.5)), Math.min(max, Math.max(-max, ((low >>> 8 & 15) / 15 - 0.5) * 0.5))];
+}
 
 /** AmbientDesertBlockSoundsPlayer.shouldPlayDesertDryVegetationBlockSounds: two soil blocks under the plant. */
 const dryVegetationSoil = (level, x, y, z) => hasTag(level.info(x, y, z), 'minecraft:triggers_ambient_desert_dry_vegetation_block_sounds')
@@ -1557,6 +1616,29 @@ function animateBlock(level, name, info, x, y, z) {
 			level.add('minecraft:bubble_column_up', x + nextFloat(), y + nextFloat(), z + nextFloat(), 0, 0.04, 0);
 			if (nextInt(200) === 0) {
 				level.sound('minecraft:block.bubble_column.upwards_ambient', x, y, z, 'block', 0.2 + nextFloat() * 0.2, 0.9 + nextFloat() * 0.15);
+			}
+		}
+	} else if (name === 'pointed_dripstone') {
+		// PointedDripstoneBlock.animateTick: a free hanging tip drips what is above its root
+		if (p.vertical_direction === 'down' && p.thickness === 'tip' && p.waterlogged !== 'true') {
+			const r = nextFloat();
+			if (r <= 0.12) {
+				const fluid = dripstoneFluid(level, x, y, z);
+				if (fluid !== null && (r < 0.02 || fluid !== 'none')) {
+					const particle = fluid === 'lava' ? 'minecraft:dripping_dripstone_lava' : fluid === 'water' ? 'minecraft:dripping_dripstone_water'
+						: level.attribute('drip') || 'minecraft:dripping_dripstone_water';
+					const [ox, oz] = blockOffset(info, x, z);
+					level.add(particle, x + 0.5 + ox, y + 0.3125 - 0.0625, z + 0.5 + oz, 0, 0, 0);
+				}
+			}
+		}
+	} else if ((name === 'beehive' || name === 'bee_nest') && Number(p.honey_level) >= 5) {
+		// BeehiveBlock.trySpawnDripParticles: honey drips from under a full hive
+		if (nextFloat() >= 0.3) {
+			const below = level.info(x, y - 1, z);
+			const belowTop = below && !(below.f & FLAG_NO_COLLISION) ? (below.b || []).reduce((m, b) => Math.max(m, b[4]), 0) : 0;
+			if ((belowTop < 1 || !(below.f & FLAG_FULL_COLLISION)) && !(below && below.f & (FLAG_WATER | FLAG_LAVA))) {
+				level.add('minecraft:dripping_honey', x + nextDouble(), y - 0.05, z + nextDouble(), 0, 0, 0);
 			}
 		}
 	} else if (name === 'potent_sulfur') {
