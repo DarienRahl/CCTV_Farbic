@@ -33,6 +33,8 @@ async function shoot(name, settings, camera = 'ci') {
 		fallbackBlocks: window.cctv && window.cctv.world.fallbackBlocks ? [...window.cctv.world.fallbackBlocks] : [],
 		stats: document.getElementById('stats').textContent,
 		frameMs: window.cctv ? Math.round(window.cctv.state.frameMs * 10) / 10 : 0,
+		medium: window.cctv ? window.cctv.state.medium : null,
+		underwater: window.cctv ? window.cctv.entities.underwaterFrames || 0 : 0,
 	}));
 	console.log(name + ':', JSON.stringify(info));
 	await page.screenshot({ path: name + '.png' });
@@ -47,6 +49,7 @@ async function shoot(name, settings, camera = 'ci') {
 const vanilla = await shoot('viewer', null);
 await shoot('viewer-shaders', { graphics: 'shaders', shaderQuality: 'high' });
 await shoot('viewer-far', null, 'far');
+const wet = await shoot('viewer-water', null, 'wet');
 
 const index = await browser.newPage({ viewport: { width: 1280, height: 720 } });
 await index.goto('http://127.0.0.1:8100/');
@@ -76,6 +79,10 @@ if (vanilla.boxed.length) {
 }
 if (vanilla.fallbackBlocks.length) {
 	console.error('blocks drawn as plain boxes (no model, or a block entity the viewer does not draw): ' + vanilla.fallbackBlocks.join(', '));
+	process.exit(1);
+}
+if (wet.medium !== 'water' || !wet.underwater) {
+	console.error(`the camera in the pool is not seen as under water (medium ${wet.medium}, overlay frames ${wet.underwater})`);
 	process.exit(1);
 }
 // Budget (docs/ROADMAP.md 1.4): the page's time per frame with software WebGL on the CI machine.

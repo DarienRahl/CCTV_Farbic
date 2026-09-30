@@ -56,7 +56,7 @@ final class CameraSession {
 	/** How far ahead of its first missing section a viewer may receive sections that are already available. */
 	private static final int SYNC_WINDOW = 4096;
 	/** How often far sections are compacted (kept only as their message, see SectionCapture.compact). */
-	private static final int COMPACT_TICKS = 200;
+	private static final int COMPACT_TICKS = 100;
 	/** How long a viewer that caches sections gets to say which ones it has before the download starts. */
 	private static final int CACHE_WAIT_TICKS = 60;
 	/** Unchanged cached sections confirmed per viewer and tick (they cost a few bytes each). */
@@ -304,6 +304,9 @@ final class CameraSession {
 		viewers.removeIf(state -> !state.viewer.isOpen());
 		viewerCount = viewers.size();
 
+		if (tick % COMPACT_TICKS == 0) {
+			compactFarSections();
+		}
 		if (viewers.isEmpty()) {
 			blockChanges.clear();
 			blockEntityRefresh.clear();
@@ -330,19 +333,24 @@ final class CameraSession {
 			return true;
 		}
 
+		phaseStart = System.nanoTime();
 		installResults();
+		phase(0);
 		scheduleCaptures(level);
+		phase(1);
 		flushBlockChanges(tick);
 		if (tick % BEACON_CHECK_TICKS == 0) {
 			watchBeacons();
 		}
+		phase(2);
 		refreshBlockEntities(level);
+		phase(3);
 		refreshLight(level, tick);
+		phase(4);
 		rescan(level);
+		phase(5);
 		syncViewers(tick);
-		if (tick % COMPACT_TICKS == 0) {
-			compactFarSections();
-		}
+		phase(6);
 
 		if (tick % config.entityUpdateTicks == 0) {
 			entityBlockStates.clear();
@@ -356,6 +364,7 @@ final class CameraSession {
 				state.viewer.sendEntities(entities);
 			}
 		}
+		phase(7);
 
 		if (tick % EnvironmentSampler.INTERVAL_TICKS == 0) {
 			String env = sampleEnvironment(level, tick);
@@ -365,6 +374,7 @@ final class CameraSession {
 				}
 			}
 		}
+		phase(8);
 		if (tick % WeatherSampler.INTERVAL_TICKS == 5) {
 			String weather;
 			try {
@@ -379,11 +389,11 @@ final class CameraSession {
 				}
 			}
 		}
+		phase(9);
 
 		return true;
 	}
 
-	/** Troubleshooting snapshot (web thread; plain reads of server-thread state, good enough for a status page). */
 	/** Milliseconds of the server thread per tick: a running average (about the last five seconds) and the most. */
 	private volatile double tickMs;
 	private volatile double tickMsMax;
@@ -391,6 +401,19 @@ final class CameraSession {
 	private volatile long sectionsSent;
 	private volatile long sectionBytes;
 	private volatile long sectionsKept;
+
+	/** The parts of a tick, and the milliseconds each takes per tick (running averages), for {@code /api/status}. */
+	private static final String[] PHASES = {"results", "captures", "blocks", "blockEntities", "light", "rescan", "sync", "entities",
+			"environment", "weather"};
+	private final double[] phaseMs = new double[PHASES.length];
+	private long phaseStart;
+
+	/** Ends the tick's part {@code index} (every tick, whether it did anything or not). */
+	private void phase(int index) {
+		long now = System.nanoTime();
+		phaseMs[index] = phaseMs[index] * 0.99 + (now - phaseStart) / 1e6 * 0.01;
+		phaseStart = now;
+	}
 
 	/** Server thread, after every tick: what the tick cost (budgets in CI, {@code /api/status}). */
 	void recordTickTime(long nanos) {
@@ -401,6 +424,7 @@ final class CameraSession {
 		}
 	}
 
+	/** Troubleshooting snapshot (web thread; plain reads of server-thread state, good enough for a status page). */
 	synchronized void writeStatus(Json json) {
 		int[] counts = new int[Status.values().length];
 		int compacted = 0;
@@ -432,6 +456,11 @@ final class CameraSession {
 				.field("sectionBytes", sectionBytes)
 				.field("sectionsKept", sectionsKept)
 				.field("compacted", compacted);
+		json.name("phases").beginObject();
+		for (int i = 0; i < PHASES.length; i++) {
+			json.field(PHASES[i], phaseMs[i], 3);
+		}
+		json.endObject();
 		json.name("viewers").beginArray();
 		for (ViewerState state : List.copyOf(viewers)) {
 			json.beginObject()

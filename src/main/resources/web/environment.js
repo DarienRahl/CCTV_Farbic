@@ -31,6 +31,12 @@ function sinFloat(x) {
 	return Math.fround(Math.sin(Math.fround(x)));
 }
 
+/** Fog inside lava and powder snow (FogRenderer with LavaFogEnvironment / PowderedSnowFogEnvironment). */
+const DENSE_FOG = {
+	lava: { color: [0x99 / 255, 0x19 / 255, 0], start: 0.25, end: 1 },
+	powder_snow: { color: [0x9f / 255, 0xbb / 255, 0xcc / 255], start: 0, end: 2 },
+};
+
 export class Environment {
 	constructor() {
 		this.dim = { id: 'minecraft:overworld', skybox: 'overworld', hasSky: true, minY: -64, horizon: 63 };
@@ -98,9 +104,11 @@ export class Environment {
 
 	/**
 	 * Per frame. camera: {x, y, z, forward: [x, y, z]}, renderDistance in blocks,
-	 * skyLightAtCamera 0..15, inWater: camera is inside water.
+	 * skyLightAtCamera 0..15, medium: the fluid or block around the camera (Camera.getFluidInCamera: 'water',
+	 * 'lava', 'powder_snow' or null).
 	 */
-	update(now, camera, renderDistance, skyLightAtCamera, inWater, deltaTicks) {
+	update(now, camera, renderDistance, skyLightAtCamera, medium, deltaTicks) {
+		const inWater = medium === 'water';
 		const v = this.value(now);
 		this.current = v;
 		const hasFlash = this.skyFlash > 0;
@@ -162,15 +170,24 @@ export class Environment {
 		const target = rain * skyLightMultiplier * (v.precipitation === false ? 0.5 : 1);
 		this.rainFog += (target - this.rainFog) * Math.min(1, deltaTicks * 0.2);
 
-		this.fog = this.computeFog(v, camera, renderDistance, sky, rain, thunder, inWater);
+		this.fog = this.computeFog(v, camera, renderDistance, sky, rain, thunder, medium);
 		return this;
 	}
 
-	computeFog(v, camera, renderDistance, sky, rain, thunder, inWater) {
+	computeFog(v, camera, renderDistance, sky, rain, thunder, medium) {
+		const inWater = medium === 'water';
 		const renderChunks = Math.max(2, Math.round(renderDistance / 16));
 		let color;
 		const fog = {};
-		if (inWater) {
+		const dense = DENSE_FOG[medium];
+		if (dense) {
+			// LavaFogEnvironment, PowderedSnowFogEnvironment: a fixed colour, the fog a block or two away
+			color = dense.color.slice();
+			fog.envStart = dense.start;
+			fog.envEnd = dense.end;
+			fog.skyEnd = fog.envEnd;
+			fog.cloudEnd = fog.envEnd;
+		} else if (inWater) {
 			color = v.waterFog.slice();
 			fog.envStart = v.waterFogStart;
 			fog.envEnd = v.waterFogEnd;
@@ -201,7 +218,7 @@ export class Environment {
 		// Void darkness near the bottom of the world.
 		const onset = this.dim.horizon === this.dim.minY ? 1 : 32;
 		const darkness = clamp((onset + (this.dim.minY ?? -64) - camera.y) / onset);
-		if (darkness > 0) color = color.map(c => c * (1 - darkness) * (1 - darkness));
+		if (darkness > 0 && !dense) color = color.map(c => c * (1 - darkness) * (1 - darkness));
 		if (inWater && color[0] !== 0 && color[1] !== 0 && color[2] !== 0) {
 			const scale = 1 / Math.max(color[0], color[1], color[2]);
 			color = color.map(c => c * scale);

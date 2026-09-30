@@ -152,7 +152,8 @@ to the milestone it belongs to. The roadmap on the README page is drawn from thi
       (MapRenderer)
 - [ ] Terrain: the game's chunk occlusion culling (visibility graph), remaining fluid edge cases, the
       biome blend setting
-- [ ] Camera in water, lava and powder snow: the game's overlays and fog
+- [x] **Camera in water, lava and powder snow**: the underwater overlay (ScreenEffectRenderer, as bright as the
+      light at the camera) and the fog of each (LavaFogEnvironment, PowderedSnowFogEnvironment)
 
 ## 1.4 — performance (parts released: 1.4.0)
 

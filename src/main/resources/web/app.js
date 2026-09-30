@@ -592,8 +592,11 @@ function frame(now) {
 	const bx = Math.floor(c.x), by = Math.floor(c.y), bz = Math.floor(c.z);
 	const cameraBlock = world.infoAt(bx, by, bz);
 	const inWater = !!(cameraBlock && cameraBlock.water);
-	const skyLight = world.lightAt(bx, by, bz)[0];
-	environment.update(now, { x: c.x, y: c.y, z: c.z, forward: dir }, range, skyLight, inWater, deltaTicks);
+	// Camera.getFluidInCamera: the fog (and the underwater overlay) of what the camera is in
+	const medium = inWater ? 'water' : cameraBlock && cameraBlock.lava ? 'lava' : cameraBlock && cameraBlock.name === 'minecraft:powder_snow' ? 'powder_snow' : null;
+	const [skyLight, blockLight] = world.lightAt(bx, by, bz);
+	state.medium = medium;
+	environment.update(now, { x: c.x, y: c.y, z: c.z, forward: dir }, range, skyLight, medium, deltaTicks);
 	renderer.setLightmap(environment.lightmap(settings.mode === 'night' ? 1 : 0));
 	const skyState = environment.sky;
 	const customName = skyboxFor(environment.dim.id);
@@ -648,6 +651,13 @@ function frame(now) {
 				(x, y, z) => world.lightAt(x, y, z), state.assets ? state.assets.environment : null);
 			weather.renderLightning(frameData, entities.bolts);
 			entities.drawOutlines(frameData, renderer.scene);
+			if (medium === 'water') {
+				// ScreenEffectRenderer: brightness of the light at the camera (getMaxLocalRawBrightness, LightTexture.getBrightness)
+				const raw = Math.max(skyLight - (environment.current.skyDarken || 0), blockLight) / 15;
+				const curve = raw / (4 - 3 * raw);
+				const brightness = lerp(curve, 1, environment.dim.ambient || 0);
+				entities.drawUnderwater(renderer.scene, brightness, c.yaw + state.lookYaw, pitch);
+			}
 		},
 	});
 

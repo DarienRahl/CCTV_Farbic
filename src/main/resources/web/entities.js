@@ -362,6 +362,17 @@ void main() {
 	outColor = vec4((blurred / (radius + 0.5)).rgb, blurred.a);
 }`;
 
+// ScreenEffectRenderer.submitWater: textures/misc/underwater.png tiled four times over the screen, moving with the view
+const UNDERWATER_FS = `
+in vec2 vUv;
+uniform sampler2D uTexture;
+uniform vec2 uOffset;
+uniform vec4 uColor;
+out vec4 outColor;
+void main() {
+	outColor = texture(uTexture, uOffset + 4.0 * (1.0 - vUv)) * uColor;
+}`;
+
 const OUTLINE_BLIT_FS = `
 in vec2 vUv;
 uniform sampler2D uIn;
@@ -1058,6 +1069,39 @@ export class EntityRenderer {
 	}
 
 	/**
+	 * The underwater overlay over the whole picture while the camera is in water: as bright as the light at the
+	 * camera (LightTexture.getBrightness), 10 % opaque, shifted by the view's yaw and pitch.
+	 */
+	drawUnderwater(scene, brightness, yaw, pitch) {
+		const texture = this.texture('underwater', 'misc');
+		if (!texture) return;
+		const gl = this.gl;
+		if (!this.underwaterProgram) {
+			this.underwaterProgram = program(gl, FULLSCREEN_VS, UNDERWATER_FS);
+			this.fullscreenVao = this.fullscreenVao || gl.createVertexArray();
+		}
+		const p = this.underwaterProgram;
+		scene.bind();
+		gl.useProgram(p.program);
+		gl.activeTexture(gl.TEXTURE0);
+		gl.bindTexture(gl.TEXTURE_2D, texture);
+		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+		gl.uniform1i(p.u.uTexture, 0);
+		gl.uniform2f(p.u.uOffset, -yaw / 64, pitch / 64);
+		gl.uniform4f(p.u.uColor, brightness, brightness, brightness, 0.1);
+		gl.disable(gl.DEPTH_TEST);
+		gl.enable(gl.BLEND);
+		gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+		gl.bindVertexArray(this.fullscreenVao);
+		gl.drawArrays(gl.TRIANGLES, 0, 3);
+		gl.bindVertexArray(null);
+		gl.disable(gl.BLEND);
+		gl.enable(gl.DEPTH_TEST);
+		this.underwaterFrames = (this.underwaterFrames || 0) + 1;
+	}
+
+	/**
 	 * The Glowing effect (LevelRenderer's entity outline target and the entity_outline post chain): glowing
 	 * entities drawn in their team colour into their own target, their edges found (entity_sobel), blurred and
 	 * blended over the picture, walls or not.
@@ -1074,7 +1118,7 @@ export class EntityRenderer {
 			};
 			this.outlineTarget = new Target(gl, { color: true, depth: true });
 			this.outlineSwap = new Target(gl, { color: true, depth: false });
-			this.fullscreenVao = gl.createVertexArray();
+			this.fullscreenVao = this.fullscreenVao || gl.createVertexArray();
 		}
 		const P = this.outlinePrograms;
 		const w = scene.width, h = scene.height;
