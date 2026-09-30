@@ -133,7 +133,8 @@ to the milestone it belongs to. The roadmap on the README page is drawn from thi
       bursts, trails, twinkling, fading colours, the flash) with the blast and twinkle sounds
 - [x] **Item pieces** (BreakingItemParticle): food and potions while something eats or drinks (Consumable), tools
       and armour that break, with their break sound; snowball, slime and cobweb pieces
-- [ ] More particles: sulfur bubbles
+- [x] Sulfur bubbles rising through the water over potent sulfur (SulfurBubbleParticle) with the noxious gas sound
+- [ ] Geysers of potent sulfur: noxious gas clouds and the eruption plumes with their sounds (PotentSulfurBlockEntity)
 - [x] Fire on burning entities (FlameFeatureRenderer, invisible ones too); invisible mobs show
       their equipment
 - [x] Capes (from the player's Mojang profile, swinging like ClientAvatarState's cloak), elytra

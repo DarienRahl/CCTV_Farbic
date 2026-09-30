@@ -334,3 +334,6 @@ net/minecraft/client/model/geom/ModelLayers
 # sniffer digging and searching (particles.js entityParticles, sound.js entitySounds; EntityEncoder "dig")
 net/minecraft/world/entity/animal/sniffer/Sniffer
 net/minecraft/client/resources/sounds/SnifferSoundInstance
+# sulfur bubbles (particles.js SulfurBubbleParticle, animateBlock potent_sulfur)
+net/minecraft/client/particle/SulfurBubbleParticle
+net/minecraft/world/level/block/PotentSulfurBlock

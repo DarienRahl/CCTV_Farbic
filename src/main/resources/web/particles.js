@@ -755,6 +755,41 @@ class ReversePortalParticle extends PortalParticle {
 }
 
 /** BubbleParticle and BubbleColumnUpParticle: air bubbles that pop when they leave the water. */
+/**
+ * SulfurBubbleParticle: rises through the water source above potent sulfur (up to three blocks), growing from
+ * a speck to 0.15, wiggling sideways; gone when it leaves the water, stops rising or gets to the top.
+ */
+class SulfurBubbleParticle extends QuadParticle {
+	constructor(level, x, y, z, xa, za, sprite) {
+		super(level, x, y, z, undefined, undefined, undefined, sprite);
+		this.gravity = -0.04;
+		this.friction = 0.85;
+		this.setSize(0.02, 0.02);
+		this.xd = xa * 0.2 + (nextFloat() * 2 - 1) * 0.02;
+		this.zd = za * 0.2 + (nextFloat() * 2 - 1) * 0.02;
+		this.sizeStart = 0.02 + 0.02 * nextFloat();
+		this.quadSize = this.sizeStart;
+		this.lifetime = Number.MAX_SAFE_INTEGER;
+		this.yStart = this.yo;
+		this.yEnd = this.yo + 4 - 1;
+		this.yPrev = y;
+	}
+
+	tick() {
+		super.tick();
+		if (!this.removed && !this.level.inWaterSource(this.x, this.y, this.z)) this.remove();
+		if (!this.removed && this.y >= this.yEnd) this.remove();
+		if (!this.removed && this.y <= this.yPrev) this.remove();
+		const wiggle = () => nextFloat() * 0.003 * (nextInt(2) ? 1 : -1) * 0.5;
+		this.xd += wiggle();
+		this.zd += wiggle();
+		this.move(this.xd, 0, this.zd);
+		const travel = (this.y - this.yStart) / (this.yEnd - this.yStart);
+		this.quadSize = this.sizeStart + travel * (0.15 - this.sizeStart);
+		this.yPrev = this.y;
+	}
+}
+
 class BubbleParticle extends QuadParticle {
 	constructor(level, x, y, z, xa, ya, za, sprite, column) {
 		super(level, x, y, z, undefined, undefined, undefined, sprite);
@@ -1230,6 +1265,8 @@ const PROVIDERS = {
 	portal: (l, x, y, z, xa, ya, za, s) => new PortalParticle(l, x, y, z, xa, ya, za, s.random()),
 	reverse_portal: (l, x, y, z, xa, ya, za, s) => new ReversePortalParticle(l, x, y, z, xa, ya, za, s.random()),
 	bubble: (l, x, y, z, xa, ya, za, s) => new BubbleParticle(l, x, y, z, xa, ya, za, s.random(), false),
+	// SulfurBubbleParticle.Provider passes its first two speeds on as the sideways ones
+	sulfur_bubbles: (l, x, y, z, xa, ya, za, s) => new SulfurBubbleParticle(l, x, y, z, xa, ya, s.random()),
 	bubble_column_up: (l, x, y, z, xa, ya, za, s) => new BubbleParticle(l, x, y, z, xa, ya, za, s.random(), true),
 	current_down: (l, x, y, z, xa, ya, za, s) => new CurrentDownParticle(l, x, y, z, s.random()),
 	// WhiteSmokeParticle: BaseAshSmokeParticle like smoke, in a fixed pale colour
@@ -2611,6 +2648,11 @@ export class Particles {
 			},
 			isAir(x, y, z) {
 				return isAir(info(Math.floor(x), Math.floor(y), Math.floor(z)));
+			},
+			/** FluidState.isSourceOfType(WATER) at the position (a full water block). */
+			inWaterSource(x, y, z) {
+				const at = info(Math.floor(x), Math.floor(y), Math.floor(z));
+				return !!(at && at.f & FLAG_WATER && !(at.lv > 0 && at.lv < 8));
 			},
 			/** The fluid state at the position is water (any height). */
 			inWater(x, y, z) {
