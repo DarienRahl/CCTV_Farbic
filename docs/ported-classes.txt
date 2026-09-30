@@ -93,7 +93,7 @@ net/minecraft/client/renderer/blockentity/AbstractSignRenderer
 net/minecraft/client/renderer/blockentity/StandingSignRenderer
 net/minecraft/client/renderer/blockentity/HangingSignRenderer
 net/minecraft/client/gui/font/providers/BitmapProvider
-net/minecraft/client/gui/font/providers/SpaceProvider
+com/mojang/blaze3d/font/SpaceProvider
 net/minecraft/client/gui/font/FontManager
 net/minecraft/client/gui/font/glyphs/BakedSheetGlyph
 
@@ -237,7 +237,7 @@ net/minecraft/client/renderer/blockentity/SpawnerRenderer
 net/minecraft/client/renderer/blockentity/TrialSpawnerRenderer
 net/minecraft/world/level/BaseSpawner
 net/minecraft/client/renderer/special/ShieldSpecialRenderer
-net/minecraft/client/renderer/block/model/ItemTransform
+net/minecraft/client/resources/model/cuboid/ItemTransform
 # block events (entities.js blockEvent, blockAnim; particles.js blockEvent)
 net/minecraft/world/level/block/entity/ChestLidController
 net/minecraft/world/level/block/entity/ShulkerBoxBlockEntity
@@ -323,7 +323,6 @@ net/minecraft/client/renderer/special/BannerSpecialRenderer
 net/minecraft/client/renderer/special/ConduitSpecialRenderer
 net/minecraft/client/renderer/special/CopperGolemStatueSpecialRenderer
 # glowing outlines, item pieces (entities.js drawOutlines; particles.js BreakingItemParticle; LivingEntityMixin)
-net/minecraft/client/renderer/OutlineBufferSource
 net/minecraft/client/particle/BreakingItemParticle
 net/minecraft/world/item/component/Consumable
 net/minecraft/world/entity/LivingEntity

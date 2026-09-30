@@ -315,15 +315,15 @@ to the milestone it belongs to. The roadmap on the README page is drawn from thi
       (OminousItemSpawnerRenderer)
 - [x] Cushions (CushionRenderer) and dragon fireballs (DragonFireballRenderer)
 
-## 1.11 — updates that come by themselves
+## 1.11 — updates that come by themselves (released: 1.12.0)
 
-- [ ] **A weekly watch for new Minecraft releases** (`watch-minecraft`): as soon as Mojang releases a version
+- [x] **A weekly watch for new Minecraft releases** (`watch-minecraft`): as soon as Mojang releases a version
       Fabric supports, the update is tried on its own branch with the build and the server test, the game
       classes the viewer ports are compared, and an issue lists both results and what is left to do
-- [ ] The comparison summarised per viewer file: which ported classes changed, appeared or went away, grouped
+- [x] The comparison summarised per viewer file: which ported classes changed, appeared or went away, grouped
       by the files of the viewer they are ported to, in the run's summary and the issue
 
-## 1.12 — armour stands as they are posed
+## 1.12 — armour stands as they are posed (released: 1.12.0)
 
 - [x] **Armour stand poses** (ArmorStandModel, ArmorStandArmorModel): the head, body, arms and legs turned as
       set with commands or in the world, the armour following them, arms and base plate only when shown, small

@@ -10,7 +10,7 @@
   <a href="https://github.com/DarienRahl/CCTV_Farbic/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/DarienRahl/CCTV_Farbic?style=for-the-badge&amp;label=release&amp;color=5d8c3e"></a>
   <img alt="Minecraft 26.3" src="https://img.shields.io/badge/minecraft-26.3-866043?style=for-the-badge">
   <img alt="Fabric, server side only" src="https://img.shields.io/badge/fabric-server%20side%20only-8b8b8b?style=for-the-badge">
-  <a href="#roadmap"><img alt="Roadmap" src="https://img.shields.io/badge/roadmap-108%2F111%20done-80ff20?style=for-the-badge"></a>
+  <a href="#roadmap"><img alt="Roadmap" src="https://img.shields.io/badge/roadmap-110%2F111%20done-80ff20?style=for-the-badge"></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-555555?style=for-the-badge"></a>
 </p>
 <!-- badges:end -->
@@ -72,6 +72,7 @@ shadows and name tags in the game's font — and the holograms, mannequins and s
 Players draw bows, raise shields, wear hats and carry parrots, with their team colours over their heads.
 Minecarts ride their rails, stacks pile up on the ground and the world border glows as you come near.
 Villagers hold what they trade, witches sip their potions and the warden's heart beats faster as it gets angry.
+Armour stands keep the poses they were given.
 
 </td>
 <td valign="top">
@@ -203,7 +204,7 @@ at once as a video wall.
 ## Roadmap
 
 <!-- roadmap:start -->
-<p align="center"><img src="docs/images/roadmap/banner.svg" width="100%" alt="CCTV roadmap: 108 of 111 done"></p>
+<p align="center"><img src="docs/images/roadmap/banner.svg" width="100%" alt="CCTV roadmap: 110 of 111 done"></p>
 
 What is done and what comes next, milestone by milestone (the full plan with its principles is in
 [docs/ROADMAP.md](docs/ROADMAP.md)).
@@ -394,20 +395,20 @@ What is done and what comes next, milestone by milestone (the full plan with its
 
 </details>
 
-<img src="docs/images/roadmap/1-11.svg" width="100%" alt="1.11 — updates that come by themselves: planned, 0 of 2 done">
+<img src="docs/images/roadmap/1-11.svg" width="100%" alt="1.11 — updates that come by themselves: released 1.12.0, 2 of 2 done">
 
 <details>
-<summary><b>1.11 — updates that come by themselves</b> · planned · 0 of 2 done</summary>
+<summary><b>1.11 — updates that come by themselves</b> · released 1.12.0 · 2 of 2 done</summary>
 
-- [ ] **A weekly watch for new Minecraft releases** (`watch-minecraft`): as soon as Mojang releases a version Fabric supports, the update is tried on its own branch with the build and the server test, the game classes the viewer ports are compared, and an issue lists both results and what is left to do
-- [ ] The comparison summarised per viewer file: which ported classes changed, appeared or went away, grouped by the files of the viewer they are ported to, in the run's summary and the issue
+- [x] **A weekly watch for new Minecraft releases** (`watch-minecraft`): as soon as Mojang releases a version Fabric supports, the update is tried on its own branch with the build and the server test, the game classes the viewer ports are compared, and an issue lists both results and what is left to do
+- [x] The comparison summarised per viewer file: which ported classes changed, appeared or went away, grouped by the files of the viewer they are ported to, in the run's summary and the issue
 
 </details>
 
-<img src="docs/images/roadmap/1-12.svg" width="100%" alt="1.12 — armour stands as they are posed: started, 2 of 2 done">
+<img src="docs/images/roadmap/1-12.svg" width="100%" alt="1.12 — armour stands as they are posed: released 1.12.0, 2 of 2 done">
 
 <details>
-<summary><b>1.12 — armour stands as they are posed</b> · started · 2 of 2 done</summary>
+<summary><b>1.12 — armour stands as they are posed</b> · released 1.12.0 · 2 of 2 done</summary>
 
 - [x] **Armour stand poses** (ArmorStandModel, ArmorStandArmorModel): the head, body, arms and legs turned as set with commands or in the world, the armour following them, arms and base plate only when shown, small stands, items held even without arms
 - [x] Armour stands wiggle when hit (ArmorStandRenderer.setupRotations, entity event 32)

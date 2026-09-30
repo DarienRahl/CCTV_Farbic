@@ -21,7 +21,7 @@ def source(folder, cls):
 
 def main():
     old, new, listing, old_version, new_version = sys.argv[1:6]
-    groups, heading = [], None
+    groups = []
     with open(listing, encoding="utf-8") as f:
         for line in f:
             line = line.strip()
@@ -29,11 +29,10 @@ def main():
                 continue
             if line.startswith("#"):
                 text = line.lstrip("#").strip()
-                # a heading starts a group; the comment lines right after it continue the heading
-                if heading is not None and not groups[-1][1]:
+                # a comment starts a group, unless it continues a heading whose parenthesis is still open
+                if groups and not groups[-1][1] and groups[-1][0].count("(") > groups[-1][0].count(")"):
                     groups[-1][0] += " " + text
                 else:
-                    heading = text
                     groups.append([text, []])
                 continue
             if not groups:

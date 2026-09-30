@@ -117,6 +117,10 @@ def build(rcon):
                  'text:[{text:"CCTV ",color:"gold",bold:true},{text:"PARTY",color:"light_purple",bold:true}],'
                  'transformation:{translation:[0f,0f,0f],left_rotation:[0f,0f,0f,1f],scale:[1.6f,1.6f,1.6f],'
                  'right_rotation:[0f,0f,0f,1f]}}')
+    # a cheering armour stand at the back of the dance floor (ArmorStandModel poses)
+    rcon.command(f'summon minecraft:armor_stand {X - 3.5} {Y} {Z + 9.5} {{ShowArms:1b,Rotation:[160f,0f],'
+                 'Pose:{Head:[-20f,0f,0f],RightArm:[-160f,0f,10f],LeftArm:[-160f,0f,-10f],RightLeg:[-10f,0f,0f]},'
+                 'equipment:{head:{id:"minecraft:golden_helmet",count:1},chest:{id:"minecraft:diamond_chestplate",count:1}}}')
     # the librarian's corner: an enchanting table with bookshelves two blocks behind it, glyphs flying to it
     rcon.command(f"setblock {at(-7, 0, 8)} minecraft:enchanting_table")
     rcon.command(f"fill {at(-9, 0, 10)} {at(-5, 1, 10)} minecraft:bookshelf")
