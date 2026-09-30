@@ -1877,7 +1877,7 @@ export class Particles {
 		for (const starter of this.starters) starter.tick();
 		this.starters = this.starters.filter(starter => !starter.removed);
 		for (const e of entities || []) if (e.fxp && e.fxp.length) this.effectSwirls(level, e);
-		this.rocketTrails(level, entities);
+		this.entityParticles(level, entities);
 		const list = this.particles;
 		let n = 0;
 		for (let i = 0; i < list.length; i++) {
@@ -1923,16 +1923,70 @@ export class Particles {
 		}
 	}
 
-	/** FireworkRocketEntity.tick (client): a spark falls behind a flying rocket every tick. */
-	rocketTrails(level, entities) {
+	/**
+	 * The particles entities make in their client tick: sparks behind firework rockets (FireworkRocketEntity.tick),
+	 * portal specks around endermen and endermites, smoke around blazes (aiStep), bubbles behind swimming
+	 * guardians and along their beams (Guardian.aiStep).
+	 */
+	entityParticles(level, entities) {
 		const seen = new Set();
+		let byId = null;
 		for (const e of entities || []) {
-			if (e.type !== 'minecraft:firework_rocket') continue;
-			seen.add(e.id);
-			const last = this.rockets.get(e.id);
-			this.rockets.set(e.id, e.y);
-			const yd = last === undefined ? 0 : e.y - last;
-			this.addFirework('spark', level, e.x, e.y, e.z, 0xffffff, nextGaussian() * 0.05, -yd * 0.5, nextGaussian() * 0.05);
+			const w = e.w || 0.6, h = e.h || 1.8;
+			const randomX = s => e.x + w * (2 * nextDouble() - 1) * s;
+			const randomY = () => e.y + h * nextDouble();
+			const randomZ = s => e.z + w * (2 * nextDouble() - 1) * s;
+			switch (e.type) {
+				case 'minecraft:firework_rocket': {
+					seen.add(e.id);
+					const last = this.rockets.get(e.id);
+					this.rockets.set(e.id, e.y);
+					const yd = last === undefined ? 0 : e.y - last;
+					this.addFirework('spark', level, e.x, e.y, e.z, 0xffffff, nextGaussian() * 0.05, -yd * 0.5, nextGaussian() * 0.05);
+					break;
+				}
+				case 'minecraft:enderman':
+				case 'minecraft:endermite':
+					if (e.dead) break;
+					for (let i = 0; i < 2; i++) {
+						this.addFx(level, 'portal', randomX(0.5), randomY() - (e.type === 'minecraft:enderman' ? 0.25 : 0), randomZ(0.5),
+							(nextDouble() - 0.5) * 2, -nextDouble(), (nextDouble() - 0.5) * 2);
+					}
+					break;
+				case 'minecraft:blaze':
+					if (e.dead) break;
+					for (let i = 0; i < 2; i++) this.addFx(level, 'large_smoke', randomX(0.5), randomY(), randomZ(0.5), 0, 0, 0);
+					break;
+				case 'minecraft:guardian':
+				case 'minecraft:elder_guardian': {
+					if (e.dead) break;
+					const d = e.d || {};
+					const yaw = (e.yaw || 0) * Math.PI / 180, pitch = (e.pitch || 0) * Math.PI / 180;
+					if (d.moving && d.inWater) {
+						const vx = -Math.sin(yaw) * Math.cos(pitch), vy = -Math.sin(pitch), vz = Math.cos(yaw) * Math.cos(pitch);
+						for (let i = 0; i < 2; i++) this.addFx(level, 'bubble', randomX(0.5) - vx * 1.5, randomY() - vy * 1.5, randomZ(0.5) - vz * 1.5, 0, 0, 0);
+					}
+					if (e.beam === undefined) break;
+					if (!byId) byId = new Map((entities || []).map(other => [other.id, other]));
+					const target = byId.get(e.beam);
+					if (!target) break;
+					const duration = e.type === 'minecraft:elder_guardian' ? 60 : 80;
+					const at = Math.min(duration, Math.max(0, (e.age || 0) - (e.beamStart ?? e.age ?? 0))) / duration;
+					const eyeY = e.y + h * 0.5;
+					let dx = target.x - e.x, dy = target.y + (target.h || 1.8) * 0.5 - eyeY, dz = target.z - e.z;
+					const dd = Math.hypot(dx, dy, dz);
+					if (dd < 1e-4) break;
+					dx /= dd; dy /= dd; dz /= dd;
+					let dist = nextDouble();
+					while (dist < dd) {
+						dist += 1.8 - at + nextDouble() * (1.7 - at);
+						this.addFx(level, 'bubble', e.x + dx * dist, eyeY + dy * dist, e.z + dz * dist, 0, 0, 0);
+					}
+					break;
+				}
+				default:
+					break;
+			}
 		}
 		for (const id of this.rockets.keys()) if (!seen.has(id)) this.rockets.delete(id);
 	}

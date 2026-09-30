@@ -42,6 +42,9 @@ function sample(value, random) {
 	return 1;
 }
 
+/** Warden.getHeartBeatDelay: from 40 ticks when calm to 10 when angry (anger 80 and more). */
+const heartBeatDelay = e => 40 - Math.floor(Math.min(1, Math.max(0, (Number(e.d && e.d.anger) || 0) / 80)) * 30);
+
 /** Sounds the client plays in handleEntityEvent: type -> (event, entity) -> [id, x, y, z, source, volume, pitch]. */
 const EVENT_SOUNDS = {
 	// ArmorStand: hit
@@ -77,6 +80,8 @@ export class Sounds {
 	resetAmbience() {
 		for (const loop of this.loops ? this.loops.values() : []) this.stop(loop.sound);
 		if (this.underwater) this.stop(this.underwater.sound);
+		for (const beam of this.beamSounds ? this.beamSounds.values() : []) this.stop(beam);
+		this.beamSounds = new Map();
 		/** BiomeAmbientSoundsHandler.loopSounds: sound event -> {sound, fade, direction} */
 		this.loops = new Map();
 		this.previousLoop = null;
@@ -218,13 +223,18 @@ export class Sounds {
 
 	/**
 	 * The sounds entities make in their client tick: blazes burning (Blaze.aiStep), phantoms flapping when their
-	 * wings go down (Phantom.tick) and the warden's heartbeat (Warden.tick; its anger is not known, so the calm pace).
+	 * wings go down (Phantom.tick) and the warden's heartbeat (Warden.tick, faster the angrier it is).
 	 */
 	entitySounds(entities) {
 		const ages = this.entityAges || (this.entityAges = new Map());
 		const seen = new Set();
+		this.guardianBeams(entities);
 		for (const e of entities || []) {
 			const type = e.type;
+			if (type === 'minecraft:enderman') {
+				this.endermanStare(e);
+				continue;
+			}
 			if (type !== 'minecraft:blaze' && type !== 'minecraft:phantom' && type !== 'minecraft:warden') continue;
 			seen.add(e.id);
 			const age = Math.floor(e.age || 0);
@@ -244,12 +254,66 @@ export class Sounds {
 					if (flap(t) > 0 && flap(t + 1) <= 0) {
 						this.entityLocal('minecraft:entity.phantom.flap', e, 'hostile', 0.95 + Math.random() * 0.05, 0.95 + Math.random() * 0.05);
 					}
-				} else if (t % 40 === 0) {
+				} else if (t % heartBeatDelay(e) === 0) {
 					this.local('minecraft:entity.warden.heartbeat', e.x, e.y, e.z, 'hostile', 5, (Math.random() - Math.random()) * 0.2 + 1);
 				}
 			}
 		}
 		for (const id of ages.keys()) if (!seen.has(id)) ages.delete(id);
+	}
+
+	/**
+	 * Enderman.onSyncedDataUpdated: an enderman that turns creepy because a player stared at it screams, at most
+	 * every 400 ticks (playStareSound, at its eyes).
+	 */
+	endermanStare(e) {
+		const stares = this.stares || (this.stares = new Map());
+		const state = stares.get(e.id) || { creepy: false, last: -Infinity };
+		const creepy = !!(e.d && e.d.creepy);
+		const age = Math.floor(e.age || 0);
+		if (creepy && !state.creepy && e.d.staredAt && age >= state.last + 400) {
+			state.last = age;
+			this.local('minecraft:entity.enderman.stare', e.x, e.y + (e.h || 2.9) * 0.88, e.z, 'hostile', 2.5, 1);
+		}
+		state.creepy = creepy;
+		stares.set(e.id, state);
+		if (stares.size > 64) stares.delete(stares.keys().next().value);
+	}
+
+	/**
+	 * GuardianAttackSoundInstance: while a guardian charges its beam a loop plays at it, heard at the same volume
+	 * everywhere, louder (scale squared) and higher (0.7 + 0.5 scale) as the attack charges.
+	 */
+	guardianBeams(entities) {
+		const beams = this.beamSounds || (this.beamSounds = new Map());
+		const seen = new Set();
+		for (const e of entities || []) {
+			if ((e.type !== 'minecraft:guardian' && e.type !== 'minecraft:elder_guardian') || e.beam === undefined || e.dead) continue;
+			seen.add(e.id);
+			const duration = e.type === 'minecraft:elder_guardian' ? 60 : 80;
+			const scale = Math.min(duration, Math.max(0, (e.age || 0) - (e.beamStart ?? e.age ?? 0))) / duration;
+			let beam = beams.get(e.id);
+			if (!beam) {
+				beam = this.loop('minecraft:entity.guardian.attack', 0, { x: e.x, y: e.y, z: e.z });
+				beams.set(e.id, beam);
+			}
+			this.setVolume(beam, scale * scale);
+			this.setPitch(beam, 0.7 + 0.5 * scale);
+			if (beam.panner) this.place(beam.panner, e.x, e.y, e.z);
+			beam.at = { x: e.x, y: e.y, z: e.z };
+		}
+		for (const [id, beam] of beams) {
+			if (!seen.has(id)) {
+				this.stop(beam);
+				beams.delete(id);
+			}
+		}
+	}
+
+	setPitch(handle, pitch) {
+		if (!handle) return;
+		handle.pitch = pitch;
+		if (handle.source) handle.source.playbackRate.setTargetAtTime(Math.min(2, Math.max(0.5, pitch * handle.basePitch)), this.ctx.currentTime, 0.02);
 	}
 
 	/** Level.playLocalSound(entity, ...): a sound that follows the entity. */
@@ -382,13 +446,17 @@ export class Sounds {
 		this.firstBubbleTick = false;
 	}
 
-	/** A looping sound at the listener (relative, like the game's ambient loops); its volume is set every tick. */
-	loop(id, volume) {
-		const handle = { volume, source: null, node: null, stopped: false };
+	/**
+	 * A looping sound: at the listener (relative, like the game's ambient loops), or at a place with no
+	 * attenuation (at: {x, y, z}); its volume (and pitch) are set every tick.
+	 */
+	loop(id, volume, at = null) {
+		const handle = { volume, pitch: 1, source: null, node: null, panner: null, stopped: false, basePitch: 1, at };
 		const sound = this.pick(this.events[id], unseeded());
 		if (!sound || !sound.name) return handle;
 		handle.scale = sample(sound.volume ?? 1, unseeded());
 		const pitch = sample(sound.pitch ?? 1, unseeded());
+		handle.basePitch = pitch;
 		const [ns, path] = sound.name.includes(':') ? sound.name.split(':') : ['minecraft', sound.name];
 		this.buffer(ns + '/' + path).then(buffer => {
 			if (!buffer || !this.enabled || handle.stopped) return;
@@ -396,10 +464,21 @@ export class Sounds {
 			const node = ctx.createBufferSource();
 			node.buffer = buffer;
 			node.loop = true;
-			node.playbackRate.value = Math.min(2, Math.max(0.5, pitch));
+			node.playbackRate.value = Math.min(2, Math.max(0.5, pitch * handle.pitch));
 			const gain = ctx.createGain();
 			gain.gain.value = Math.min(1, handle.volume * handle.scale);
-			node.connect(gain).connect(this.master);
+			if (handle.at) {
+				// Attenuation.NONE: heard from its direction at the same volume everywhere
+				const panner = ctx.createPanner();
+				panner.panningModel = 'equalpower';
+				panner.distanceModel = 'linear';
+				panner.rolloffFactor = 0;
+				this.place(panner, handle.at.x, handle.at.y, handle.at.z);
+				handle.panner = panner;
+				node.connect(gain).connect(panner).connect(this.master);
+			} else {
+				node.connect(gain).connect(this.master);
+			}
 			handle.source = node;
 			handle.node = gain;
 			node.start();

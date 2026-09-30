@@ -24,6 +24,14 @@ export const dyeRgb = (name, factor = 1) => {
 
 // --- animation helpers (AnimationUtils / model setupAnim code) ----------------------------------------
 
+/** Mth.clampedLerp */
+const lerp01 = (t, a, b) => (t < 0 ? a : t > 1 ? b : a + (b - a) * t);
+
+/** GuardianModel's spike positions (the rotations are part of the model). */
+const SPIKE_X = [0, 0, 8, -8, -8, 8, 8, -8, 0, 0, 8, -8];
+const SPIKE_Y = [-8, -8, -8, -8, 0, 0, 0, 0, 8, 8, 8, 8];
+const SPIKE_Z = [8, -8, 0, 0, -8, -8, 8, 8, 8, -8, 0, 0];
+
 function headLook(p, a, part = 'head') {
 	const head = p[part];
 	if (!head) return;
@@ -595,17 +603,67 @@ const ANIMS = {
 		}
 		headLook(p, a);
 	},
-	guardian(p, a) {
+	/**
+	 * GuardianModel.setupAnim: spikes drawn in while it swims (withdrawal from the client's spikes animation),
+	 * the eye looking at the camera or its beam's target, the tail swaying with the client's tail animation.
+	 */
+	guardian(p, a, e) {
 		headLook(p, a);
-		for (let i = 0; i < 3; i++) {
-			const t = p['tail' + i];
-			if (t) t.yRot = sin(a.age * 0.1 + i) * PI * 0.05 * (i + 1);
+		const m = a.memory || {};
+		const spikes = m.spikes ?? 1, tail = m.tail ?? 0;
+		const withdrawal = (1 - spikes) * 0.55;
+		for (let i = 0; i < 12; i++) {
+			const spike = p['spike' + i];
+			if (!spike) continue;
+			const offset = 1 + cos(a.age * 1.5 + i) * 0.01 - withdrawal;
+			spike.x = SPIKE_X[i] * offset;
+			spike.y = 16 + SPIKE_Y[i] * offset;
+			spike.z = SPIKE_Z[i] * offset;
+		}
+		const look = a.lookAt, eye = a.eyePos;
+		if (p.eye && look && eye) {
+			p.eye.y = look[1] - eye[1] > 0 ? 0 : 1;
+			// the view vector (flat) against the direction to the looked at point turned by 90 degrees
+			const yaw = (e.body ?? e.yaw ?? 0) * DEG + a.netHeadYaw * DEG;
+			const vx = -sin(yaw), vz = cos(yaw);
+			let dx = eye[0] - look[0], dz = eye[2] - look[2];
+			const len = Math.hypot(dx, dz) || 1;
+			dx /= len; dz /= len;
+			// Vec3.yRot(pi / 2): x' = x cos + z sin, z' = z cos - x sin
+			const rx = dz, rz = -dx;
+			const dot = vx * rx + vz * rz;
+			p.eye.x = Math.sqrt(abs(dot)) * 2 * Math.sign(dot);
+		}
+		if (p.tail0) p.tail0.yRot = sin(tail) * PI * 0.05;
+		if (p.tail1) p.tail1.yRot = sin(tail) * PI * 0.1;
+		if (p.tail2) p.tail2.yRot = sin(tail) * PI * 0.15;
+	},
+	/** EndermanModel.setupAnim: long limbs swing half as far, arms up while carrying a block, the jaw drops when screaming. */
+	enderman(p, a, e) {
+		humanoid(p, a, e);
+		for (const name of ['right_arm', 'left_arm', 'right_leg', 'left_leg']) {
+			if (p[name]) p[name].xRot = clamp(p[name].xRot * 0.5, -0.4, 0.4);
+		}
+		if (e.d && e.d.carried !== undefined) {
+			if (p.right_arm) { p.right_arm.xRot = -0.5; p.right_arm.zRot = 0.05; }
+			if (p.left_arm) { p.left_arm.xRot = -0.5; p.left_arm.zRot = -0.05; }
+		}
+		if (e.d && e.d.creepy) {
+			if (p.head) p.head.y -= 5;
+			if (p.hat) p.hat.y += 5;
 		}
 	},
 	armorStand() {},
-	boat(p, a) {
-		if (p.left_paddle) p.left_paddle.xRot = 0;
-		if (p.right_paddle) p.right_paddle.xRot = 0;
+	/** AbstractBoatModel.animatePaddle with the rowing times (AbstractBoat.getRowingTime). */
+	boat(p, a, e) {
+		const paddle = (part, time, side) => {
+			if (!part) return;
+			part.xRot = lerp01((sin(-time) + 1) / 2, -PI / 3, -PI / 12);
+			part.yRot = lerp01((sin(-time + 1) + 1) / 2, -PI / 4, PI / 4);
+			if (side === 1) part.yRot = PI - part.yRot;
+		};
+		paddle(p.left_paddle, e.rowL || 0, 0);
+		paddle(p.right_paddle, e.rowR || 0, 1);
 	},
 	generic(p, a) {
 		if (p.head) headLook(p, a);
@@ -805,6 +863,21 @@ const WALKING = e => (e.walkSpeed || 0) > 1e-5; // WalkAnimationState.isMoving
 const chance = n => Math.floor(Math.random() * n);
 
 export const CLIENT = {
+	/** Guardian.aiStep (client): the tail's swim and the spikes (random out of water, drawn in while swimming). */
+	guardian: {
+		tick(e, st) {
+			const m = st.memory;
+			if (m.tail === undefined) { m.tail = Math.random(); m.tailSpeed = 0; m.spikes = 1; }
+			const inWater = !!(e.d && e.d.inWater), moving = !!(e.d && e.d.moving);
+			if (!inWater) m.tailSpeed = 2;
+			else if (moving) m.tailSpeed = m.tailSpeed < 0.5 ? 4 : m.tailSpeed + (0.5 - m.tailSpeed) * 0.1;
+			else m.tailSpeed += (0.125 - m.tailSpeed) * 0.2;
+			m.tail += m.tailSpeed;
+			if (!inWater) m.spikes = Math.random();
+			else if (moving) m.spikes += (0 - m.spikes) * 0.25;
+			else m.spikes += (1 - m.spikes) * 0.06;
+		},
+	},
 	/** Warden.handleEntityEvent and the client part of Warden.tick */
 	warden: {
 		event(e, st, id, tick) {
@@ -983,6 +1056,7 @@ export const CLIENT = {
 		},
 	},
 };
+CLIENT.elder_guardian = CLIENT.guardian;
 CLIENT.camel_husk = CLIENT.camel;
 /** IronGolem.handleEntityEvent: 4 starts the attack swing (attackAnimationTick = 10). */
 CLIENT.iron_golem = {
@@ -1095,7 +1169,7 @@ const MOBS = {
 	elder_guardian: { layer: 'elder_guardian#main', texture: 'guardian/guardian_elder', shadow: 1.2, anim: 'guardian' },
 	end_crystal: { special: 'endCrystal' },
 	ender_dragon: { layer: 'ender_dragon#main', texture: 'enderdragon/dragon', shadow: 0.5, anim: 'dragon', dragon: true, layers: [{ layer: 'ender_dragon#main', texture: 'enderdragon/dragon_eyes', mode: 'eyes' }] },
-	enderman: { layer: 'enderman#main', texture: 'enderman/enderman', shadow: 0.5, anim: 'humanoid', layers: [{ layer: 'enderman#main', texture: 'enderman/enderman_eyes', mode: 'eyes' }] },
+	enderman: { layer: 'enderman#main', texture: 'enderman/enderman', shadow: 0.5, anim: 'enderman', creepyShake: true, carries: true, layers: [{ layer: 'enderman#main', texture: 'enderman/enderman_eyes', mode: 'eyes' }] },
 	endermite: { layer: 'endermite#main', texture: 'endermite/endermite', shadow: 0.3, anim: 'none' },
 	evoker: { layer: 'evoker#main', texture: 'illager/evoker', shadow: 0.5, anim: 'illager' },
 	evoker_fangs: { layer: 'evoker_fangs#main', texture: 'illager/evoker_fangs', shadow: 0, anim: 'none', living: false },

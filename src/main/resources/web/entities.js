@@ -15,6 +15,10 @@ import { SHADOW_GLSL, SHADER_LIGHT_GLSL } from './renderer.js';
 import { lerp, lerpAngle, wrapDegrees } from './math.js';
 import { TextRenderer, rgb, matrixTransform, FULL_BRIGHT } from './text.js';
 
+const PI = Math.PI;
+/** A standard normal random number (Random.nextGaussian). */
+const gaussian = () => Math.sqrt(-2 * Math.log(1 - Math.random())) * Math.cos(2 * PI * Math.random());
+
 const MODE_CUTOUT = 0, MODE_NOCULL = 1, MODE_TRANSLUCENT = 2, MODE_EYES = 3, MODE_ENERGY = 4, MODE_CRUMBLING = 5;
 
 /**
@@ -465,6 +469,8 @@ export class EntityRenderer {
 		this.breaking = [];
 		this.states = new Map();
 		this.events = new Map();
+		/** Guardians' beams: entity id -> {target, start (the guardian's age when it got the target)} */
+		this.beams = new Map();
 		// EnchantingTableBlockEntity animation state by block position
 		this.books = new Map();
 		// glint textures switched to linear filtering (their .mcmeta asks for blur)
@@ -730,6 +736,14 @@ export class EntityRenderer {
 		const map = new Map();
 		for (const e of frame.e) {
 			map.set(e.id, e);
+			if (e.beam !== undefined) {
+				// Guardian.onSyncedDataUpdated: the client's attack time starts over for every new target
+				const beam = this.beams.get(e.id);
+				if (!beam || beam.target !== e.beam) this.beams.set(e.id, { target: e.beam, start: e.age || 0 });
+				e.beamStart = this.beams.get(e.id).start;
+			} else if (this.beams.has(e.id)) {
+				this.beams.delete(e.id);
+			}
 			// Running AnimationStates as start ticks (entity tickCount).
 			if (e.anim) {
 				e.animStart = {};
@@ -852,6 +866,7 @@ export class EntityRenderer {
 				yaw: angle('yaw'), pitch: lerp(ea.pitch, eb.pitch, t), body: angle('body'), head: angle('head'),
 				walk: num('walk'), walkSpeed: num('walkSpeed'), age: num('age'), deathTime: num('deathTime'),
 				swimAmount: num('swimAmount'), flyingTicks: num('flyingTicks'),
+				rowL: num('rowL'), rowR: num('rowR'), hurtTime: num('hurtTime'), damage: num('damage'), bubble: num('bubble'),
 			});
 		}
 		for (const [id, eb] of b.map) {
@@ -936,6 +951,9 @@ export class EntityRenderer {
 		this.boxed.clear();
 		const now = frame.now;
 		const o = frame.origin, cam = frame.camPos;
+		this.cameraWorld = [o[0] + cam[0], o[1] + cam[1], o[2] + cam[2]];
+		this.byId = new Map();
+		for (const e of list) this.byId.set(e.id, e);
 		let visible = 0;
 		for (const e of list) {
 			const rx = e.x - o[0] - cam[0], ry = e.y - o[1] - cam[1], rz = e.z - o[2] - cam[2];
@@ -1137,6 +1155,13 @@ export class EntityRenderer {
 			flap: e.id * 3 + age,
 			swimAmount: e.swimAmount || 0,
 		};
+		if (def.anim === 'guardian') {
+			// GuardianRenderer.getEntityToLookAt: the beam's target, else the camera
+			const eye = [e.x, e.y + (e.h || 0.85) * 0.5, e.z];
+			const target = e.beam !== undefined && this.byId ? this.byId.get(e.beam) : null;
+			anim.eyePos = eye;
+			anim.lookAt = target ? [target.x, target.y + (target.h || 1.8) * 0.85, target.z] : this.cameraWorld;
+		}
 		anim.states = this.keyframeStates(type, e, s);
 		anim.memory = anim.states.memory;
 		if (def.fullBright) style.light = [240, style.light[1]];
@@ -1144,6 +1169,11 @@ export class EntityRenderer {
 		// LivingEntityRenderer.submit / setupRotations (a spawner's mob gets the spawner's pose)
 		const m = e.base ? Float32Array.from(e.base) : mat4();
 		translate(m, pos[0], pos[1], pos[2]);
+		if (def.creepyShake && e.d && e.d.creepy) {
+			// EndermanRenderer.getRenderOffset: a screaming enderman shakes
+			const d = 0.02 * (e.scale || 1);
+			translate(m, gaussian() * d, 0, gaussian() * d);
+		}
 		// AvatarRenderer.getRenderOffset: crouching players sit 2 pixels lower.
 		if (type === 'player' && (e.sneak || e.pose === 'crouching')) translate(m, 0, -2 / 16 * (e.scale || 1), 0);
 		const entityScale = e.scale || 1;
@@ -1254,8 +1284,90 @@ export class EntityRenderer {
 			this.drawHeld(base, m, 'left_arm', e.offhand, e.foil & FOIL_OFFHAND ? { ...style, glint: GLINT_ITEM } : style, -1, e.offhandPatterns);
 		}
 
+		// CarriedBlockLayer: the block an enderman holds in front of it
+		if (def.carries && e.d && e.d.carried !== undefined) {
+			const bm = Float32Array.from(m);
+			translate(bm, 0, 0.6875, -0.75);
+			rotate(bm, 0, 20 * DEG);
+			rotate(bm, 1, 45 * DEG);
+			translate(bm, 0.25, 0.1875, 0.25);
+			scale(bm, -0.5, -0.5, 0.5);
+			rotate(bm, 1, 90 * DEG);
+			const mesh = this.blockStateMesh(e.d.carried, world);
+			if (mesh) this.emitItem(mesh, bm, style);
+		}
+		if (def.anim === 'guardian' && e.beam !== undefined) this.drawGuardianBeam(e, type, pos, world);
+
 		// EntityRenderDispatcher: no shadow under invisible entities
 		if (!e.invisible && !e.base) this.shadowFor(e, pos, typeof mob.shadow === 'number' ? mob.shadow * entityScale : 0.5, world);
+	}
+
+	/**
+	 * GuardianRenderer.renderBeam: two crossed strips from the guardian's eye to the middle of its target,
+	 * turning, scrolling and brightening from purple to yellow as the attack charges.
+	 */
+	drawGuardianBeam(e, type, pos, world) {
+		const target = this.byId && this.byId.get(e.beam);
+		const texture = this.texture('guardian/guardian_beam');
+		if (!target || !texture) return;
+		const duration = type === 'elder_guardian' ? 60 : 80;
+		const age = e.age || 0;
+		const time = Math.min(duration, Math.max(0, age - (e.beamStart ?? age)));
+		const attackScale = time / duration;
+		const eyeHeight = (e.h || 0.85) * 0.5;
+		const bx = target.x - e.x, by = target.y + (target.h || 1.8) * 0.5 - (e.y + eyeHeight), bz = target.z - e.z;
+		let length = Math.hypot(bx, by, bz);
+		if (length < 1e-4) return;
+		const nx = bx / length, ny = by / length, nz = bz / length;
+		length += 1;
+		const m = mat4();
+		translate(m, pos[0], pos[1] + eyeHeight, pos[2]);
+		rotate(m, 1, PI / 2 - Math.atan2(nz, nx));
+		rotate(m, 0, Math.acos(Math.max(-1, Math.min(1, ny))));
+		const rot = time * 0.05 * -1.5;
+		const c = attackScale * attackScale;
+		const color = [(64 + Math.trunc(c * 191)) / 255, (32 + Math.trunc(c * 191)) / 255, (128 - Math.trunc(c * 64)) / 255, 1];
+		const at = (angle, r) => [Math.cos(rot + angle) * r, Math.sin(rot + angle) * r];
+		const [wnx, wnz] = at(PI * 3 / 4, 0.282), [enx, enz] = at(PI / 4, 0.282);
+		const [wsx, wsz] = at(PI * 5 / 4, 0.282), [esx, esz] = at(PI * 7 / 4, 0.282);
+		const [wx, wz] = at(PI, 0.2), [ex, ez] = at(0, 0.2), [nnx, nnz] = at(PI / 2, 0.2), [sx, sz] = at(PI * 3 / 2, 0.2);
+		const minV = -1 + (time * 0.5) % 1, maxV = minV + length * 2.5;
+		const vBase = Math.floor(time) % 2 === 0 ? 0.5 : 0;
+		const quads = new Float32Array([
+			wx, length, wz, 0.4999, maxV, wx, 0, wz, 0.4999, minV, ex, 0, ez, 0, minV, ex, length, ez, 0, maxV,
+			nnx, length, nnz, 0.4999, maxV, nnx, 0, nnz, 0.4999, minV, sx, 0, sz, 0, minV, sx, length, sz, 0, maxV,
+			wnx, length, wnz, 0.5, vBase + 0.5, enx, length, enz, 1, vBase + 0.5, esx, length, esz, 1, vBase, wsx, length, wsz, 0.5, vBase,
+		]);
+		const start = this.sink.count;
+		this.sink.ensure(18);
+		emitQuads(this.sink, quads, m, { color, light: [240, 240], overlay: [0, 0] });
+		// setNormal(0, 1, 0): lit like the top of a block
+		const out = this.sink.data;
+		for (let i = start; i < this.sink.count; i++) {
+			out[i * FLOATS + 3] = 0; out[i * FLOATS + 4] = 1; out[i * FLOATS + 5] = 0;
+		}
+		this.batch(texture, MODE_CUTOUT, start, false);
+	}
+
+	/** The model of a block state by id (as falling blocks and carried blocks show it), cached. */
+	blockStateMesh(id, world) {
+		const info = id !== undefined && world ? world.infos[id] : null;
+		if (!info || !this.assets) return null;
+		const key = 'state:' + id;
+		if (this.itemMeshes.has(key)) return this.itemMeshes.get(key);
+		let mesh = null;
+		const dispatch = this.assets.models.dispatch(info.name, info.props);
+		if (dispatch) {
+			const parts = [];
+			const random = new JavaRandom();
+			random.setSeedNumber(42);
+			collectParts(dispatch, random, parts);
+			const quads = [];
+			for (const part of parts) for (const list of part.quads) for (const q of list) quads.push({ q, tint: [1, 1, 1] });
+			if (quads.length) mesh = { kind: 'block', quads: this.blockQuads(quads) };
+		}
+		this.itemMeshes.set(key, mesh);
+		return mesh;
 	}
 
 	/** AvatarRenderer.setupRotations: players lie down while swimming, crawling and gliding with elytra. */
@@ -1366,9 +1478,29 @@ export class EntityRenderer {
 		const texture = this.texture(folder + '/' + wood);
 		if (!model || !texture) return this.drawBox(e, pos, style);
 		model.reset();
+		// AbstractBoatModel.animatePaddle with the rowing times (AbstractBoat.getRowingTime)
+		const paddle = (part, time, right) => {
+			if (!part) return;
+			const clamped = (t, a, b) => a + (b - a) * Math.max(0, Math.min(1, t));
+			part.xRot = clamped((Math.sin(-time) + 1) / 2, -PI / 3, -PI / 12);
+			part.yRot = clamped((Math.sin(-time + 1) + 1) / 2, -PI / 4, PI / 4);
+			if (right) part.yRot = PI - part.yRot;
+		};
+		paddle(model.parts.left_paddle, e.rowL || 0, false);
+		paddle(model.parts.right_paddle, e.rowR || 0, true);
 		const m = mat4();
 		translate(m, pos[0], pos[1] + 0.375, pos[2]);
 		rotate(m, 1, (180 - (e.yaw || 0)) * DEG);
+		// AbstractBoatRenderer.submit: a hit boat rocks, a boat over a bubble column tilts
+		const hurt = e.hurtTime || 0;
+		if (hurt > 0) rotate(m, 0, Math.sin(hurt) * hurt * (e.damage || 0) / 10 * (e.hurtDir || 1) * DEG);
+		if (e.bubble) {
+			const t = new Float32Array(16);
+			const angle = e.bubble * DEG, c = Math.cos(angle), s = Math.sin(angle), k = 1 - c, h = Math.SQRT1_2;
+			// rotation about the axis (1, 0, 1) (column-major)
+			t.set([c + h * h * k, h * s, h * h * k, 0, -h * s, c, h * s, 0, h * h * k, -h * s, c + h * h * k, 0, 0, 0, 0, 1]);
+			m.set(mul(m, t));
+		}
 		scale(m, -1, -1, 1);
 		rotate(m, 1, 90 * DEG);
 		const start = this.sink.count;
@@ -1824,22 +1956,10 @@ export class EntityRenderer {
 	}
 
 	drawFallingBlock(e, pos, style, world) {
-		const id = e.d && e.d.block;
-		const info = id !== undefined ? world.infos[id] : null;
 		const m = mat4();
 		translate(m, pos[0] - 0.5, pos[1], pos[2] - 0.5);
-		if (info && this.assets) {
-			const dispatch = this.assets.models.dispatch(info.name, info.props);
-			if (dispatch) {
-				const parts = [];
-				const random = new JavaRandom();
-				random.setSeedNumber(42);
-				collectParts(dispatch, random, parts);
-				const quads = [];
-				for (const part of parts) for (const list of part.quads) for (const q of list) quads.push({ q, tint: [1, 1, 1] });
-				if (quads.length) return this.emitItem({ kind: 'block', quads: this.blockQuads(quads) }, m, style);
-			}
-		}
+		const mesh = this.blockStateMesh(e.d && e.d.block, world);
+		if (mesh) return this.emitItem(mesh, m, style);
 		return this.drawBox(e, pos, style);
 	}
 

@@ -5,7 +5,7 @@
   <a href="https://github.com/DarienRahl/CCTV_Farbic/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/DarienRahl/CCTV_Farbic?style=for-the-badge&amp;label=release&amp;color=5d8c3e"></a>
   <img alt="Minecraft 26.3" src="https://img.shields.io/badge/minecraft-26.3-866043?style=for-the-badge">
   <img alt="Fabric, server side only" src="https://img.shields.io/badge/fabric-server%20side%20only-8b8b8b?style=for-the-badge">
-  <a href="#roadmap"><img alt="Roadmap" src="https://img.shields.io/badge/roadmap-40%2F56%20done-80ff20?style=for-the-badge"></a>
+  <a href="#roadmap"><img alt="Roadmap" src="https://img.shields.io/badge/roadmap-41%2F57%20done-80ff20?style=for-the-badge"></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-555555?style=for-the-badge"></a>
 </p>
 <!-- badges:end -->
@@ -49,7 +49,7 @@ in a web browser: players, mobs, opening doors and placed blocks show up right a
 ## Roadmap
 
 <!-- roadmap:start -->
-<p align="center"><img src="docs/images/roadmap/banner.svg" width="100%" alt="CCTV roadmap: 40 of 56 done"></p>
+<p align="center"><img src="docs/images/roadmap/banner.svg" width="100%" alt="CCTV roadmap: 41 of 57 done"></p>
 
 What is done and what comes next, milestone by milestone (the full plan with its principles is in
 [docs/ROADMAP.md](docs/ROADMAP.md)).
@@ -86,10 +86,10 @@ What is done and what comes next, milestone by milestone (the full plan with its
 
 </details>
 
-<img src="docs/images/roadmap/1-3.svg" width="100%" alt="1.3 — 1:1 picture: in progress - 1.3.1 is out, 25 of 33 done">
+<img src="docs/images/roadmap/1-3.svg" width="100%" alt="1.3 — 1:1 picture: in progress - 1.3.1 is out, 26 of 34 done">
 
 <details open>
-<summary><b>1.3 — 1:1 picture</b> · in progress - 1.3.1 is out · 25 of 33 done</summary>
+<summary><b>1.3 — 1:1 picture</b> · in progress - 1.3.1 is out · 26 of 34 done</summary>
 
 - [ ] **Reference renders in CI**: a Fabric client game test builds the CI scene in single player, takes a screenshot from the camera position with the game, and the viewer takes one from the same camera; both are published side by side with a difference score
 - [x] **Signs and hanging signs** with their text in the game font (text sent by the server; boards and beds are block models in 26.3 and were already drawn)
@@ -108,7 +108,8 @@ What is done and what comes next, milestone by milestone (the full plan with its
 - [x] Sounds the client makes itself: lightning thunder and impact (LightningBolt), the crackle and bubbling of fire, campfires, furnaces, candles, lava, flowing water and nether portals (animateTick)
 - [x] **Ambience**: rain on the blocks around the camera (ClientLevel.tickWeatherEffects, with its seeded random), the biome's loops, additions and cave sounds in the dark (BiomeAmbientSoundsHandler, from the server's environment attributes), underwater loops and additions, bubble columns, End flashes
 - [x] Client-only block and entity sounds: desert sand and dry plants, leaves, pale hanging moss, eyeblossoms, creaking hearts, dried ghasts, respawn anchors, bubble columns, potent sulfur, firefly bushes, vaults and trial spawners; blazes burning, phantom wing flaps, the warden's heartbeat, armour stand hits, zombie villager cures, evoker fang bites
-- [ ] The rest of the client-only sounds: the warden's heartbeat speeding up with its anger, enderman stares, sniffer searching and digging, guardian beams, boat paddles, dripstone and honey drips landing, background music (optional)
+- [x] **Guardians fire their beams** (GuardianRenderer.renderBeam, charging from purple to yellow, with the bubbles along it and GuardianAttackSoundInstance), their spikes and tail move like GuardianModel; **endermen scream** (the jaw drops, they shake, EndermanModel) with the stare sound and hold their carried block (CarriedBlockLayer); **boats row** (AbstractBoatModel paddles) and rock when hit; the warden's heartbeat speeds up with its anger; portal specks around endermen, smoke around blazes
+- [ ] The rest of the client-only sounds: sniffer searching and digging, dripstone and honey drips landing, background music (optional)
 - [x] **Particles** from `particles/*.json` and their textures: torch, candle and campfire flames and smoke, lava pops, drips, portal, falling leaves, spore blossoms, fireflies
 - [x] **Particles from the server**: broken blocks (pieces of the block's texture), explosions and their smoke, the particles the server sends (`ClientboundLevelParticlesPacket`: crits, sweeps, hearts, dust...), level events (dispenser smoke, bone meal, lava fizz), death and spawn poofs, love hearts, villager moods and potion effect swirls
 - [x] Rain splashes (and smoke where it falls on lava, magma and campfires), bubbles, bubble columns and whirlpools, reverse portal specks, white smoke

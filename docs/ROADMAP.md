@@ -101,8 +101,12 @@ to the milestone it belongs to. The roadmap on the README page is drawn from thi
       eyeblossoms, creaking hearts, dried ghasts, respawn anchors, bubble columns, potent sulfur, firefly
       bushes, vaults and trial spawners; blazes burning, phantom wing flaps, the warden's heartbeat, armour
       stand hits, zombie villager cures, evoker fang bites
-- [ ] The rest of the client-only sounds: the warden's heartbeat speeding up with its anger, enderman
-      stares, sniffer searching and digging, guardian beams, boat paddles, dripstone and honey drips
+- [x] **Guardians fire their beams** (GuardianRenderer.renderBeam, charging from purple to yellow, with the
+      bubbles along it and GuardianAttackSoundInstance), their spikes and tail move like GuardianModel;
+      **endermen scream** (the jaw drops, they shake, EndermanModel) with the stare sound and hold their
+      carried block (CarriedBlockLayer); **boats row** (AbstractBoatModel paddles) and rock when hit;
+      the warden's heartbeat speeds up with its anger; portal specks around endermen, smoke around blazes
+- [ ] The rest of the client-only sounds: sniffer searching and digging, dripstone and honey drips
       landing, background music (optional)
 - [x] **Particles** from `particles/*.json` and their textures: torch, candle and campfire flames
       and smoke, lava pops, drips, portal, falling leaves, spore blossoms, fireflies

@@ -258,5 +258,16 @@ net/minecraft/client/particle/WaterCurrentDownParticle
 net/minecraft/client/particle/WhiteSmokeParticle
 # fireworks (particles.js FireworkStarter, FireworkSpark, FireworkFlash)
 net/minecraft/client/particle/FireworkParticles
-net/minecraft/client/particle/SimpleAnimatedParticle
 net/minecraft/world/entity/projectile/FireworkRocketEntity
+# entity details (mobs.js guardian, enderman; entities.js drawBoat, drawGuardianBeam; sound.js)
+net/minecraft/client/model/monster/guardian/GuardianModel
+net/minecraft/client/renderer/entity/GuardianRenderer
+net/minecraft/client/resources/sounds/GuardianAttackSoundInstance
+net/minecraft/world/entity/monster/Guardian
+net/minecraft/client/model/monster/enderman/EndermanModel
+net/minecraft/client/renderer/entity/EndermanRenderer
+net/minecraft/client/renderer/entity/layers/CarriedBlockLayer
+net/minecraft/world/entity/monster/Enderman
+net/minecraft/client/model/object/boat/AbstractBoatModel
+net/minecraft/client/renderer/entity/AbstractBoatRenderer
+net/minecraft/world/entity/vehicle/boat/AbstractBoat

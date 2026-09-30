@@ -33,8 +33,10 @@ import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Pose;
 import net.minecraft.world.entity.decoration.ItemFrame;
 import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.entity.monster.Guardian;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.player.PlayerModelPart;
+import net.minecraft.world.entity.vehicle.boat.AbstractBoat;
 import net.minecraft.world.item.DyeColor;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.component.DyedItemColor;
@@ -158,6 +160,11 @@ final class EntityEncoder {
 			{"onGround", "onGround", "minecraft:axolotl"},
 			{"isInterested", "interested", "minecraft:wolf"},
 			{"getHealth", "health", "minecraft:wolf"},
+			// Guardians' spikes and tail (Guardian.aiStep), the warden's heartbeat pace, the enderman's stare sound.
+			{"isMoving", "moving", "minecraft:guardian minecraft:elder_guardian"},
+			{"isInWater", "inWater", "minecraft:guardian minecraft:elder_guardian"},
+			{"getClientAngerLevel", "anger", "minecraft:warden"},
+			{"hasBeenStaredAt", "staredAt", "minecraft:enderman"},
 			{"getMaxHealth", "maxHealth", "minecraft:wolf"},
 	};
 
@@ -287,6 +294,16 @@ final class EntityEncoder {
 		if (entity instanceof LightningBolt bolt) {
 			json.field("seed", Long.toString(bolt.seed));
 		}
+		if (entity instanceof AbstractBoat boat) {
+			writeBoat(json, boat);
+		}
+		if (entity instanceof Guardian guardian && guardian.hasActiveAttackTarget()) {
+			// the beam's target (Guardian.DATA_ID_ATTACK_TARGET); the viewer times the attack like the client
+			LivingEntity target = guardian.getActiveAttackTarget();
+			if (target != null) {
+				json.field("beam", target.getId());
+			}
+		}
 
 		Pose pose = entity.getPose();
 		if (pose != Pose.STANDING) {
@@ -319,6 +336,25 @@ final class EntityEncoder {
 
 		writeState(json, entity, blockStates);
 		json.endObject();
+	}
+
+	/**
+	 * What AbstractBoatRenderer shows: the paddles' rowing time (AbstractBoat.getRowingTime, rising by pi/8 a tick
+	 * while a paddle moves), the rocking when hit and the tilt over a bubble column. Only while not at rest.
+	 */
+	private static void writeBoat(Json json, AbstractBoat boat) {
+		float left = boat.getRowingTime(0, 1.0F);
+		float right = boat.getRowingTime(1, 1.0F);
+		if (left != 0 || right != 0) {
+			json.field("rowL", left, 3).field("rowR", right, 3);
+		}
+		if (boat.getHurtTime() > 0) {
+			json.field("hurtTime", boat.getHurtTime()).field("hurtDir", boat.getHurtDir()).field("damage", boat.getDamage(), 2);
+		}
+		float bubble = boat.getBubbleAngle(1.0F);
+		if (bubble != 0) {
+			json.field("bubble", bubble, 2);
+		}
 	}
 
 	/**
