@@ -205,4 +205,5 @@ to the milestone it belongs to. The roadmap on the README page is drawn from thi
 
 ## Later
 
-- Optional recording and timelapse of a camera
+- [x] **Recording and timelapse** of a camera in the browser: a video with the game's sounds, or one picture
+      every second to five minutes turned into a video, with the camera's name, place and time burnt in

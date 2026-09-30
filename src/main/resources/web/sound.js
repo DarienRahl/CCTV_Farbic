@@ -98,6 +98,16 @@ export class Sounds {
 		this.flashOn = false;
 	}
 
+	/** The game's sounds as a stream for recordings (recorder.js), or null while sound is off. */
+	recordingStream() {
+		if (!this.ctx || !this.enabled) return null;
+		if (!this.recordingOutput) {
+			this.recordingOutput = this.ctx.createMediaStreamDestination();
+			this.master.connect(this.recordingOutput);
+		}
+		return this.recordingOutput.stream;
+	}
+
 	/** Starts audio (must follow a click: browsers only allow sound after the user asks for it). */
 	async enable() {
 		if (!this.ctx) {

@@ -86,6 +86,11 @@ public final class CctvConfig {
 	 * are downloaded from Mojang when first played and cached in config/cctv/assets/objects, like the launcher.
 	 */
 	public boolean sounds = true;
+	/**
+	 * Show the Record and Timelapse buttons: viewers record the camera's picture (with its sounds when they are on)
+	 * or a timelapse of it into a video file in their own browser. Nothing is recorded on the server.
+	 */
+	public boolean recording = true;
 	/** Spawn a small observer-block marker where a camera is placed (vanilla block_display, no client mod needed). */
 	public boolean markers = true;
 	/** Maximum number of browser connections per camera. */

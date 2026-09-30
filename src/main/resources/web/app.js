@@ -15,6 +15,7 @@ import { Particles } from './particles.js';
 import { Sounds } from './sound.js';
 import { SectionCache } from './cache.js';
 import { EFFECTS } from './effects.js';
+import { Recorder } from './recorder.js';
 import { perspective, lookDir, multiply, direction, lerp, transformPoint } from './math.js';
 
 const params = new URLSearchParams(location.search);
@@ -80,7 +81,7 @@ const world = new World((key, section, message) => {
 
 const DEFAULTS = {
 	graphics: 'vanilla', shaderQuality: 'medium', postShader: '', clouds: 'fancy', labels: true, mobLabels: false,
-	mode: 'color', cctvEffect: false, skybox: 'default', renderScale: 1, particles: true, fog: 'vanilla', fov: '', blend: '2', music: 'default',
+	mode: 'color', cctvEffect: false, skybox: 'default', renderScale: 1, particles: true, fog: 'vanilla', fov: '', blend: '2', music: 'default', timelapse: '5',
 };
 const viewerInfo = { defaults: { ...DEFAULTS, skyboxes: {} }, locked: false, skyboxes: {}, shaders: [] };
 let settings = { ...DEFAULTS };
@@ -489,6 +490,34 @@ async function setSound(on) {
 	showSound();
 }
 soundButton.addEventListener('click', () => setSound(!sounds.enabled));
+
+// Recording in the browser (recorder.js): a video, or a timelapse, with the overlay's text burnt in.
+const recorder = new Recorder(canvas, {
+	audio: () => sounds.recordingStream(),
+	name: () => cameraName,
+	label: () => ({
+		left: [$('cam-name').textContent, $('cam-sub').textContent],
+		right: [clockEl.textContent, gameTimeEl.textContent],
+	}),
+});
+const recordButton = $('record');
+const timelapseButton = $('timelapse');
+const clockText = seconds => `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
+function updateRecording() {
+	const mode = recorder.mode;
+	recordButton.textContent = mode === 'video' ? `⏹ Stop ${clockText(recorder.elapsed())}` : '⏺ Record';
+	timelapseButton.textContent = mode === 'timelapse' ? `⏹ Stop timelapse · ${recorder.frames.length}`
+		: mode === 'encoding' ? `Saving… ${Math.round(recorder.encoded / recorder.total * 100)} %` : '⏱ Timelapse';
+	recordButton.disabled = mode === 'timelapse' || mode === 'encoding';
+	timelapseButton.disabled = mode === 'video' || mode === 'encoding';
+	recordButton.classList.toggle('on', mode === 'video');
+	timelapseButton.classList.toggle('on', mode === 'timelapse');
+}
+recorder.onchange = updateRecording;
+recordButton.addEventListener('click', () => (recorder.mode === 'video' ? recorder.stop() : recorder.startVideo()));
+timelapseButton.addEventListener('click', () => (recorder.mode === 'timelapse' ? recorder.stop()
+	: recorder.startTimelapse(Number(settings.timelapse) || 5)));
+setInterval(() => { if (recorder.mode === 'video') updateRecording(); }, 1000);
 let soundWanted = false;
 try {
 	soundWanted = localStorage.getItem('cctv-sound') === '1';
@@ -774,9 +803,10 @@ function frame(now) {
 
 loadViewerInfo().finally(() => {
 	soundButton.hidden = viewerInfo.sounds === false || embed;
+	recordButton.hidden = timelapseButton.hidden = viewerInfo.recording === false || embed || !recorder.supported;
 	connect();
 	requestAnimationFrame(frame);
 });
 
 // Handy for debugging from the browser console.
-window.cctv = { world, renderer, entities, particles, sounds, state, environment, settings: () => settings, sky, clouds, weather, post };
+window.cctv = { world, renderer, entities, particles, sounds, state, environment, settings: () => settings, sky, clouds, weather, post, recorder };

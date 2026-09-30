@@ -84,6 +84,17 @@
 					<option value="constant">Constant</option>
 				</select>
 			</label>
+			<label>Timelapse: one picture every
+				<select data-setting="timelapse">
+					<option value="1">second</option>
+					<option value="2">2 seconds</option>
+					<option value="5">5 seconds</option>
+					<option value="10">10 seconds</option>
+					<option value="30">30 seconds</option>
+					<option value="60">minute</option>
+					<option value="300">5 minutes</option>
+				</select>
+			</label>
 			<label>Biome blend
 				<select data-setting="blend">
 					<option value="0">Off</option>
@@ -138,6 +149,8 @@
 		<span class="spacer"></span>
 		<button type="button" id="open-settings" class="unlocked-only" title="Graphics, shaders, sky, labels">⚙ Settings</button>
 		<button type="button" id="sound" title="Hear the game's sounds at the camera">🔈 Sound off</button>
+		<button type="button" id="record" hidden title="Record a video of the camera (downloaded by your browser)">⏺ Record</button>
+		<button type="button" id="timelapse" hidden title="Keep a picture every few seconds and save them as a video when stopped (interval in Settings)">⏱ Timelapse</button>
 		<button type="button" id="reset-view" title="Drag with the mouse to look around; wheel = zoom">Reset view</button>
 		<button type="button" id="fullscreen">Fullscreen</button>
 	</nav>

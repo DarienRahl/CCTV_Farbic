@@ -10,7 +10,7 @@
   <a href="https://github.com/DarienRahl/CCTV_Farbic/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/DarienRahl/CCTV_Farbic?style=for-the-badge&amp;label=release&amp;color=5d8c3e"></a>
   <img alt="Minecraft 26.3" src="https://img.shields.io/badge/minecraft-26.3-866043?style=for-the-badge">
   <img alt="Fabric, server side only" src="https://img.shields.io/badge/fabric-server%20side%20only-8b8b8b?style=for-the-badge">
-  <a href="#roadmap"><img alt="Roadmap" src="https://img.shields.io/badge/roadmap-69%2F71%20done-80ff20?style=for-the-badge"></a>
+  <a href="#roadmap"><img alt="Roadmap" src="https://img.shields.io/badge/roadmap-70%2F72%20done-80ff20?style=for-the-badge"></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-555555?style=for-the-badge"></a>
 </p>
 <!-- badges:end -->
@@ -180,7 +180,7 @@ at once as a video wall.
 ## Roadmap
 
 <!-- roadmap:start -->
-<p align="center"><img src="docs/images/roadmap/banner.svg" width="100%" alt="CCTV roadmap: 69 of 71 done"></p>
+<p align="center"><img src="docs/images/roadmap/banner.svg" width="100%" alt="CCTV roadmap: 70 of 72 done"></p>
 
 What is done and what comes next, milestone by milestone (the full plan with its principles is in
 [docs/ROADMAP.md](docs/ROADMAP.md)).
@@ -288,12 +288,12 @@ What is done and what comes next, milestone by milestone (the full plan with its
 
 </details>
 
-<img src="docs/images/roadmap/later.svg" width="100%" alt="Later: ideas for later, 1 ideas">
+<img src="docs/images/roadmap/later.svg" width="100%" alt="Later: started, 1 of 1 done">
 
 <details>
-<summary><b>Later</b> · ideas for later · 1 ideas</summary>
+<summary><b>Later</b> · started · 1 of 1 done</summary>
 
-- Optional recording and timelapse of a camera
+- [x] **Recording and timelapse** of a camera in the browser: a video with the game's sounds, or one picture every second to five minutes turned into a video, with the camera's name, place and time burnt in
 
 </details>
 
@@ -367,6 +367,12 @@ minimal), biome blend (off to 15×15 like the game's option), background music, 
 render resolution (for weak GPUs), name tags, mob labels, particles and the CCTV effect. Each viewer's
 choice is remembered in their browser.
 
+**⏺ Record** saves a video of the camera (with the game's sounds when they are on) and **⏱ Timelapse**
+keeps one picture every second to five minutes (Settings) and turns them into a video when it is stopped. The
+camera's name, place, date and game time are burnt into the corner like on a CCTV recording. Everything is
+recorded in the viewer's own browser (WebM, with the length set so players can seek); `recording: false`
+hides both buttons.
+
 Name tags look exactly like in the game: Minecraft's own font from `client.jar`, floating half a
 block above the head at the game's scale, with the translucent background, lit like the entity and
 dimmed for sneaking players. They follow the game's rules (players within 64 blocks, 32 when
@@ -412,6 +418,7 @@ can really see. "Mob labels" adds tags for every other mob (its custom name or i
 | `gzip` | `true` | Compress the stream |
 | `skins` | `true` | Player skins (the server fetches them from the Mojang API and caches them) |
 | `sounds` | `true` | The game's sounds in the viewer (files downloaded from Mojang when first played, cached) |
+| `recording` | `true` | The Record and Timelapse buttons (videos are made in the viewer's browser, nothing on the server) |
 | `markers` | `true` | Camera marker block in the world |
 | `maxViewersPerCamera` | `16` | Viewer limit per camera |
 | `viewer` | | Viewer defaults: `graphics` (`vanilla`/`shaders`), `shaderQuality` (`low`…`ultra`), `postShader`, `skyboxes` (dimension → name), `clouds` (`fancy`/`fast`/`off`), `labels`, `mobLabels`, `particles`, `mode` (`color`/`mono`/`night`), `cctvEffect`, `fog` (`vanilla`/`smooth`/`atmospheric`/`minimal`), `fov` (30–110, 0 = each camera's), `biomeBlend` (0–7), `music` (`off`/`default`/`frequent`/`constant`), `lockSettings` |
