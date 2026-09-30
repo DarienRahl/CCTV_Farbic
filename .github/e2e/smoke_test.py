@@ -520,7 +520,8 @@ def main():
     if ["Hello", 0xFFAA00, 1] not in text.get("tx", {}).get("s", []) or text.get("bb") != 3 or text.get("tx", {}).get("bg") != -16777216:
         failures.append(f"the text display was not streamed with its styled text, billboard and background (got {text})")
     blocks = stream.displays.get("minecraft:block_display") or []
-    stone = [e for e in blocks if abs(e["x"] + 3) < 0.1]
+    # (/summon puts an entity given whole coordinates in the middle of the block: -2.5 -60 3.5)
+    stone = [e for e in blocks if abs(e["x"] + 2.5) < 0.1 and abs(e["z"] - 3.5) < 0.1]
     if not stone or "b" not in stone[-1].get("disp", {}) or stone[-1]["disp"].get("t", [0] * 14)[7] != 0.5:
         failures.append(f"the block display was not streamed with its block and scale (got {stone})")
     if any(abs(e["x"] + 1) < 0.8 and abs(e["y"] + 56) < 0.8 and abs(e["z"] + 8) < 0.8 for e in blocks):
