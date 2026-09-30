@@ -29,6 +29,7 @@ import net.minecraft.sounds.SoundSource;
 import net.minecraft.util.random.WeightedList;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.projectile.FireworkRocketEntity;
+import net.minecraft.world.level.block.piston.PistonMovingBlockEntity;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
@@ -168,12 +169,37 @@ public final class CameraManager implements CameraDirectory {
 		return false;
 	}
 
+	/** Blocks that started moving with a piston this tick (their block entities, created by the piston). */
+	private final List<PistonMovingBlockEntity> movingPistons = new ArrayList<>();
+
+	/**
+	 * Called (server thread) for every PistonMovingBlockEntity created. The server sets moving pistons without
+	 * telling players (they run the piston's block event themselves), so the block entities are collected here
+	 * and sent as effects at the end of the tick, when they are in their level.
+	 */
+	public void onPistonMoving(PistonMovingBlockEntity piston) {
+		if (!sessions.isEmpty() && movingPistons.size() < 1024) {
+			movingPistons.add(piston);
+		}
+	}
+
 	/** End of every server tick. */
 	public void tick() {
 		tick++;
 		if (sessions.isEmpty()) {
+			movingPistons.clear();
 			return;
 		}
+		for (PistonMovingBlockEntity piston : movingPistons) {
+			if (piston.getLevel() instanceof ServerLevel level && !piston.isRemoved()) {
+				BlockPos pos = piston.getBlockPos();
+				for (CameraSession session : sessions.values()) {
+					session.onEffect(level, pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5, 96,
+							states -> BlockEntityEncoder.movingPiston(pos, piston, states));
+				}
+			}
+		}
+		movingPistons.clear();
 
 		for (Map.Entry<String, CameraSession> entry : sessions.entrySet()) {
 			CameraSession session = entry.getValue();

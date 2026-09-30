@@ -104,10 +104,12 @@ final class BlockEntityEncoder {
 	 */
 	/**
 	 * A block moved by a piston (PistonMovingBlockEntity at its destination) as PistonHeadRenderer draws it:
-	 * ["pm", x, y, z, stepX, stepY, stepZ, extending, progress, block, short block, base, short while above],
+	 * ["pm", x, y, z, stepX, stepY, stepZ, extending, progress, block, short block, base, short while above,
+	 * the block it becomes],
 	 * where the block is drawn offset by the direction times (progress - 1) when extending, (1 - progress)
 	 * when retracting, a piston head switches to its short form ("short block", -1 if none) while the progress
 	 * is at most (short while above: false) or at least 0.5, and a retracting piston draws its base in place.
+	 * Players are not sent the moving piston block, only the block it becomes when the move ends.
 	 */
 	static String movingPiston(BlockPos pos, PistonMovingBlockEntity piston, IntConsumer states) {
 		Direction direction = piston.getDirection();
@@ -139,7 +141,7 @@ final class BlockEntityEncoder {
 		json.beginArray().value("pm").value(pos.getX()).value(pos.getY()).value(pos.getZ())
 				.value(direction.getStepX()).value(direction.getStepY()).value(direction.getStepZ())
 				.value(piston.isExtending()).value(piston.getProgress(1.0F), 2)
-				.value(block).value(shortBlock).value(base).value(shortAbove).endArray();
+				.value(block).value(shortBlock).value(base).value(shortAbove).value(Block.getId(moved)).endArray();
 		return json.toString();
 	}
 

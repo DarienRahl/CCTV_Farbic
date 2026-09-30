@@ -5,6 +5,7 @@
 	"mixins": [
 		"ChunkMapAccessor",
 		"MinecraftServerMixin",
+		"PistonMovingBlockEntityMixin",
 		"ServerLevelMixin"
 	],
 	"injectors": {

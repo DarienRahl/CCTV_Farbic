@@ -2163,15 +2163,16 @@ export class EntityRenderer {
 	 * A block starts moving with a piston (PistonMovingBlockEntity): shown right away, like the block changes
 	 * that come with it, not with the entities' delay.
 	 */
-	pistonMove([, x, y, z, sx, sy, sz, extending, progress, block, shortBlock, base, shortAbove], now) {
-		this.pistons.set(x + ',' + y + ',' + z, { x, y, z, sx, sy, sz, extending, progress, block, shortBlock, base, shortAbove, start: now });
+	pistonMove([, x, y, z, sx, sy, sz, extending, progress, block, shortBlock, base, shortAbove, final], now) {
+		this.pistons.set(x + ',' + y + ',' + z, { x, y, z, sx, sy, sz, extending, progress, block, shortBlock, base, shortAbove, final, start: now });
 		if (this.pistons.size > 512) this.pistons.delete(this.pistons.keys().next().value);
 	}
 
 	/**
 	 * PistonHeadRenderer: moving blocks drawn between where they were and where they go (the progress rises by
 	 * 0.5 a tick), a piston head short while it slides through its base, a retracting piston's base in place.
-	 * A moving block is kept until the moving piston at its place turns into the block.
+	 * A moving block is kept until its place shows the block it becomes (the server sends that block, not the
+	 * moving piston, which players simulate themselves).
 	 */
 	drawPistons(frame, world) {
 		if (!this.pistons.size) return;
@@ -2180,13 +2181,10 @@ export class EntityRenderer {
 		for (const [key, p] of this.pistons) {
 			const ticks = (now - p.start) / 50;
 			const progress = Math.min(1, p.progress + 0.5 * ticks);
-			const at = world.entryAt(p.x, p.y, p.z);
-			const moving = at && at.n === 'minecraft:moving_piston';
-			if ((progress >= 1 && !moving) || ticks > 40) {
+			if ((progress >= 1 && (world.getBlockId(p.x, p.y, p.z) === p.final || ticks > 10)) || ticks > 40) {
 				this.pistons.delete(key);
 				continue;
 			}
-			if (!moving && ticks > 2) continue;
 			const bx = p.x - o[0] - cam[0], by = p.y - o[1] - cam[1], bz = p.z - o[2] - cam[2];
 			if (!frame.frustum(bx + 0.5, by + 0.5, bz + 0.5, 2)) continue;
 			const offset = p.extending ? progress - 1 : 1 - progress;
