@@ -84,7 +84,7 @@ await page.evaluate(() => {
 	const t0 = performance.now();
 	const pan = () => {
 		const t = Math.min(1, (performance.now() - t0) / 15000);
-		state.lookYaw = -9 + 18 * (0.5 - 0.5 * Math.cos(Math.PI * t));
+		state.lookYaw = -6 + 12 * (0.5 - 0.5 * Math.cos(Math.PI * t));
 		if (window.cctv.recorder.mode === 'video') requestAnimationFrame(pan);
 	};
 	pan();
