@@ -10,7 +10,7 @@
   <a href="https://github.com/DarienRahl/CCTV_Farbic/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/DarienRahl/CCTV_Farbic?style=for-the-badge&amp;label=release&amp;color=5d8c3e"></a>
   <img alt="Minecraft 26.3" src="https://img.shields.io/badge/minecraft-26.3-866043?style=for-the-badge">
   <img alt="Fabric, server side only" src="https://img.shields.io/badge/fabric-server%20side%20only-8b8b8b?style=for-the-badge">
-  <a href="#roadmap"><img alt="Roadmap" src="https://img.shields.io/badge/roadmap-75%2F76%20done-80ff20?style=for-the-badge"></a>
+  <a href="#roadmap"><img alt="Roadmap" src="https://img.shields.io/badge/roadmap-76%2F80%20done-80ff20?style=for-the-badge"></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-555555?style=for-the-badge"></a>
 </p>
 <!-- badges:end -->
@@ -197,7 +197,7 @@ at once as a video wall.
 ## Roadmap
 
 <!-- roadmap:start -->
-<p align="center"><img src="docs/images/roadmap/banner.svg" width="100%" alt="CCTV roadmap: 75 of 76 done"></p>
+<p align="center"><img src="docs/images/roadmap/banner.svg" width="100%" alt="CCTV roadmap: 76 of 80 done"></p>
 
 What is done and what comes next, milestone by milestone (the full plan with its principles is in
 [docs/ROADMAP.md](docs/ROADMAP.md)).
@@ -306,6 +306,18 @@ What is done and what comes next, milestone by milestone (the full plan with its
 - [x] **Entities skinned on the GPU**: every model's quads stay on the GPU in their parts' own space and a frame only sends one matrix per part (a float texture), so the vertices of mobs, players, armour and block entity models are no longer rebuilt and uploaded every frame (`?skinning=0` turns it off for comparisons)
 - [x] Video wall: frame rate cap (lower for small tiles), one pixel per CSS pixel, no rendering for tiles that are off screen or in a hidden tab
 - [x] **Budgets in CI**: server milliseconds per camera tick, bytes per section message, the page's time per frame (also in `/api/status`: tick time, sections sent, kept and compacted)
+
+</details>
+
+<img src="docs/images/roadmap/1-5.svg" width="100%" alt="1.5 — everything the game shows: started, 1 of 4 done">
+
+<details>
+<summary><b>1.5 — everything the game shows</b> · started · 1 of 4 done</summary>
+
+- [x] **Display entities** like DisplayRenderer: block, item and text displays (the holograms, signs and decorations of servers) with their transformation interpolated like the game (Transformation.slerp), billboards facing the camera, brightness overrides, shadows, view range and teleport gliding; text displays with the game's font, colours, bold, italic, underline and strikethrough, line wrapping, alignment, background and see-through text (the cameras' own markers stay hidden)
+- [ ] Shelves (ShelfRenderer: the items standing on a shelf block)
+- [ ] Mannequins (the player-like decoration entity, drawn like a player with its profile's skin)
+- [ ] Arrows and bee stingers stuck in players and mobs (StuckInBodyLayer)
 
 </details>
 

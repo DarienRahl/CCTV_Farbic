@@ -270,10 +270,23 @@ export class TextRenderer {
 
 	/**
 	 * One string. transform(fx, fy) maps font units to camera relative coordinates; color [r, g, b, a];
-	 * light [block, sky] (0..240); mode: see_through / normal / polygon_offset; background: RGBA or null.
+	 * light [block, sky] (0..240); mode: see_through / normal / polygon_offset; background: RGBA or null;
+	 * style: {bold, italic} like Style (bold draws every glyph again one pixel to the right, one pixel wider).
 	 */
-	add(transform, text, x, y, color, light, mode, background = null) {
-		if (text) this.items.push({ transform, text, x, y, color, light, mode, background });
+	add(transform, text, x, y, color, light, mode, background = null, style = null) {
+		if (text) this.items.push({ transform, text, x, y, color, light, mode, background, bold: !!(style && style.bold), italic: !!(style && style.italic) });
+	}
+
+	/** A filled rectangle in font units (a text display's background, underlines and strikethroughs). */
+	rect(transform, x0, y0, x1, y1, color, light, mode) {
+		this.items.push({ transform, text: '', x: x0, y: y0, rect: [x0, y0, x1, y1], color, light, mode, background: color });
+	}
+
+	/** Font.width of a styled piece: every glyph's advance, one more for bold. */
+	styledWidth(text, bold) {
+		let width = 0;
+		for (const ch of text) width += this.font.glyph(ch.codePointAt(0)).advance + (bold ? 1 : 0);
+		return width;
 	}
 
 	/** Font.prepare8xTextOutline: the text in the outline colour around it, then the text on top. */
@@ -325,9 +338,10 @@ export class TextRenderer {
 	}
 
 	pass(items, mode) {
-		const quad = (item, x0, y0, x1, y1, u0, v0, u1, v1, color) => {
+		const quad = (item, x0, y0, x1, y1, u0, v0, u1, v1, color, glyph = false) => {
 			const corner = (fx, fy, u, v) => {
-				const p = item.transform(fx, fy);
+				// BakedSheetGlyph: italic glyphs lean one pixel right at the top, one left at the bottom
+				const p = item.transform(glyph && item.italic ? fx + 1 - 0.25 * (fy - item.y) : fx, fy);
 				this.vertex(p[0], p[1], p[2], u, v, color, item.light);
 			};
 			corner(x0, y0, u0, v0); corner(x0, y1, u0, v1); corner(x1, y1, u1, v1);
@@ -338,7 +352,8 @@ export class TextRenderer {
 		if (backgrounds.length) {
 			const start = this.count;
 			for (const item of backgrounds) {
-				quad(item, item.x - 1, item.y - 1, item.x + this.font.width(item.text), item.y + 9, 0, 0, 0, 0, item.background);
+				const r = item.rect || [item.x - 1, item.y - 1, item.x + this.font.width(item.text), item.y + 9];
+				quad(item, r[0], r[1], r[2], r[3], 0, 0, 0, 0, item.background);
 			}
 			this.draws.push({ ...mode, texture: null, start, count: this.count - start, background: true });
 		}
@@ -350,14 +365,15 @@ export class TextRenderer {
 				if (glyph.texture) {
 					if (!byTexture.has(glyph.texture)) byTexture.set(glyph.texture, []);
 					byTexture.get(glyph.texture).push([item, x, glyph]);
+					if (item.bold) byTexture.get(glyph.texture).push([item, x + 1, glyph]);
 				}
-				x += glyph.advance;
+				x += glyph.advance + (item.bold ? 1 : 0);
 			}
 		}
 		for (const [texture, glyphs] of byTexture) {
 			const start = this.count;
 			for (const [item, x, g] of glyphs) {
-				quad(item, x, item.y + g.up, x + g.w, item.y + g.up + g.h, g.u0, g.v0, g.u1, g.v1, item.color);
+				quad(item, x, item.y + g.up, x + g.w, item.y + g.up + g.h, g.u0, g.v0, g.u1, g.v1, item.color, true);
 			}
 			this.draws.push({ ...mode, texture, start, count: this.count - start, background: false });
 		}

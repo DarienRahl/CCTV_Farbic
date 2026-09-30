@@ -28,6 +28,7 @@ import net.minecraft.util.StringRepresentable;
 import net.minecraft.world.entity.AnimationState;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.entity.Crackiness;
+import net.minecraft.world.entity.Display;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.HumanoidArm;
@@ -75,15 +76,14 @@ import io.github.darienrahl.cctv.web.Json;
  * type...), walk animation, equipment and a few state flags.
  */
 final class EntityEncoder {
-	/** Technical entities that are invisible in game anyway (and the camera markers). */
+	/** Technical entities that are invisible in game anyway (area effect clouds only make particles). */
 	private static final Set<String> HIDDEN_TYPES = Set.of(
 			"minecraft:marker",
 			"minecraft:interaction",
-			"minecraft:block_display",
-			"minecraft:item_display",
-			"minecraft:text_display",
 			"minecraft:area_effect_cloud"
 	);
+	/** The tag of the cameras' own markers (block displays the viewer does not draw: it is the camera). */
+	static final String CAMERA_MARKER_TAG = "cctv_camera";
 
 	/** Variants stored as data components: [json key, component]. */
 	private static final List<Map.Entry<String, DataComponentType<?>>> VARIANTS = List.of(
@@ -265,7 +265,7 @@ final class EntityEncoder {
 	}
 
 	static boolean shouldSend(Entity entity, String type) {
-		if (HIDDEN_TYPES.contains(type)) {
+		if (HIDDEN_TYPES.contains(type) || entity instanceof Display && entity.entityTags().contains(CAMERA_MARKER_TAG)) {
 			return false;
 		}
 		return !(entity instanceof Player player) || !player.isSpectator();
@@ -357,8 +357,8 @@ final class EntityEncoder {
 			writePatterns(json, "itemPatterns", item.getItem());
 			foil |= foil(item.getItem(), FOIL_ITEM);
 		} else {
-			// Item frames and thrown items (snowballs, potions, eyes of ender...) show an item too.
-			ItemStack shown = shownItem(entity);
+			// Item frames, item displays and thrown items (snowballs, potions, eyes of ender...) show an item too.
+			ItemStack shown = entity instanceof Display display ? DisplayEncoder.item(display) : shownItem(entity);
 			if (shown != null) {
 				writeItem(json, "item", shown);
 				writePatterns(json, "itemPatterns", shown);
@@ -370,6 +370,9 @@ final class EntityEncoder {
 		}
 		if (entity instanceof ItemFrame frame) {
 			writeFramedMap(json, frame);
+		}
+		if (entity instanceof Display display) {
+			DisplayEncoder.write(json, display, blockStates);
 		}
 		if (entity instanceof Leashable leashable && leashable.getLeashHolder() != null) {
 			writeLeash(json, entity, leashable, leashable.getLeashHolder());

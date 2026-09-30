@@ -730,6 +730,8 @@ function frame(now) {
 		camPos: eye, origin: o, originMod: [((o[0] % 1024) + 1024) % 1024, o[1], ((o[2] % 1024) + 1024) % 1024],
 		fog, fogEnd: range, sky: skyState, now, time: now / 1000, daylight, rain, sunColor,
 		width: canvas.width, height: canvas.height,
+		// the camera's yaw and pitch in the game's degrees (display entities' billboards face it)
+		camYaw: c.yaw + state.lookYaw, camPitch: pitch,
 	};
 	entities.prepare(frameData, list, world, environment);
 

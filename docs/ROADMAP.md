@@ -218,6 +218,17 @@ to the milestone it belongs to. The roadmap on the README page is drawn from thi
 - [x] **Budgets in CI**: server milliseconds per camera tick, bytes per section message, the page's time
       per frame (also in `/api/status`: tick time, sections sent, kept and compacted)
 
+## 1.5 — everything the game shows
+
+- [x] **Display entities** like DisplayRenderer: block, item and text displays (the holograms, signs and decorations
+      of servers) with their transformation interpolated like the game (Transformation.slerp), billboards facing
+      the camera, brightness overrides, shadows, view range and teleport gliding; text displays with the game's
+      font, colours, bold, italic, underline and strikethrough, line wrapping, alignment, background and
+      see-through text (the cameras' own markers stay hidden)
+- [ ] Shelves (ShelfRenderer: the items standing on a shelf block)
+- [ ] Mannequins (the player-like decoration entity, drawn like a player with its profile's skin)
+- [ ] Arrows and bee stingers stuck in players and mobs (StuckInBodyLayer)
+
 ## Later
 
 - [x] **Recording and timelapse** of a camera in the browser: a video with the game's sounds, or one picture

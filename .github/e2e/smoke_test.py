@@ -74,6 +74,7 @@ class StreamReader(threading.Thread):
         self.events = {}
         self.first = {}
         self.entity_types = set()
+        self.displays = {}
         self.foil = set()
         self.glowing = set()
         self.leashed = set()
@@ -121,6 +122,9 @@ class StreamReader(threading.Thread):
                             self.items.update((e.get("item"), round(e["x"]), round(e["y"]), round(e["z"]))
                                               for e in data["e"] if e["type"] == "minecraft:item")
                             for e in data["e"]:
+                                if e["type"] in ("minecraft:text_display", "minecraft:block_display", "minecraft:item_display"):
+                                    self.displays.setdefault(e["type"], []).append(e)
+                                    del self.displays[e["type"]][:-3]
                                 for name in e.get("anim", {}):
                                     self.animation_states.add((e["type"], name))
                                 for event_id in e.get("ev", []):
@@ -298,6 +302,13 @@ def main():
     # a tame wolf in badly worn wolf armour (14 of 64 durability left: the "high" cracks of WolfArmorLayer)
     rcon.command('summon minecraft:wolf 3 -60 1 {Owner:[I;1,2,3,4],'
                  'equipment:{body:{id:"minecraft:wolf_armor",count:1,components:{"minecraft:damage":50}}}}')
+
+    # display entities (DisplayRenderer): a hologram, a small block and an item, the way servers decorate
+    rcon.command('summon minecraft:text_display 0 -57 3 {text:{text:"Hello",color:"gold",bold:true},billboard:"center",'
+                 'background:-16777216,line_width:120}')
+    rcon.command('summon minecraft:block_display -3 -60 3 {block_state:"minecraft:stone",transformation:{translation:[0f,0f,0f],'
+                 'left_rotation:[0f,0f,0f,1f],scale:[0.5f,0.5f,0.5f],right_rotation:[0f,0f,0f,1f]}}')
+    rcon.command('summon minecraft:item_display 2 -58 3 {item:{id:"minecraft:diamond",count:1},item_display:"fixed"}')
 
     rcon.command("cctv create ci -1 -56 -8 10 30")
     # a camera under water, in the pool (the water fog and the underwater overlay, screenshot.mjs)
@@ -497,6 +508,19 @@ def main():
         failures.append("the pig named Bob (name always visible) was not streamed with its name")
     if "minecraft:cow" not in stream.entity_types:
         failures.append("the cow in front of the camera was not streamed")
+    print("display entities:", json.dumps({k: v[-1].get("disp") for k, v in stream.displays.items()}), flush=True)
+    text = (stream.displays.get("minecraft:text_display") or [{}])[-1].get("disp", {})
+    if ["Hello", 0xFFAA00, 1] not in text.get("tx", {}).get("s", []) or text.get("bb") != 3 or text.get("tx", {}).get("bg") != -16777216:
+        failures.append(f"the text display was not streamed with its styled text, billboard and background (got {text})")
+    blocks = stream.displays.get("minecraft:block_display") or []
+    stone = [e for e in blocks if abs(e["x"] + 3) < 0.1]
+    if not stone or "b" not in stone[-1].get("disp", {}) or stone[-1]["disp"].get("t", [0] * 14)[7] != 0.5:
+        failures.append(f"the block display was not streamed with its block and scale (got {stone})")
+    if any(abs(e["x"] + 1) < 0.8 and abs(e["y"] + 56) < 0.8 and abs(e["z"] + 8) < 0.8 for e in blocks):
+        failures.append("the camera's own marker (a tagged block display) was streamed")
+    item = (stream.displays.get("minecraft:item_display") or [{}])[-1]
+    if item.get("item") != "minecraft:diamond" or item.get("disp", {}).get("ctx") != "fixed":
+        failures.append(f"the item display was not streamed with its item and context (got {item})")
     if not any(b[0] == 0 and b[1] == -60 and b[2] == 0 for b in stream.block_updates):
         failures.append("instant block update (mixin) did not arrive")
     print("animation states:", sorted(stream.animation_states), "entity events:", sorted(stream.entity_events), flush=True)

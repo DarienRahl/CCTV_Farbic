@@ -681,6 +681,8 @@ export class EntityRenderer {
 		this.spawners = new Map();
 		/** Lid, shake and similar animation state of block entities by "x,y,z", from block events. */
 		this.blockAnims = new Map();
+		/** Display entities' interpolation (transformation, text opacity and background, teleport): entity id -> state */
+		this.displays = new Map();
 		/** Parrots dancing to a jukebox: entity id -> the jukebox's position (Parrot.jukebox) */
 		this.partyParrots = new Map();
 		this.breaking = [];
@@ -1168,6 +1170,7 @@ export class EntityRenderer {
 	}
 
 	cleanupStates(now) {
+		for (const [id, state] of this.displays) if (this.tick - state.seen > 100) this.displays.delete(id);
 		for (const [id, queue] of this.events) if (!queue.length || this.tick - queue[queue.length - 1].t > 200) this.events.delete(id);
 		for (const [key, b] of this.books) if (now - b.seen > 5000) this.books.delete(key);
 		if (this.states.size < 64) return;
@@ -1371,6 +1374,7 @@ export class EntityRenderer {
 		this.bolts = [];
 		this.shadows = [];
 		this.mapLabels = [];
+		this.displayTexts = [];
 		this.boxed.clear();
 		const now = frame.now;
 		const o = frame.origin, cam = frame.camPos;
@@ -1391,6 +1395,11 @@ export class EntityRenderer {
 			const showsInvisible = isKnownMob(type) || type === 'item_frame' || type === 'glow_item_frame';
 			if (e.invisible && !e.burning && !showsInvisible) continue;
 			let radius = Math.max(e.w || 1, e.h || 1) + 1;
+			// display entities have no size of their own: their transformation and text decide how far they reach
+			if (e.disp) {
+				const t = e.disp.t || [];
+				radius = Math.max(radius, Math.hypot(t[0] || 0, t[1] || 0, t[2] || 0) + Math.max(Math.abs(t[7] ?? 1), Math.abs(t[8] ?? 1), Math.abs(t[9] ?? 1)) * (e.disp.tx ? 6 : 2) + 1);
+			}
 			// FishingHookRenderer.affectedByCulling: the line to the rod shows while the hook is off screen
 			const angler = e.fish && this.byId.get(e.fish[0]);
 			if (angler) radius = Math.max(radius, Math.hypot(angler.x - e.x, angler.y - e.y, angler.z - e.z) + 2);
@@ -1417,6 +1426,7 @@ export class EntityRenderer {
 		this.text.nameTags(this.collectNameTags(frame, list, world), [view[0], view[4], view[8]], [view[1], view[5], view[9]]);
 		this.addMapLabels();
 		this.addSignText(frame, world);
+		for (const add of this.displayTexts) add();
 		this.text.finish();
 		if (this.assets) this.prepareBlockEntities(frame, world, list);
 		this.upload();
@@ -1571,6 +1581,7 @@ export class EntityRenderer {
 			case 'trident': return this.drawProjectile(e, pos, style, 'trident#main', 'trident/trident', -90, 90);
 			case 'tnt': return this.drawBlockEntity(e, pos, style, 'minecraft:tnt', 1);
 			case 'falling_block': return this.drawFallingBlock(e, pos, style, world);
+			case 'block_display': case 'item_display': case 'text_display': return this.drawDisplay(e, type, pos, style, world);
 			case 'painting': return this.drawPainting(e, pos, style, world);
 			case 'item_frame': case 'glow_item_frame': return this.drawItemFrame(e, type, pos, style);
 			case 'leash_knot': return this.drawSimple(pos, style, 'leash_knot#main', 'lead_knot/lead_knot', 0);
@@ -2911,6 +2922,159 @@ export class EntityRenderer {
 		this.emitBlock(name, m, { ...style, overlay: [0, fuse > 0 && Math.floor(fuse / 5) % 2 === 0 ? 1 : 0] });
 	}
 
+	/**
+	 * DisplayRenderer: a block, item or text display at its position, turned by its billboard (the camera's view
+	 * for vertical, horizontal and center), then by its transformation (translation, left rotation, scale, right
+	 * rotation) interpolated like Display's TransformationInterpolator, lit by its brightness override or its block.
+	 */
+	drawDisplay(e, type, pos, style, world) {
+		const d = e.disp;
+		if (!d) return;
+		// Display.shouldRenderAtSqrDistance: view range times 64 blocks
+		if (Math.hypot(pos[0], pos[1], pos[2]) >= (d.vr ?? 1) * 64) return;
+		const s = this.displayState(e, d);
+		const tick = this.tick;
+		const t = s.from && s.duration > 0
+			? slerpTransformation(s.from, s.to, Math.min(1, Math.max(0, (tick - s.start) / s.duration)))
+			: s.to;
+		// LinearInterpolationHandler: a teleported display glides there over teleport_duration ticks
+		let p = pos;
+		if (s.glide) {
+			const k = Math.min(1, Math.max(0, (tick - s.glide.start) / s.glide.duration));
+			p = [pos[0] + (s.glide.from[0] - e.x) * (1 - k), pos[1] + (s.glide.from[1] - e.y) * (1 - k), pos[2] + (s.glide.from[2] - e.z) * (1 - k)];
+		}
+		const light = d.br !== undefined ? [((d.br >> 4) & 15) * 16, ((d.br >> 20) & 15) * 16] : style.light;
+		const displayStyle = { ...style, light, overlay: [0, 0] };
+		const m = mat4();
+		translate(m, p[0], p[1], p[2]);
+		// calculateOrientation: rotationYXZ of the entity's or the camera's yaw and pitch per billboard
+		const camYaw = (this.frame.camYaw ?? 0) - 180, camPitch = -(this.frame.camPitch ?? 0);
+		const billboard = d.bb || 0;
+		rotate(m, 1, -(billboard === 1 || billboard === 3 ? camYaw : e.yaw || 0) * DEG);
+		rotate(m, 0, (billboard === 2 || billboard === 3 ? camPitch : e.pitch || 0) * DEG);
+		multiplyTransformation(m, t);
+		if (d.sr) this.shadowFor(e, pos, d.sr, world, d.ss ?? 1);
+		if (type === 'block_display') {
+			const mesh = d.b !== undefined ? this.blockStateMesh(d.b, world) : null;
+			if (mesh) this.emitItem(mesh, m, displayStyle);
+		} else if (type === 'item_display') {
+			if (!e.item) return;
+			rotate(m, 1, Math.PI);
+			const context = d.ctx || 'none';
+			if (isShield(e.item)) {
+				this.drawShield(m, context, displayStyle, e.itemPatterns);
+				return;
+			}
+			const mesh = this.itemMesh(e.itemModel || e.item, e.itemP, context);
+			if (!mesh) return;
+			const transform = context === 'none' ? {} : this.displayTransform(e.item, context, {}, mesh.modelId);
+			this.applyDisplay(m, transform, context.endsWith('lefthand'));
+			const itemStyle = { ...displayStyle };
+			if (e.foil & FOIL_ITEM) itemStyle.glint = GLINT_ITEM;
+			this.emitItem(mesh, m, itemStyle, e.itemPatterns);
+		} else if (d.tx) {
+			this.displayTexts.push(() => this.addDisplayText(d.tx, s, m, light));
+		}
+	}
+
+	/** Display.tick (client): new transformation data starts an interpolation from where the old one had got to. */
+	displayState(e, d) {
+		const tick = this.tick;
+		let s = this.displays.get(e.id);
+		const key = (d.t || []).join(',');
+		const tx = d.tx || {};
+		const textKey = (tx.o ?? -1) + ',' + (tx.bg ?? 0x40000000);
+		if (!s) {
+			s = { key, to: transformationOf(d.t), from: null, start: 0, duration: 0, textKey, opacity: [tx.o ?? -1, tx.o ?? -1], background: [tx.bg ?? 0x40000000, tx.bg ?? 0x40000000], at: [e.x, e.y, e.z] };
+			this.displays.set(e.id, s);
+		}
+		const progress = s.from && s.duration > 0 ? Math.min(1, Math.max(0, (tick - s.start) / s.duration)) : 1;
+		if (s.key !== key) {
+			// createInterpolatedRenderState: from the transformation shown now to the new one
+			const current = s.from && s.duration > 0 ? slerpTransformation(s.from, s.to, progress) : s.to;
+			s.key = key;
+			s.to = transformationOf(d.t);
+			s.duration = d.id || 0;
+			s.from = s.duration > 0 ? current : null;
+			s.start = tick + (d.is || 0);
+		}
+		if (s.textKey !== textKey) {
+			// createInterpolatedTextRenderState: opacity (lerpInt) and background (srgbLerp) from where they were
+			s.opacity = [Math.round(lerp(s.opacity[0], s.opacity[1], progress)), tx.o ?? -1];
+			s.background = [argbLerp(s.background[0], s.background[1], progress), tx.bg ?? 0x40000000];
+			s.textKey = textKey;
+			if (!(d.id > 0)) {
+				s.opacity[0] = s.opacity[1];
+				s.background[0] = s.background[1];
+			}
+		}
+		s.progress = s.from && s.duration > 0 ? Math.min(1, Math.max(0, (tick - s.start) / s.duration)) : 1;
+		if (d.pd > 0 && (s.at[0] !== e.x || s.at[1] !== e.y || s.at[2] !== e.z)) {
+			const moved = Math.hypot(e.x - s.at[0], e.y - s.at[1], e.z - s.at[2]);
+			// a new position from the server (not the viewer's own tick to tick interpolation of a moving display)
+			if (moved > 0.01) s.glide = { from: s.glide ? this.glidePosition(s, tick) : [...s.at], start: tick, duration: d.pd };
+			s.at = [e.x, e.y, e.z];
+		}
+		s.seen = tick;
+		return s;
+	}
+
+	glidePosition(s, tick) {
+		const g = s.glide;
+		const k = Math.min(1, Math.max(0, (tick - g.start) / g.duration));
+		return [g.from[0] + (s.at[0] - g.from[0]) * k, g.from[1] + (s.at[1] - g.from[1]) * k, g.from[2] + (s.at[2] - g.from[2]) * k];
+	}
+
+	/**
+	 * TextDisplayRenderer.submitInner: the text split into lines of at most the line width (Font.split), drawn at
+	 * 0.025 blocks a pixel above the display's origin, centred, each line aligned; the background from (-1, -1) to
+	 * the widest line and the last line; see-through or in front of whatever it is on.
+	 */
+	addDisplayText(tx, s, matrix, light) {
+		const font = this.text.font;
+		if (!font.ready) return;
+		const flags = tx.f || 0;
+		const mode = flags & 2 ? 'see_through' : 'polygon_offset';
+		const lines = splitStyledLines(tx.s || [], tx.w ?? 200, (ch, bold) => font.glyph(ch.codePointAt(0)).advance + (bold ? 1 : 0));
+		const width = Math.max(0, ...lines.map(line => line.width));
+		const lineHeight = 10;
+		const height = lines.length * lineHeight - 1;
+		const m = new Float32Array(matrix);
+		rotate(m, 1, Math.PI);
+		scale(m, -0.025, -0.025, -0.025);
+		translate(m, 1 - width / 2, -height, 0);
+		const transform = matrixTransform(m);
+		const progress = s.progress ?? 1;
+		// Font: text whose alpha has none of its top six bits set is drawn opaque
+		let alpha = Math.round(lerp(s.opacity[0], s.opacity[1], progress)) & 255;
+		if ((alpha & 0xfc) === 0) alpha = 255;
+		const background = flags & 4 ? 0x40000000 : argbLerp(s.background[0], s.background[1], progress);
+		if (background >>> 24) this.text.rect(transform, -1, -1, width, height, argbColor(background), light, mode);
+		const align = flags & 8 ? 'left' : flags & 16 ? 'right' : 'center';
+		let y = 0;
+		for (const line of lines) {
+			let x = align === 'left' ? 0 : align === 'right' ? width - line.width : width / 2 - line.width / 2;
+			for (const [text, rgbColor, style] of line.runs) {
+				const bold = !!(style & 1);
+				const color = rgbColor < 0 ? 0xffffff : rgbColor;
+				const runWidth = this.text.styledWidth(text, bold);
+				const styled = { bold, italic: !!(style & 2) };
+				if (flags & 1) {
+					// Font.drawInBatch: the shadow, a quarter as bright, one pixel down and right
+					const dark = argbColor((alpha << 24) | (((color >> 16 & 255) >> 2) << 16) | (((color >> 8 & 255) >> 2) << 8) | ((color & 255) >> 2));
+					this.text.add(transform, text, x + 1, y + 1, dark, light, mode, null, styled);
+				}
+				const rgba = argbColor((alpha << 24) | color);
+				this.text.add(transform, text, x, y, rgba, light, mode, null, styled);
+				// Style effects: underline under the line, strikethrough through its middle
+				if (style & 4) this.text.rect(transform, x - 1, y + 9, x + runWidth, y + 8, rgba, light, mode);
+				if (style & 8) this.text.rect(transform, x - 1, y + 4.5, x + runWidth, y + 3.5, rgba, light, mode);
+				x += runWidth;
+			}
+			y += lineHeight;
+		}
+	}
+
 	drawFallingBlock(e, pos, style, world) {
 		const m = mat4();
 		translate(m, pos[0] - 0.5, pos[1], pos[2] - 0.5);
@@ -3994,4 +4158,118 @@ export class EntityRenderer {
 			}
 		}
 	}
+}
+
+// --- display entities (DisplayRenderer, com.mojang.math.Transformation) ---
+
+/** [translation xyz, left rotation xyzw, scale xyz, right rotation xyzw] as a Transformation. */
+function transformationOf(t) {
+	const a = t && t.length === 14 ? t : [0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 1];
+	return { translation: a.slice(0, 3), left: a.slice(3, 7), scale: a.slice(7, 10), right: a.slice(10, 14) };
+}
+
+/** Quaternionf.slerp (the shorter way round, linear when nearly parallel). */
+function slerpQuaternion(a, b, t) {
+	let cos = a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3];
+	const sign = cos < 0 ? -1 : 1;
+	cos = Math.abs(cos);
+	let s0 = 1 - t, s1 = t;
+	if (1 - cos > 1e-6) {
+		const angle = Math.acos(cos), sin = Math.sin(angle);
+		s0 = Math.sin((1 - t) * angle) / sin;
+		s1 = Math.sin(t * angle) / sin;
+	}
+	return [0, 1, 2, 3].map(i => s0 * a[i] + s1 * sign * b[i]);
+}
+
+/** Transformation.slerp: translations and scales lerped, rotations slerped. */
+function slerpTransformation(a, b, t) {
+	if (t >= 1) return b;
+	return {
+		translation: a.translation.map((v, i) => lerp(v, b.translation[i], t)),
+		left: slerpQuaternion(a.left, b.left, t),
+		scale: a.scale.map((v, i) => lerp(v, b.scale[i], t)),
+		right: slerpQuaternion(a.right, b.right, t),
+	};
+}
+
+function quaternionMatrix([x, y, z, w]) {
+	const n = Math.hypot(x, y, z, w) || 1;
+	x /= n; y /= n; z /= n; w /= n;
+	return new Float32Array([
+		1 - 2 * (y * y + z * z), 2 * (x * y + z * w), 2 * (x * z - y * w), 0,
+		2 * (x * y - z * w), 1 - 2 * (x * x + z * z), 2 * (y * z + x * w), 0,
+		2 * (x * z + y * w), 2 * (y * z - x * w), 1 - 2 * (x * x + y * y), 0,
+		0, 0, 0, 1,
+	]);
+}
+
+/** m = m * T * L * S * R (PoseStack.mulPose(Transformation)). */
+function multiplyTransformation(m, t) {
+	translate(m, t.translation[0], t.translation[1], t.translation[2]);
+	m.set(mul(m, quaternionMatrix(t.left)));
+	scale(m, t.scale[0], t.scale[1], t.scale[2]);
+	m.set(mul(m, quaternionMatrix(t.right)));
+}
+
+/** ARGB.srgbLerp of two packed colours (each channel a + floor(t * (b - a))). */
+function argbLerp(a, b, t) {
+	if (t >= 1) return b;
+	let out = 0;
+	for (const shift of [24, 16, 8, 0]) {
+		const ca = a >>> shift & 255, cb = b >>> shift & 255;
+		out += (ca + Math.floor(t * (cb - ca))) * 2 ** shift;
+	}
+	return out;
+}
+
+const argbColor = c => [(c >>> 16 & 255) / 255, (c >>> 8 & 255) / 255, (c & 255) / 255, (c >>> 24 & 255) / 255];
+
+/**
+ * StringSplitter.splitLines for styled pieces [text, rgb, style flags]: lines broken at line breaks and, past
+ * `width` pixels, at the last space (dropped) or inside a word longer than a line; each line as runs of one
+ * style with its width. advance(ch, bold) is the font's.
+ */
+export function splitStyledLines(pieces, width, advance) {
+	const lines = [];
+	let line = [], lineWidth = 0, lastSpace = -1;
+	const finish = () => {
+		const runs = [];
+		for (const c of line) {
+			const last = runs[runs.length - 1];
+			if (last && last[1] === c.color && last[2] === c.style) last[0] += c.ch;
+			else runs.push([c.ch, c.color, c.style]);
+		}
+		lines.push({ runs, width: line.reduce((sum, c) => sum + c.w, 0) });
+	};
+	for (const [text, color, style] of pieces) {
+		for (const ch of String(text)) {
+			if (ch === '\n') {
+				finish();
+				line = [];
+				lineWidth = 0;
+				lastSpace = -1;
+				continue;
+			}
+			const w = advance(ch, !!(style & 1));
+			if (lineWidth + w > width && line.length) {
+				if (lastSpace >= 0) {
+					const rest = line.slice(lastSpace + 1);
+					line = line.slice(0, lastSpace);
+					finish();
+					line = rest;
+				} else {
+					finish();
+					line = [];
+				}
+				lineWidth = line.reduce((sum, c) => sum + c.w, 0);
+				lastSpace = -1;
+			}
+			if (ch === ' ') lastSpace = line.length;
+			line.push({ ch, color, style, w });
+			lineWidth += w;
+		}
+	}
+	finish();
+	return lines;
 }
