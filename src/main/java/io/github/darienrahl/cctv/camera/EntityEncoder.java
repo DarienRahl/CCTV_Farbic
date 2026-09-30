@@ -48,7 +48,13 @@ import net.minecraft.world.item.CrossbowItem;
 import net.minecraft.world.item.DyeColor;
 import net.minecraft.world.item.FishingRodItem;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.item.alchemy.PotionContents;
+import net.minecraft.world.item.component.ChargedProjectiles;
+import net.minecraft.world.item.component.CustomModelData;
 import net.minecraft.world.item.component.DyedItemColor;
+import net.minecraft.world.item.component.FireworkExplosion;
+import net.minecraft.world.item.component.MapItemColor;
 import net.minecraft.world.item.equipment.Equippable;
 import net.minecraft.world.item.equipment.trim.ArmorTrim;
 import net.minecraft.world.level.block.Block;
@@ -581,6 +587,92 @@ final class EntityEncoder {
 			if (model != null && !model.toString().equals(id)) {
 				json.field(name + "Model", model.toString());
 			}
+			writeItemProperties(json, name + "P", stack);
+		}
+	}
+
+	/**
+	 * What the item's model definition and tints read from the stack ({@code <name>P}, only when there is any):
+	 * c dyed colour, p potion colour, f firework star colour, m map colour, t trim material, ch crossbow charge
+	 * ("arrow"/"rocket"), cmd custom model data {f, b, s, c}, d damage (0-1), b broken.
+	 */
+	private static void writeItemProperties(Json json, String name, ItemStack stack) {
+		Json props = new Json(96).beginObject();
+		boolean any = false;
+		try {
+			DyedItemColor dyed = stack.get(DataComponents.DYED_COLOR);
+			if (dyed != null) {
+				props.field("c", dyed.rgb());
+				any = true;
+			}
+			PotionContents potion = stack.get(DataComponents.POTION_CONTENTS);
+			if (potion != null) {
+				props.field("p", potion.getColor());
+				any = true;
+			}
+			FireworkExplosion star = stack.get(DataComponents.FIREWORK_EXPLOSION);
+			if (star != null && !star.colors().isEmpty()) {
+				// FireworkExplosionTintSource: one colour, or the average of them
+				long r = 0;
+				long g = 0;
+				long b = 0;
+				for (int color : star.colors()) {
+					r += color >> 16 & 255;
+					g += color >> 8 & 255;
+					b += color & 255;
+				}
+				int n = star.colors().size();
+				props.field("f", (int) (r / n) << 16 | (int) (g / n) << 8 | (int) (b / n));
+				any = true;
+			}
+			MapItemColor map = stack.get(DataComponents.MAP_COLOR);
+			if (map != null) {
+				props.field("m", map.rgb());
+				any = true;
+			}
+			ArmorTrim trim = stack.get(DataComponents.TRIM);
+			if (trim != null) {
+				trim.material().unwrapKey().ifPresent(key -> props.field("t", key.identifier().toString()));
+				any = true;
+			}
+			ChargedProjectiles charged = stack.get(DataComponents.CHARGED_PROJECTILES);
+			if (charged != null && !charged.isEmpty()) {
+				props.field("ch", charged.contains(Items.FIREWORK_ROCKET) ? "rocket" : "arrow");
+				any = true;
+			}
+			CustomModelData data = stack.get(DataComponents.CUSTOM_MODEL_DATA);
+			if (data != null) {
+				props.name("cmd").beginObject().name("f").beginArray();
+				for (float value : data.floats()) {
+					props.value(value, 4);
+				}
+				props.endArray().name("b").beginArray();
+				for (boolean value : data.flags()) {
+					props.value(value);
+				}
+				props.endArray().name("s").beginArray();
+				for (String value : data.strings()) {
+					props.value(value);
+				}
+				props.endArray().name("c").beginArray();
+				for (int value : data.colors()) {
+					props.value(value);
+				}
+				props.endArray().endObject();
+				any = true;
+			}
+			if (stack.isDamageableItem() && stack.isDamaged()) {
+				props.field("d", (double) stack.getDamageValue() / stack.getMaxDamage(), 4);
+				if (stack.getDamageValue() >= stack.getMaxDamage() - 1) {
+					props.field("b", true);
+				}
+				any = true;
+			}
+		} catch (RuntimeException | LinkageError e) {
+			Problems.report(null, "item properties", e);
+		}
+		if (any) {
+			json.name(name).raw(props.endObject().toString());
 		}
 	}
 

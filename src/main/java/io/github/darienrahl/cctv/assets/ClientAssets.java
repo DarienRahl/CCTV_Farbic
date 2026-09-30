@@ -687,6 +687,7 @@ public final class ClientAssets implements AutoCloseable {
 		Map<String, JsonElement> equipment = new LinkedHashMap<>();
 		Map<String, JsonElement> specialItems = new LinkedHashMap<>();
 		Map<String, String> itemModels = new LinkedHashMap<>();
+		Map<String, JsonElement> itemDefinitions = new LinkedHashMap<>();
 
 		List<PackSource> packs;
 		synchronized (this) {
@@ -723,6 +724,9 @@ public final class ClientAssets implements AutoCloseable {
 						// Items drawn by a SpecialModelRenderer (chests, heads, banners...) or several models (beds)
 						String id = namespace + ":" + strip(rest, "items/", ".json");
 						JsonElement definition = parse(zip, name);
+						if (definition.isJsonObject() && definition.getAsJsonObject().has("model")) {
+							itemDefinitions.put(id, definition.getAsJsonObject().get("model"));
+						}
 						JsonElement special = findSpecial(definition, 0);
 						if (special != null) {
 							specialItems.put(id, special);
@@ -807,6 +811,8 @@ public final class ClientAssets implements AutoCloseable {
 		JsonObject itemModelObject = new JsonObject();
 		itemModels.forEach(itemModelObject::addProperty);
 		root.add("itemModels", itemModelObject);
+		// every item definition's model tree (ItemModel: model, composite, condition, select, range_dispatch...)
+		root.add("items", toObject(itemDefinitions));
 
 		JsonArray list = new JsonArray();
 		entityTextures.forEach(list::add);

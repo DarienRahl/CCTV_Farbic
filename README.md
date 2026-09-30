@@ -10,7 +10,7 @@
   <a href="https://github.com/DarienRahl/CCTV_Farbic/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/DarienRahl/CCTV_Farbic?style=for-the-badge&amp;label=release&amp;color=5d8c3e"></a>
   <img alt="Minecraft 26.3" src="https://img.shields.io/badge/minecraft-26.3-866043?style=for-the-badge">
   <img alt="Fabric, server side only" src="https://img.shields.io/badge/fabric-server%20side%20only-8b8b8b?style=for-the-badge">
-  <a href="#roadmap"><img alt="Roadmap" src="https://img.shields.io/badge/roadmap-64%2F69%20done-80ff20?style=for-the-badge"></a>
+  <a href="#roadmap"><img alt="Roadmap" src="https://img.shields.io/badge/roadmap-65%2F70%20done-80ff20?style=for-the-badge"></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-555555?style=for-the-badge"></a>
 </p>
 <!-- badges:end -->
@@ -180,7 +180,7 @@ at once as a video wall.
 ## Roadmap
 
 <!-- roadmap:start -->
-<p align="center"><img src="docs/images/roadmap/banner.svg" width="100%" alt="CCTV roadmap: 64 of 69 done"></p>
+<p align="center"><img src="docs/images/roadmap/banner.svg" width="100%" alt="CCTV roadmap: 65 of 70 done"></p>
 
 What is done and what comes next, milestone by milestone (the full plan with its principles is in
 [docs/ROADMAP.md](docs/ROADMAP.md)).
@@ -218,10 +218,10 @@ What is done and what comes next, milestone by milestone (the full plan with its
 
 </details>
 
-<img src="docs/images/roadmap/1-3.svg" width="100%" alt="1.3 — 1:1 picture: in progress - 1.3.4 is out, 43 of 45 done">
+<img src="docs/images/roadmap/1-3.svg" width="100%" alt="1.3 — 1:1 picture: in progress - 1.3.4 is out, 44 of 46 done">
 
 <details open>
-<summary><b>1.3 — 1:1 picture</b> · in progress - 1.3.4 is out · 43 of 45 done</summary>
+<summary><b>1.3 — 1:1 picture</b> · in progress - 1.3.4 is out · 44 of 46 done</summary>
 
 - [ ] **Reference renders in CI**: a Fabric client game test builds the CI scene in single player, takes a screenshot from the camera position with the game, and the viewer takes one from the same camera; both are published side by side with a difference score
 - [x] **Signs and hanging signs** with their text in the game font (text sent by the server; boards and beds are block models in 26.3 and were already drawn)
@@ -266,6 +266,7 @@ What is done and what comes next, milestone by milestone (the full plan with its
 - [x] Mob animations checked against the 26.3 models (felines, bees, chickens, polar bears, turtles, fish, dolphins, endermites, silverfish, vexes, allays, striders)
 - [x] Your own field of view (30–110°), distance fog modes and 11 built-in post effects
 - [x] The Biome Blend option (off to 15x15)
+- [x] **Items like ItemModelResolver**: every item's definition (`items/*.json`: model, composite, condition, select, range_dispatch, special) with its tints (dye, potion, firework, map colour, grass, constant, custom model data), so dyed leather, potions and tipped arrows, loaded crossbows, trimmed armour, clocks and new items of later versions look like the game's
 - [ ] Terrain: the game's chunk occlusion culling (visibility graph), remaining fluid edge cases
 - [x] **Camera in water, lava and powder snow**: the underwater overlay (ScreenEffectRenderer, as bright as the light at the camera) and the fog of each (LavaFogEnvironment, PowderedSnowFogEnvironment)
 
@@ -286,12 +287,11 @@ What is done and what comes next, milestone by milestone (the full plan with its
 
 </details>
 
-<img src="docs/images/roadmap/later.svg" width="100%" alt="Later: ideas for later, 2 ideas">
+<img src="docs/images/roadmap/later.svg" width="100%" alt="Later: ideas for later, 1 ideas">
 
 <details>
-<summary><b>Later</b> · ideas for later · 2 ideas</summary>
+<summary><b>Later</b> · ideas for later · 1 ideas</summary>
 
-- Items in the world with their 26.x item model definitions (`items/*.json`) and properties
 - Optional recording and timelapse of a camera
 
 </details>

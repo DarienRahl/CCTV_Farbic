@@ -9,6 +9,7 @@ import {
 import { describeMob, isKnownMob, blockEntityModel, dyeRgb, CLIENT, equipmentPose, setEquipment, setAutoMobResolver } from './mobs.js';
 import { Animator, AnimationStates } from './keyframes.js';
 import { collectParts } from './models.js';
+import { ItemDefinitions } from './items.js';
 import { JavaRandom } from './rng.js';
 import { program, FOG_GLSL, setFog, Target, FULLSCREEN_VS } from './gl.js';
 import { SHADOW_GLSL, SHADER_LIGHT_GLSL } from './renderer.js';
@@ -1592,10 +1593,10 @@ export class EntityRenderer {
 
 		// Held items (ItemInHandLayer).
 		if (e.hand && base.parts.right_arm && base.parts.right_arm.visible) {
-			this.drawHeld(base, m, 'right_arm', e.handModel || e.hand, e.foil & FOIL_HAND ? { ...style, glint: GLINT_ITEM } : style, 1, e.handPatterns);
+			this.drawHeld(base, m, 'right_arm', e.handModel || e.hand, e.foil & FOIL_HAND ? { ...style, glint: GLINT_ITEM } : style, 1, e.handPatterns, e.handP);
 		}
 		if (e.offhand && base.parts.left_arm && base.parts.left_arm.visible) {
-			this.drawHeld(base, m, 'left_arm', e.offhandModel || e.offhand, e.foil & FOIL_OFFHAND ? { ...style, glint: GLINT_ITEM } : style, -1, e.offhandPatterns);
+			this.drawHeld(base, m, 'left_arm', e.offhandModel || e.offhand, e.foil & FOIL_OFFHAND ? { ...style, glint: GLINT_ITEM } : style, -1, e.offhandPatterns, e.offhandP);
 		}
 
 		// CarriedBlockLayer: the block an enderman holds in front of it
@@ -1620,7 +1621,7 @@ export class EntityRenderer {
 			}
 			const im = Float32Array.from(m);
 			translate(im, 0.1, y, z);
-			this.drawGroundItem(e.handModel || e.hand, im, style);
+			this.drawGroundItem(e.handModel || e.hand, im, style, e.handP);
 		}
 		// IronGolemFlowerLayer: the poppy in the right hand while the golem offers it
 		if (def.flower && e.d && e.d.flower > 0) {
@@ -2065,8 +2066,121 @@ export class EntityRenderer {
 	// --- items -------------------------------------------------------------------------------------
 
 	/** Item geometry in item model space (0..1 box): extruded sprite, or a block model. Cached. */
-	itemMesh(itemId) {
+	/**
+	 * An item's mesh as its model definition (items/*.json) picks it for the stack's properties and the display
+	 * context ("ground", "fixed", "thirdperson_righthand"...), falling back to the item's own sprite or block model.
+	 */
+	itemMesh(itemId, props = null, context = 'none') {
 		if (!this.assets || !itemId) return null;
+		const defined = this.definedItemMesh(itemId, props, context);
+		if (defined !== undefined) return defined;
+		return this.legacyItemMesh(itemId);
+	}
+
+	/** The definitions of the bundle, or null while it has none (an older bundle). */
+	itemDefinitions() {
+		const items = this.assets && this.assets.bundle && this.assets.bundle.items;
+		if (!items) return null;
+		if (!this.definitions || this.definitions.source !== items) {
+			this.definitions = new ItemDefinitions(items, (name, t, d, fallback) => this.assets.colormap(name, t, d, fallback));
+			this.definitions.source = items;
+		}
+		return this.definitions;
+	}
+
+	/** ItemModelResolver: undefined when the definition is not usable here (special renderers take the old path). */
+	definedItemMesh(itemId, props, context) {
+		const definitions = this.itemDefinitions();
+		if (!definitions || !definitions.has(itemId)) return undefined;
+		const layers = definitions.resolve(itemId, props || {}, { context, dayTime: this.dayTime || 0, dimension: this.dimension });
+		if (!layers) return undefined;
+		if (layers.some(layer => layer.special)) return undefined;
+		if (!layers.length) return null;
+		const key = 'def|' + layers.map(l => l.model + ':' + l.tints.map(t => t.map(c => c.toFixed(3)).join(',')).join(';')).join('|');
+		let mesh = this.itemMeshes.get(key);
+		if (mesh !== undefined) return mesh;
+		const parts = [];
+		let kind = 'sprite';
+		for (const layer of layers) {
+			const built = this.modelMesh(layer.model, layer.tints);
+			if (!built) continue;
+			if (built.kind === 'block') kind = 'block';
+			parts.push(built.quads);
+		}
+		mesh = null;
+		if (parts.length) {
+			const total = parts.reduce((sum, q) => sum + q.data.length, 0);
+			const data = new Float32Array(total);
+			const tints = [];
+			let offset = 0;
+			for (const q of parts) {
+				data.set(q.data, offset);
+				offset += q.data.length;
+				const count = q.data.length / 20;
+				for (let i = 0; i < count; i++) tints.push(q.tints ? q.tints[i] : [1, 1, 1]);
+			}
+			mesh = { kind, quads: { data, tints }, modelId: layers[0].model };
+		}
+		this.itemMeshes.set(key, mesh);
+		return mesh;
+	}
+
+	/**
+	 * One item model: generated ones (item/generated) extrude each layerN texture with tint N like
+	 * ItemModelGenerator; the others are baked like block models, their faces tinted by tintindex.
+	 */
+	modelMesh(modelId, tints) {
+		const models = this.assets.bundle.models || {};
+		let generated = false;
+		const textures = {};
+		const chain = [];
+		let current = modelId;
+		for (let depth = 0; current && depth < 32; depth++) {
+			const id = current.includes(':') ? current : 'minecraft:' + current;
+			if (id === 'minecraft:builtin/generated') {
+				generated = true;
+				break;
+			}
+			const model = models[id];
+			if (!model) break;
+			chain.push(model);
+			current = model.parent;
+		}
+		if (!chain.length) return null;
+		if (generated) {
+			for (let i = chain.length - 1; i >= 0; i--) Object.assign(textures, chain[i].textures || {});
+			const data = [];
+			const quadTints = [];
+			for (let layer = 0; layer < 16; layer++) {
+				const texture = this.assets.models ? this.assets.models.resolveTexture(textures, '#layer' + layer) : null;
+				if (!texture) break;
+				const sprite = this.assets.sprites.get(texture.id);
+				if (!sprite) continue;
+				const quads = this.extrude(sprite);
+				data.push(quads.data);
+				const tint = tints[layer] || [1, 1, 1];
+				for (let i = 0; i < quads.data.length / 20; i++) quadTints.push(tint);
+			}
+			if (!data.length) return null;
+			const merged = new Float32Array(data.reduce((sum, d) => sum + d.length, 0));
+			let offset = 0;
+			for (const d of data) {
+				merged.set(d, offset);
+				offset += d.length;
+			}
+			return { kind: 'sprite', quads: { data: merged, tints: quadTints } };
+		}
+		if (!this.assets.models) return null;
+		const baked = this.assets.models.bakeVariant({ model: modelId });
+		const list = [];
+		for (const quads of baked.quads) {
+			for (const q of quads) list.push({ q, tint: q.tint >= 0 ? (tints[q.tint] || [1, 1, 1]) : [1, 1, 1] });
+		}
+		return list.length ? { kind: 'block', quads: this.blockQuads(list) } : null;
+	}
+
+	/** Items without a usable definition: the item's own sprite, special model or block model. */
+	legacyItemMesh(itemId) {
 		let mesh = this.itemMeshes.get(itemId);
 		if (mesh !== undefined) return mesh;
 		mesh = null;
@@ -2332,7 +2446,7 @@ export class EntityRenderer {
 
 	drawDroppedItem(e, pos, style) {
 		const shield = isShield(e.item);
-		const mesh = shield ? null : this.itemMesh(e.itemModel || e.item);
+		const mesh = shield ? null : this.itemMesh(e.itemModel || e.item, e.itemP, 'ground');
 		if (!mesh && !shield) return this.drawBox(e, pos, style);
 		const age = e.age || 0;
 		const bobOffset = (e.id * 0.618) % (Math.PI * 2);
@@ -2349,19 +2463,19 @@ export class EntityRenderer {
 		const fallback = mesh.kind === 'block'
 			? { translation: [0, 3, 0], scale: [0.25, 0.25, 0.25] }
 			: { translation: [0, 2, 0], scale: [0.5, 0.5, 0.5] };
-		this.applyDisplay(m, this.displayTransform(e.item, 'ground', fallback), false);
+		this.applyDisplay(m, this.displayTransform(e.item, 'ground', fallback, mesh.modelId), false);
 		this.emitItem(mesh, m, e.foil & FOIL_ITEM ? { ...style, glint: GLINT_ITEM } : style, e.itemPatterns);
 		this.shadowFor(e, pos, 0.15, this.world, 0.75);
 	}
 
 	/** An item as ItemStackRenderState.submit draws it for ItemDisplayContext.GROUND (what mobs hold in their mouths). */
-	drawGroundItem(item, m, style) {
-		const mesh = this.itemMesh(item);
+	drawGroundItem(item, m, style, props = null) {
+		const mesh = this.itemMesh(item, props, 'ground');
 		if (!mesh) return;
 		const fallback = mesh.kind === 'block'
 			? { translation: [0, 3, 0], scale: [0.25, 0.25, 0.25] }
 			: { translation: [0, 2, 0], scale: [0.5, 0.5, 0.5] };
-		this.applyDisplay(m, this.displayTransform(item, 'ground', fallback), false);
+		this.applyDisplay(m, this.displayTransform(item, 'ground', fallback, mesh.modelId), false);
 		this.emitItem(mesh, m, style);
 	}
 
@@ -2381,7 +2495,7 @@ export class EntityRenderer {
 		else translate(im, 0.06, 0.27, -0.5);
 		rotate(im, 0, 90 * DEG);
 		if (sleeping) rotate(im, 2, 90 * DEG);
-		this.drawGroundItem(e.handModel || e.hand, im, style);
+		this.drawGroundItem(e.handModel || e.hand, im, style, e.handP);
 	}
 
 	drawThrown(pos, style, item) {
@@ -2416,12 +2530,12 @@ export class EntityRenderer {
 	}
 
 	/** An item model's display transform ("ground", "thirdperson_righthand"...) from its parent chain. */
-	displayTransform(itemId, slot, fallback) {
+	displayTransform(itemId, slot, fallback, modelId = null) {
 		const models = this.assets && this.assets.bundle.models;
 		if (!models) return fallback;
 		const id = itemId.includes(':') ? itemId : 'minecraft:' + itemId;
 		const colon = id.indexOf(':');
-		let current = id.slice(0, colon) + ':item/' + id.slice(colon + 1);
+		let current = modelId || id.slice(0, colon) + ':item/' + id.slice(colon + 1);
 		if (!models[current]) current = id.slice(0, colon) + ':block/' + id.slice(colon + 1);
 		// a special model takes its display transforms from its "base" model
 		const special = this.specialItem(id);
@@ -2447,9 +2561,9 @@ export class EntityRenderer {
 		translate(m, -0.5, -0.5, -0.5);
 	}
 
-	drawHeld(model, m, arm, item, style, side, patterns) {
+	drawHeld(model, m, arm, item, style, side, patterns, props = null) {
 		const shield = isShield(item);
-		const mesh = shield ? null : this.itemMesh(item);
+		const mesh = shield ? null : this.itemMesh(item, props, side > 0 ? 'thirdperson_righthand' : 'thirdperson_lefthand');
 		if (!mesh && !shield) return;
 		const pm = partMatrix(model, arm, m);
 		if (!pm) return;
@@ -2464,7 +2578,7 @@ export class EntityRenderer {
 			? { rotation: [75, 45, 0], translation: [0, 2.5, 0], scale: [0.375, 0.375, 0.375] }
 			: { rotation: [0, 0, 0], translation: [0, 3, 1], scale: [0.55, 0.55, 0.55] };
 		// ItemTransform.apply(leftHand): the left hand mirrors the translation and the Y and Z turns
-		this.applyDisplay(pm, this.displayTransform(item, slot, fallback), side < 0);
+		this.applyDisplay(pm, this.displayTransform(item, slot, fallback, mesh.modelId), side < 0);
 		this.emitItem(mesh, pm, style, patterns);
 	}
 
@@ -2538,12 +2652,12 @@ export class EntityRenderer {
 			scale(m, 0.5);
 			this.drawShield(m, 'fixed', glow ? { ...style, light: [240, 240] } : style, e.itemPatterns);
 		} else if (e.item) {
-			const mesh = this.itemMesh(e.itemModel || e.item);
+			const mesh = this.itemMesh(e.itemModel || e.item, e.itemP, 'fixed');
 			if (mesh) {
 				rotate(m, 2, rotation * 45 * DEG);
 				scale(m, 0.5);
 				const fallback = mesh.kind === 'block' ? { scale: [0.5, 0.5, 0.5] } : { rotation: [0, 180, 0] };
-				this.applyDisplay(m, this.displayTransform(e.item, 'fixed', fallback), false);
+				this.applyDisplay(m, this.displayTransform(e.item, 'fixed', fallback, mesh.modelId), false);
 				// getLightCoords: a glow frame lights its item at 15728880 (full)
 				const itemStyle = glow ? { ...style, light: [240, 240] } : { ...style };
 				if (e.foil & FOIL_ITEM) itemStyle.glint = GLINT_ITEM;
@@ -3014,7 +3128,7 @@ export class EntityRenderer {
 		const data = world.blockEntityAt(be.x, be.y, be.z);
 		const dusted = Number(be.info.props && be.info.props.dusted) || 0;
 		if (!data || data.k !== 'brush' || !data.i || !data.d || dusted <= 0) return;
-		const mesh = this.itemMesh(data.i);
+		const mesh = this.itemMesh(data.i, null, 'fixed');
 		if (!mesh) return;
 		const step = { east: [1, 0, 0], west: [-1, 0, 0], up: [0, 1, 0], down: [0, -1, 0], north: [0, 0, -1], south: [0, 0, 1] }[data.d] || [0, 0, 0];
 		const [sky, block] = world.lightAt(be.x + step[0], be.y + step[1], be.z + step[2]);
@@ -3037,7 +3151,7 @@ export class EntityRenderer {
 		rotate(m, 1, ((data.d === 'east' || data.d === 'west' ? 90 : 0) + 11) * DEG);
 		scale(m, 0.5);
 		const fallback = mesh.kind === 'block' ? { scale: [0.5, 0.5, 0.5] } : { rotation: [0, 180, 0] };
-		this.applyDisplay(m, this.displayTransform(data.i, 'fixed', fallback), false);
+		this.applyDisplay(m, this.displayTransform(data.i, 'fixed', fallback, mesh.modelId), false);
 		this.emitItem(mesh, m, style);
 	}
 
@@ -3248,7 +3362,7 @@ export class EntityRenderer {
 		const facing = FACING[be.info.props.facing] ?? 2;
 		data.i.forEach((item, slot) => {
 			if (!item) return;
-			const mesh = this.itemMesh(item);
+			const mesh = this.itemMesh(item, null, 'fixed');
 			if (!mesh) return;
 			const m = mat4();
 			translate(m, p[0] + 0.5, p[1] + 0.44921875, p[2] + 0.5);

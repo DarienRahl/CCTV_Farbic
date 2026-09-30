@@ -659,6 +659,9 @@ function frame(now) {
 	limitLook(c, aspect);
 	const pitch = Math.max(-89.9, Math.min(89.9, c.pitch + state.lookPitch));
 	const dir = direction(c.yaw + state.lookYaw, pitch);
+	// what item models read from the world (ClockItem's time, context_dimension)
+	entities.dayTime = environment.current ? environment.current.time || 0 : 0;
+	entities.dimension = state.init && state.init.camera ? state.init.camera.dimension : null;
 	sounds.update(entities.tick, c, dir, state.entityList);
 	const fov = Math.min(170, viewFov(c) / state.zoom) * Math.PI / 180;
 	const range = c.range;
