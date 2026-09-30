@@ -16,7 +16,8 @@
 <!-- badges:end -->
 
 <p align="center">
-  <img src="docs/images/screenshots/hero.jpg" width="100%" alt="A CCTV camera in the browser: a house, a pond, villagers, a horse, a campfire and an enchanting table, drawn with shaders">
+  <a href="docs/media/showcase.mp4"><img src="docs/media/showcase.webp" width="100%" alt="A CCTV camera in the browser films a party at sunset that gets out of hand: parrots and allays dance to Pigstep on a rainbow dance floor, a jeb_ sheep changes colour, Dinnerbone's cow stands on its head, fireworks go up, a happy ghast carries pigs across the sky, lightning charges a creeper, chickens rain down, a vault of TNT blows up and the charged creeper goes off"></a><br>
+  <sub>▶ <a href="docs/media/showcase.mp4"><b>Watch it with sound</b></a> · a party that gets out of hand, filmed by a CCTV camera and recorded with the viewer's own ⏺ Record button</sub>
 </p>
 
 <p align="center">
@@ -113,6 +114,10 @@ connection. A camera nobody watches costs nothing.
 
 <table>
 <tr>
+<td colspan="2"><img src="docs/images/screenshots/hero.jpg" width="100%" alt="A CCTV camera in the browser: a house, a pond, villagers, a horse, a campfire and an enchanting table, drawn with shaders"><br>
+<sub><b>A camera in the shaders mode</b> — a house, a pond, villagers, a horse, a campfire and an enchanting table.</sub></td>
+</tr>
+<tr>
 <td colspan="2"><img src="docs/images/screenshots/vanilla-vs-shaders.jpg" width="100%" alt="The same camera drawn like vanilla Minecraft (left) and with the shaders mode (right)"><br>
 <sub><b>Vanilla or shaders</b> — the game's look, or sun shadows, waving plants, reflections and sun rays. Both run in any WebGL2 browser.</sub></td>
 </tr>
@@ -136,8 +141,9 @@ connection. A camera nobody watches costs nothing.
 </tr>
 </table>
 
-<sub>All pictures are screenshots of the viewer taken by CI from a real 26.3 server running the latest release
-(the <code>screenshots</code> workflow).</sub>
+<sub>The video and all pictures are made by CI from a real 26.3 server running the latest release (the
+<code>screenshots</code> workflow; the party is <code>.github/e2e/showcase.py</code>, filmed in slow motion because CI draws
+without a GPU, then sped up again with its sounds).</sub>
 
 ## Quick start
 
