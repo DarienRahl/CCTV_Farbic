@@ -294,9 +294,12 @@ to the milestone it belongs to. The roadmap on the README page is drawn from thi
 
 ## 1.9 — blocks' own particles
 
-- [ ] Enchanting tables' glyphs flying from bookshelves, ender chests' portal specks, redstone wire, repeaters,
-      comparators and ore glowing dust, falling dust under sand and gravel, mycelium, end portals and gateways
-- [ ] Conduits' nautilus specks, vaults' connections to players, trial spawners' idle flames, bees dripping nectar
+- [x] Enchanting tables' glyphs flying from bookshelves, ender chests' portal specks, redstone wire, repeaters'
+      and lit ores' glowing dust, falling dust under sand, gravel and concrete powder, mycelium, end portals and
+      gateways, brewing stands' smoke, wet sponges' drips and active sculk sensors
+- [x] Conduits' nautilus specks drawn to the conduit, trial spawners' and vaults' flames and smoke, vaults
+      opening and going out, bees dripping nectar, lightning rods' sparks in thunderstorms
+- [ ] Vaults' connections to the players they are waiting for (needs the vault's shared data from the server)
 
 ## Later
 

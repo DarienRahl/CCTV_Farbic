@@ -212,6 +212,25 @@ net/minecraft/world/level/block/LeavesBlock
 net/minecraft/world/level/block/FallingParticlesLeavesBlock
 net/minecraft/world/level/material/LavaFluid
 net/minecraft/world/level/material/WaterFluid
+net/minecraft/world/level/block/EnchantingTableBlock
+net/minecraft/world/level/block/EnderChestBlock
+net/minecraft/world/level/block/EndGatewayBlock
+net/minecraft/world/level/block/EndPortalBlock
+net/minecraft/world/level/block/BrewingStandBlock
+net/minecraft/world/level/block/MyceliumBlock
+net/minecraft/world/level/block/RedStoneOreBlock
+net/minecraft/world/level/block/RedstoneWireBlock
+net/minecraft/world/level/block/RepeaterBlock
+net/minecraft/world/level/block/SculkSensorBlock
+net/minecraft/world/level/block/CalibratedSculkSensorBlock
+net/minecraft/world/level/block/WetSpongeBlock
+net/minecraft/world/level/block/FallingBlock
+net/minecraft/world/level/block/BrushableBlock
+net/minecraft/world/level/block/LightningRodBlock
+net/minecraft/world/level/block/entity/ConduitBlockEntity
+net/minecraft/world/level/block/entity/trialspawner/TrialSpawner
+net/minecraft/world/level/block/entity/vault/VaultBlockEntity
+net/minecraft/world/entity/animal/bee/Bee
 # block breaking and spawners (entities.js drawBreaking, drawSpawner; particles.js spawner particles)
 com/mojang/blaze3d/vertex/SheetedDecalTextureGenerator
 net/minecraft/client/renderer/blockentity/SpawnerRenderer
@@ -256,8 +275,6 @@ net/minecraft/world/level/block/DriedGhastBlock
 net/minecraft/world/level/block/RespawnAnchorBlock
 net/minecraft/world/level/block/BubbleColumnBlock
 net/minecraft/world/level/block/PotentSulfurBlock
-net/minecraft/world/level/block/entity/vault/VaultBlockEntity
-net/minecraft/world/level/block/entity/trialspawner/TrialSpawner
 net/minecraft/world/entity/monster/Blaze
 net/minecraft/world/entity/monster/Phantom
 net/minecraft/world/entity/decoration/ArmorStand
@@ -291,8 +308,6 @@ net/minecraft/world/level/block/PointedDripstoneBlock
 net/minecraft/world/level/block/BeehiveBlock
 # conduits, end gateway beams, brushable blocks (entities.js drawConduit, drawGatewayBeam, drawBrushable)
 net/minecraft/client/renderer/blockentity/ConduitRenderer
-net/minecraft/world/level/block/entity/ConduitBlockEntity
-net/minecraft/client/renderer/blockentity/TheEndGatewayRenderer
 net/minecraft/world/level/block/entity/TheEndGatewayBlockEntity
 net/minecraft/client/renderer/blockentity/BrushableBlockRenderer
 # fishing lines, wolf armour cracks (entities.js drawFishingHook; mobs.js wolfArmor; EntityEncoder "fish", "k")
@@ -333,12 +348,9 @@ net/minecraft/client/renderer/entity/AbstractHorseRenderer
 net/minecraft/client/model/monster/illager/IllagerModel
 net/minecraft/client/renderer/entity/IllagerRenderer
 net/minecraft/world/entity/monster/illager/SpellcasterIllager
-net/minecraft/client/model/AnimationUtils
-net/minecraft/client/model/animal/golem/IronGolemModel
 net/minecraft/client/renderer/entity/layers/IronGolemFlowerLayer
 net/minecraft/client/model/effects/EvokerFangsModel
 net/minecraft/client/renderer/entity/EvokerFangsRenderer
-net/minecraft/world/entity/projectile/EvokerFangs
 net/minecraft/world/entity/animal/fox/Fox
 # automatic entity mapping (assets/EntityRendererMap: bytecode of the registrations and the renderers)
 net/minecraft/client/renderer/entity/EntityRenderers
@@ -348,7 +360,6 @@ net/minecraft/world/entity/animal/sniffer/Sniffer
 net/minecraft/client/resources/sounds/SnifferSoundInstance
 # sulfur bubbles (particles.js SulfurBubbleParticle, animateBlock potent_sulfur)
 net/minecraft/client/particle/SulfurBubbleParticle
-net/minecraft/world/level/block/PotentSulfurBlock
 net/minecraft/world/level/block/entity/PotentSulfurBlockEntity
 net/minecraft/client/particle/NoxiousGasParticle
 net/minecraft/client/particle/NoxiousGasCloudParticle
@@ -399,14 +410,9 @@ net/minecraft/world/entity/vehicle/minecart/OldMinecartBehavior
 net/minecraft/world/entity/AreaEffectCloud
 net/minecraft/client/particle/DragonBreathParticle
 # every particle (particles.js: the particle classes, PROVIDERS, levelEvent, entityEffect, ambient particles)
-net/minecraft/client/particle/ParticleResources
-net/minecraft/client/particle/SingleQuadParticle
-net/minecraft/client/particle/RisingParticle
 net/minecraft/client/particle/AshParticle
 net/minecraft/client/particle/WhiteAshParticle
-net/minecraft/client/particle/SuspendedParticle
 net/minecraft/client/particle/BubblePopParticle
-net/minecraft/client/particle/DustParticleBase
 net/minecraft/client/particle/DustColorTransitionParticle
 net/minecraft/client/particle/DustPlumeParticle
 net/minecraft/client/particle/EmissiveRisingParticle
@@ -416,11 +422,9 @@ net/minecraft/client/particle/FlyTowardsPositionParticle
 net/minecraft/client/particle/GlowParticle
 net/minecraft/client/particle/GustParticle
 net/minecraft/client/particle/GustSeedParticle
-net/minecraft/client/particle/PlayerCloudParticle
 net/minecraft/client/particle/SculkChargeParticle
 net/minecraft/client/particle/SculkChargePopParticle
 net/minecraft/client/particle/ShriekParticle
-net/minecraft/client/particle/SimpleAnimatedParticle
 net/minecraft/client/particle/SimpleVerticalParticle
 net/minecraft/client/particle/SnowflakeParticle
 net/minecraft/client/particle/SonicBoomParticle
@@ -432,8 +436,4 @@ net/minecraft/client/particle/TrialSpawnerDetectionParticle
 net/minecraft/client/particle/VibrationSignalParticle
 net/minecraft/client/particle/WakeParticle
 net/minecraft/client/particle/TrackingEmitter
-net/minecraft/client/renderer/LevelEventHandler
-net/minecraft/util/ParticleUtils
-net/minecraft/util/LightCoordsUtil
-net/minecraft/client/multiplayer/ClientLevel
 net/minecraft/world/attribute/AmbientParticle

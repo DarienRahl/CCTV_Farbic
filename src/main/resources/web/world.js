@@ -97,6 +97,8 @@ export class World {
 	reset(origin) {
 		this.origin = origin;
 		this.sections = new Map();
+		/** The highest section y received: the world's top for the heightmap-like checks. */
+		this.topSectionY = -Infinity;
 		/** Sign text by section key (from the "be" list of sections). */
 		this.signs = new Map();
 		/** Block entity details by block position ("x,y,z"): banner patterns, pot sherds, head owners. */
@@ -160,7 +162,7 @@ export class World {
 			this.entries.push(entry);
 			this.raw[entry.id] = entry;
 			this.infos[entry.id] = describeState(entry, parseProps, blockFaceColors);
-			if (/^minecraft:((soul_)?campfire|spawner|trial_spawner|vault|potent_sulfur)$/.test(entry.n || '')) this.tickerIds.add(entry.id);
+			if (/^minecraft:((soul_)?campfire|spawner|trial_spawner|vault|potent_sulfur|conduit)$/.test(entry.n || '')) this.tickerIds.add(entry.id);
 		}
 		this.broadcast({ type: 'palette', entries });
 	}
@@ -222,6 +224,7 @@ export class World {
 		if (signs.length) this.signs.set(key, signs);
 		else this.signs.delete(key);
 		this.setBlockEntityData(key, message.be);
+		if (message.y > this.topSectionY) this.topSectionY = message.y;
 		this.sections.set(key, {
 			key, x: message.x, y: message.y, z: message.z,
 			states, light, biomes,

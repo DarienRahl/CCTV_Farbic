@@ -2071,6 +2071,14 @@ const PROVIDERS = {
 		p.lifetime = Math.trunc(128 / (nextFloat() * 0.8 + 0.2));
 		return p;
 	},
+	// DripParticle.NectarFallProvider: a pollinating bee's nectar
+	falling_nectar: (l, x, y, z, xa, ya, za, s) => {
+		const p = tint(new DripParticle(l, x, y, z, null, s.random()), [0.92, 0.782, 0.72]);
+		p.kind = 'fall';
+		p.lifetime = Math.trunc(16 / (nextFloat() * 0.8 + 0.2));
+		p.gravity = 0.007;
+		return p;
+	},
 	falling_spore_blossom: (l, x, y, z, xa, ya, za, s) => {
 		const p = tint(new DripParticle(l, x, y, z, null, s.random()), [0.32, 0.5, 0.22]);
 		p.kind = 'fall';
@@ -2741,6 +2749,168 @@ function animateBlock(level, name, info, x, y, z) {
 			level.add('minecraft:dripping_water', x + nextDouble(), y - 0.05, z + nextDouble(), 0, 0, 0);
 		}
 	}
+	blockParticles(level, name, info, p, x, y, z);
+}
+
+/** EnchantingTableBlock.BOOKSHELF_OFFSETS: the ring two blocks out, on the table's level and the one above. */
+const BOOKSHELF_OFFSETS = [];
+for (let oy = 0; oy <= 1; oy++) {
+	for (let ox = -2; ox <= 2; ox++) for (let oz = -2; oz <= 2; oz++) if (Math.abs(ox) === 2 || Math.abs(oz) === 2) BOOKSHELF_OFFSETS.push([ox, oy, oz]);
+}
+/** RedstoneWireBlock.COLORS: the wire's colour for each power. */
+const REDSTONE_WIRE_COLORS = Array.from({ length: 16 }, (_, i) => {
+	const power = i / 15;
+	return [power * 0.6 + (power > 0 ? 0.4 : 0.3), clamp(power * power * 0.7 - 0.5, 0, 1), clamp(power * power * 0.6 - 0.7, 0, 1)];
+});
+/** DustColorTransitionOptions.SCULK_TO_REDSTONE */
+const SCULK_TO_REDSTONE = { from_color: 0x39d6e0, to_color: 0xff0000, scale: 1 };
+/** FallingBlock.isFree: air, fire, fluids and replaceable blocks. */
+const fallFree = info => isAir(info) || !!(info.f & (FLAG_WATER | FLAG_LAVA)) || hasTag(info, 'minecraft:fire') || hasTag(info, 'minecraft:replaceable');
+const opaque = info => !!(info && info.f & FLAG_OPAQUE);
+
+/** Heightmap WORLD_SURFACE: nothing but air above the block, up to the highest section received. */
+function skyAbove(level, x, y, z) {
+	const top = (level.world.topSectionY + 1) * 16;
+	for (let yy = y + 1; yy < top; yy++) if (!isAir(level.info(x, yy, z))) return false;
+	return true;
+}
+
+/** More blocks' animateTick (26.3): glyphs, portal specks, smoke, redstone dust, sculk, falling dust, drips. */
+function blockParticles(level, name, info, p, x, y, z) {
+	if (info.dc !== undefined || name === 'suspicious_sand' || name === 'suspicious_gravel') {
+		// FallingBlock / BrushableBlock: dust falls from the underside over air
+		if (nextInt(16) === 0 && fallFree(level.info(x, y - 1, z))) {
+			level.add('minecraft:falling_dust', x + nextDouble(), y - 0.05, z + nextDouble(), 0, 0, 0, { b: info.id });
+		}
+		return;
+	}
+	if (name.endsWith('lightning_rod')) {
+		// LightningRodBlock.animateTick: sparks along the rod in a thunderstorm when it is the column's top block
+		if ((level.attribute('thunder') || 0) > 0.9 && nextInt(200) <= level.engine.gameTime % 200 && skyAbove(level, x, y, z)) {
+			const axis = (DIRS[p.facing] || DIRS.up).findIndex(v => v !== 0);
+			level.engine.alongAxis(level, axis, x, y, z, 0.125, 'minecraft:electric_spark', 1, 2);
+		}
+		return;
+	}
+	switch (name) {
+		case 'redstone_wire': {
+			// RedstoneWireBlock.animateTick: sparks of its power's colour along its lines
+			const power = Number(p.power || 0);
+			if (power === 0) break;
+			const color = REDSTONE_WIRE_COLORS[power];
+			const line = (side, along, from, to) => {
+				const span = to - from;
+				if (nextFloat() >= 0.2 * span) return;
+				const at = from + span * nextFloat();
+				level.add('minecraft:dust', x + 0.5 + 0.4375 * side[0] + at * along[0], y + 0.5 + 0.4375 * side[1] + at * along[1],
+					z + 0.5 + 0.4375 * side[2] + at * along[2], 0, 0, 0, { color, scale: 1 });
+			};
+			for (const direction of ['north', 'east', 'south', 'west']) {
+				const connection = p[direction];
+				const d = DIRS[direction];
+				if (connection === 'up') line(d, DIRS.up, -0.5, 0.5);
+				if (connection === 'up' || connection === 'side') line(DIRS.down, d, 0, 0.5);
+				else line(DIRS.down, d, 0, 0.3);
+			}
+			break;
+		}
+		case 'enchanting_table':
+			// glyphs flying from the bookshelves around (with room between) to the book
+			for (const [ox, oy, oz] of BOOKSHELF_OFFSETS) {
+				if (nextInt(16) !== 0) continue;
+				if (!hasTag(level.info(x + ox, y + oy, z + oz), 'minecraft:enchantment_power_provider')) continue;
+				const between = level.info(x + Math.trunc(ox / 2), y + oy, z + Math.trunc(oz / 2));
+				if (!isAir(between) && !hasTag(between, 'minecraft:enchantment_power_transmitter')) continue;
+				level.add('minecraft:enchant', x + 0.5, y + 2, z + 0.5, ox + nextFloat() - 0.5, oy - nextFloat() - 1, oz + nextFloat() - 0.5);
+			}
+			break;
+		case 'ender_chest':
+			for (let i = 0; i < 3; i++) {
+				const fx = nextInt(2) * 2 - 1, fz = nextInt(2) * 2 - 1;
+				level.add('minecraft:portal', x + 0.5 + 0.25 * fx, y + nextFloat(), z + 0.5 + 0.25 * fz, nextFloat() * fx, (nextFloat() - 0.5) * 0.125, nextFloat() * fz);
+			}
+			break;
+		case 'end_gateway': {
+			// TheEndGatewayBlockEntity.getParticleAmount: a speck for every face that shows
+			let count = 0;
+			for (const d of Object.values(DIRS)) if (!opaque(level.info(x + d[0], y + d[1], z + d[2]))) count++;
+			for (let i = 0; i < count; i++) {
+				let px = x + nextDouble(), pz = z + nextDouble(), xa = (nextDouble() - 0.5) * 0.5, za = (nextDouble() - 0.5) * 0.5;
+				const py = y + nextDouble(), ya = (nextDouble() - 0.5) * 0.5;
+				const flip = nextInt(2) * 2 - 1;
+				if (nextBoolean()) {
+					pz = z + 0.5 + 0.25 * flip;
+					za = nextFloat() * 2 * flip;
+				} else {
+					px = x + 0.5 + 0.25 * flip;
+					xa = nextFloat() * 2 * flip;
+				}
+				level.add('minecraft:portal', px, py, pz, xa, ya, za);
+			}
+			break;
+		}
+		case 'end_portal':
+			level.add('minecraft:smoke', x + nextDouble(), y + 0.8, z + nextDouble(), 0, 0, 0);
+			break;
+		case 'brewing_stand':
+			level.add('minecraft:smoke', x + 0.4 + nextFloat() * 0.2, y + 0.7 + nextFloat() * 0.3, z + 0.4 + nextFloat() * 0.2, 0, 0, 0);
+			break;
+		case 'mycelium':
+			if (nextInt(10) === 0) level.add('minecraft:mycelium', x + nextDouble(), y + 1.1, z + nextDouble(), 0, 0, 0);
+			break;
+		case 'redstone_ore':
+		case 'deepslate_redstone_ore':
+			// RedStoneOreBlock.spawnParticles: dust on every face that is open
+			if (p.lit !== 'true') break;
+			for (const [dx, dy, dz] of FACE_STEPS) {
+				if (opaque(level.info(x + dx, y + dy, z + dz))) continue;
+				const px = dx !== 0 ? 0.5 + 0.5625 * dx : nextFloat();
+				const py = dy !== 0 ? 0.5 + 0.5625 * dy : nextFloat();
+				const pz = dz !== 0 ? 0.5 + 0.5625 * dz : nextFloat();
+				level.add('minecraft:dust', x + px, y + py, z + pz, 0, 0, 0);
+			}
+			break;
+		case 'repeater': {
+			// RepeaterBlock: dust over the front torch or the one set by the delay
+			if (p.powered !== 'true') break;
+			const d = DIRS[p.facing] || DIRS.north;
+			const px = x + 0.5 + (nextDouble() - 0.5) * 0.2, py = y + 0.4 + (nextDouble() - 0.5) * 0.2, pz = z + 0.5 + (nextDouble() - 0.5) * 0.2;
+			let offset = -5;
+			if (nextBoolean()) offset = Number(p.delay || 1) * 2 - 1;
+			offset /= 16;
+			level.add('minecraft:dust', px + offset * d[0], py, pz + offset * d[2], 0, 0, 0);
+			break;
+		}
+		case 'sculk_sensor':
+		case 'calibrated_sculk_sensor': {
+			// SculkSensorBlock: an active sensor's sparks turning from sculk blue to redstone red
+			if (p.sculk_sensor_phase !== 'active') break;
+			const [dx, dy, dz] = FACE_STEPS[nextInt(6)];
+			if (dy !== 0) break;
+			const px = x + 0.5 + (dx === 0 ? 0.5 - nextDouble() : dx * 0.6), pz = z + 0.5 + (dz === 0 ? 0.5 - nextDouble() : dz * 0.6);
+			level.add('minecraft:dust_color_transition', px, y + 0.25, pz, 0, nextFloat() * 0.04, 0, SCULK_TO_REDSTONE);
+			break;
+		}
+		case 'wet_sponge': {
+			// WetSpongeBlock: drips from its sides and bottom where they are open
+			const face = nextInt(6);
+			if (face === 1) break;
+			const [dx, dy, dz] = FACE_STEPS[face];
+			const neighbour = level.info(x + dx, y + dy, z + dz);
+			if (sturdy(neighbour)) break;
+			let px = x, py = y, pz = z;
+			if (face === 0) {
+				py -= 0.05; px += nextDouble(); pz += nextDouble();
+			} else {
+				py += nextDouble() * 0.8;
+				if (dx !== 0) { pz += nextDouble(); px += dx > 0 ? 1 : 0.05; } else { px += nextDouble(); pz += dz > 0 ? 1 : 0.05; }
+			}
+			level.add('minecraft:dripping_water', px, py, pz, 0, 0, 0);
+			break;
+		}
+		default:
+			break;
+	}
 }
 
 const rgbOf = c => [(c >> 16 & 255) / 255, (c >> 8 & 255) / 255, (c & 255) / 255];
@@ -2928,6 +3098,8 @@ export class Particles {
 	constructor(gl) {
 		this.gl = gl;
 		this.particles = [];
+		/** Conduits' frames (ConduitBlockEntity.effectBlocks) by position, looked at every 40 ticks. */
+		this.conduits = new Map();
 		this.sets = new Map();
 		this.texture = null;
 		this.program = program(gl, VS, FS);
@@ -3096,6 +3268,10 @@ export class Particles {
 				this.geyserTick(level, x, y, z, p, this.gameTime);
 				continue;
 			}
+			if (name === 'conduit') {
+				this.conduitParticles(level, x, y, z);
+				continue;
+			}
 			if (name === 'trial_spawner' || name === 'vault') {
 				// TrialSpawner.tickClient / VaultBlockEntity.Client.playIdleSounds (a vault with its item on show)
 				const on = name === 'vault' ? p.vault_state === 'active' || p.vault_state === 'unlocking'
@@ -3105,6 +3281,8 @@ export class Particles {
 						: p.ominous === 'true' ? 'minecraft:block.trial_spawner.ambient_ominous' : 'minecraft:block.trial_spawner.ambient';
 					level.sound(sound, x + 0.5, y + 0.5, z + 0.5, 'block', nextFloat() * 0.25 + 0.75, nextFloat() + 0.5);
 				}
+				if (name === 'vault') this.vaultIdle(level, x, y, z, p.ominous === 'true', on);
+				else this.trialSpawnerParticles(level, x, y, z, p.trial_spawner_state, p.ominous === 'true');
 				continue;
 			}
 			if (p.lit !== 'true') continue;
@@ -3216,6 +3394,14 @@ export class Particles {
 					break;
 				case 'minecraft:area_effect_cloud':
 					if (e.cloud) this.cloudParticles(level, e);
+					break;
+				case 'minecraft:bee':
+					// Bee.aiStep: a bee carrying nectar drips it now and then
+					if (!e.dead && e.d && e.d.nectar && nextFloat() < 0.05) {
+						for (let i = 0; i < nextInt(2) + 1; i++) {
+							this.addFx(level, 'minecraft:falling_nectar', lerp(nextDouble(), e.x - 0.3, e.x + 0.3), e.y + h * 0.5, lerp(nextDouble(), e.z - 0.3, e.z + 0.3), 0, 0, 0);
+						}
+					}
 					break;
 				case 'minecraft:glow_squid':
 					// GlowSquid.aiStep: a glowing speck around it every tick
@@ -3618,6 +3804,21 @@ export class Particles {
 					this.addFx(level, 'minecraft:smoke', px, py, pz, vx, vy, vz);
 				}
 				break;
+			case 3015:
+				// a vault opening (VaultBlockEntity.Client.emitActivationParticles, without the links to players)
+				for (let i = 0; i < 20; i++) {
+					const px = x + 0.1 + nextDouble() * 0.8, py = y + 0.25 + nextDouble() * 0.5, pz = z + 0.1 + nextDouble() * 0.8;
+					this.addFx(level, 'minecraft:smoke', px, py, pz, 0, 0, 0);
+					this.addFx(level, data === 0 ? 'minecraft:small_flame' : 'minecraft:soul_fire_flame', px, py, pz, 0, 0, 0);
+				}
+				break;
+			case 3016:
+				// a vault going out: flames from the middle of its cage
+				for (let i = 0; i < 20; i++) {
+					this.addFx(level, data === 0 ? 'minecraft:small_flame' : 'minecraft:soul_fire_flame', x + 0.4 + nextDouble() * 0.2, y + 0.4 + nextDouble() * 0.2,
+						z + 0.4 + nextDouble() * 0.2, nextGaussian() * 0.02, nextGaussian() * 0.02, nextGaussian() * 0.02);
+				}
+				break;
 			case 3018:
 				// a cobweb woven (weaving effect)
 				for (let i = 0; i < 10; i++) {
@@ -3654,6 +3855,76 @@ export class Particles {
 		if (!p || !this.enabled || this.particles.length >= MAX_PARTICLES) return;
 		p.setPower(0.2);
 		this.particles.push(p.scale(0.6));
+	}
+
+	/**
+	 * ConduitBlockEntity.clientTick / animationTick: nautilus specks from its frame blocks (found again every 40
+	 * ticks, updateShape) curving in to the bobbing eye.
+	 */
+	conduitParticles(level, x, y, z) {
+		const key = x + ',' + y + ',' + z;
+		let c = this.conduits.get(key);
+		if (!c || this.gameTime - c.t >= 40 || this.gameTime < c.t) {
+			const frame = [];
+			let water = true;
+			for (let dx = -1; dx <= 1 && water; dx++) for (let dy = -1; dy <= 1 && water; dy++) for (let dz = -1; dz <= 1 && water; dz++) {
+				const info = level.info(x + dx, y + dy, z + dz);
+				if (!info || !(info.f & FLAG_WATER)) water = false;
+			}
+			if (water) {
+				for (let dx = -2; dx <= 2; dx++) for (let dy = -2; dy <= 2; dy++) for (let dz = -2; dz <= 2; dz++) {
+					const ax = Math.abs(dx), ay = Math.abs(dy), az = Math.abs(dz);
+					if ((ax > 1 || ay > 1 || az > 1) && ((dx === 0 && (ay === 2 || az === 2)) || (dy === 0 && (ax === 2 || az === 2)) || (dz === 0 && (ax === 2 || ay === 2)))
+						&& hasTag(level.info(x + dx, y + dy, z + dz), 'minecraft:conduit_effect_block')) frame.push([dx, dy, dz]);
+				}
+			}
+			c = { t: this.gameTime, frame, tick: c ? c.tick : 0 };
+			this.conduits.set(key, c);
+			if (this.conduits.size > 64) this.conduits.delete(this.conduits.keys().next().value);
+		}
+		c.tick++;
+		let hh = Math.sin((c.tick + 35) * 0.1) / 2 + 0.5;
+		hh = (hh * hh + hh) * 0.3;
+		for (const [dx, dy, dz] of c.frame) {
+			if (nextInt(50) !== 0) continue;
+			this.addFx(level, 'minecraft:nautilus', x + 0.5, y + 1.5 + hh, z + 0.5, -0.5 + nextFloat() + dx, -2 + nextFloat() + dy, -0.5 + nextFloat() + dz);
+		}
+	}
+
+	/** TrialSpawnerState.ParticleEmission: small flames while waiting, flames and smoke while active, smoke cooling down. */
+	trialSpawnerParticles(level, x, y, z, state, ominous) {
+		const around = amount => [x + 0.5 + (nextFloat() - 0.5) * amount, y + 0.5 + (nextFloat() - 0.5) * amount, z + 0.5 + (nextFloat() - 0.5) * amount];
+		switch (state) {
+			case 'waiting_for_players':
+			case 'waiting_for_reward_ejection':
+			case 'ejecting_reward':
+				if (nextInt(2) === 0) this.addFx(level, ominous ? 'minecraft:soul_fire_flame' : 'minecraft:small_flame', ...around(0.9), 0, 0, 0);
+				break;
+			case 'active': {
+				const at = around(1);
+				this.addFx(level, 'minecraft:smoke', ...at, 0, 0, 0);
+				this.addFx(level, ominous ? 'minecraft:soul_fire_flame' : 'minecraft:flame', ...at, 0, 0, 0);
+				break;
+			}
+			case 'cooldown': {
+				const at = around(0.9);
+				if (nextInt(3) === 0) this.addFx(level, 'minecraft:smoke', ...at, 0, 0, 0);
+				if (this.gameTime % 20 === 0) {
+					for (let i = 0, n = nextInt(4) + 20; i < n; i++) this.addFx(level, 'minecraft:smoke', x + 0.5, y + 1, z + 0.5, 0, 0, 0);
+				}
+				break;
+			}
+			default:
+				break;
+		}
+	}
+
+	/** VaultBlockEntity.Client.emitIdleParticles: smoke in the cage, flames while it shows its item. */
+	vaultIdle(level, x, y, z, ominous, active) {
+		if (nextFloat() > 0.5) return;
+		const px = x + 0.1 + nextDouble() * 0.8, py = y + 0.25 + nextDouble() * 0.5, pz = z + 0.1 + nextDouble() * 0.8;
+		this.addFx(level, 'minecraft:smoke', px, py, pz, 0, 0, 0);
+		if (active) this.addFx(level, ominous ? 'minecraft:soul_fire_flame' : 'minecraft:small_flame', px, py, pz, 0, 0, 0);
 	}
 
 	/** LevelEventHandler.potionSplashParticles: the bottle's pieces and a hundred coloured swirls thrown out. */

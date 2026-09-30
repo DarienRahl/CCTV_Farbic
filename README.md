@@ -10,7 +10,7 @@
   <a href="https://github.com/DarienRahl/CCTV_Farbic/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/DarienRahl/CCTV_Farbic?style=for-the-badge&amp;label=release&amp;color=5d8c3e"></a>
   <img alt="Minecraft 26.3" src="https://img.shields.io/badge/minecraft-26.3-866043?style=for-the-badge">
   <img alt="Fabric, server side only" src="https://img.shields.io/badge/fabric-server%20side%20only-8b8b8b?style=for-the-badge">
-  <a href="#roadmap"><img alt="Roadmap" src="https://img.shields.io/badge/roadmap-98%2F101%20done-80ff20?style=for-the-badge"></a>
+  <a href="#roadmap"><img alt="Roadmap" src="https://img.shields.io/badge/roadmap-100%2F102%20done-80ff20?style=for-the-badge"></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-555555?style=for-the-badge"></a>
 </p>
 <!-- badges:end -->
@@ -199,7 +199,7 @@ at once as a video wall.
 ## Roadmap
 
 <!-- roadmap:start -->
-<p align="center"><img src="docs/images/roadmap/banner.svg" width="100%" alt="CCTV roadmap: 98 of 101 done"></p>
+<p align="center"><img src="docs/images/roadmap/banner.svg" width="100%" alt="CCTV roadmap: 100 of 102 done"></p>
 
 What is done and what comes next, milestone by milestone (the full plan with its principles is in
 [docs/ROADMAP.md](docs/ROADMAP.md)).
@@ -366,13 +366,14 @@ What is done and what comes next, milestone by milestone (the full plan with its
 
 </details>
 
-<img src="docs/images/roadmap/1-9.svg" width="100%" alt="1.9 — blocks' own particles: planned, 0 of 2 done">
+<img src="docs/images/roadmap/1-9.svg" width="100%" alt="1.9 — blocks' own particles: started, 2 of 3 done">
 
 <details>
-<summary><b>1.9 — blocks' own particles</b> · planned · 0 of 2 done</summary>
+<summary><b>1.9 — blocks' own particles</b> · started · 2 of 3 done</summary>
 
-- [ ] Enchanting tables' glyphs flying from bookshelves, ender chests' portal specks, redstone wire, repeaters, comparators and ore glowing dust, falling dust under sand and gravel, mycelium, end portals and gateways
-- [ ] Conduits' nautilus specks, vaults' connections to players, trial spawners' idle flames, bees dripping nectar
+- [x] Enchanting tables' glyphs flying from bookshelves, ender chests' portal specks, redstone wire, repeaters' and lit ores' glowing dust, falling dust under sand, gravel and concrete powder, mycelium, end portals and gateways, brewing stands' smoke, wet sponges' drips and active sculk sensors
+- [x] Conduits' nautilus specks drawn to the conduit, trial spawners' and vaults' flames and smoke, vaults opening and going out, bees dripping nectar, lightning rods' sparks in thunderstorms
+- [ ] Vaults' connections to the players they are waiting for (needs the vault's shared data from the server)
 
 </details>
 

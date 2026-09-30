@@ -212,7 +212,12 @@ final class BlockPalette {
 					BlockTags.TERRACOTTA,
 					BlockTags.PALE_OAK_LOGS,
 					BlockTags.TRIGGERS_AMBIENT_DRIED_GHAST_BLOCK_SOUNDS,
-					BlockTags.CONDUIT_EFFECT_BLOCK));
+					BlockTags.CONDUIT_EFFECT_BLOCK,
+					// EnchantingTableBlock.isValidBookShelf, FallingBlock.isFree
+					BlockTags.ENCHANTMENT_POWER_PROVIDER,
+					BlockTags.ENCHANTMENT_POWER_TRANSMITTER,
+					BlockTags.REPLACEABLE,
+					BlockTags.FIRE));
 			for (Block block : BuiltInRegistries.BLOCK) {
 				if (block instanceof LeavesBlock) {
 					AmbientLeavesBlockSoundPlayer sounds = leavesSounds(block);

@@ -57,7 +57,7 @@ final class EffectEncoder {
 	/** Level events drawn by the viewer as they come (LevelEventHandler#levelEvent). */
 	private static final Set<Integer> LEVEL_EVENTS = Set.of(1500, 1501, 1502, 1503, 2000, 2001, 2002, 2003, 2004, 2006, 2007, 2008, 2009,
 			2010, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 3000, 3002, 3003, 3004, 3005, 3006, 3007, 3008, 3009, 3011, 3012, 3013, 3014,
-			3017, 3018, 3019, 3020, 3021);
+			3015, 3016, 3017, 3018, 3019, 3020, 3021);
 	/** Level events whose particles are pieces of the block at the event (a mace's smash, someone mining a block). */
 	private static final Set<Integer> WITH_BLOCK = Set.of(2013, 2019, 2020);
 
