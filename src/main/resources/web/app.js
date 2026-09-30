@@ -55,6 +55,8 @@ try {
 	throw e;
 }
 const gl = renderer.gl;
+// ?occlusion=0 draws every section in the frustum (SectionOcclusionGraph off, for comparisons)
+renderer.occlusionEnabled = params.get('occlusion') !== '0';
 const environment = new Environment();
 const sky = new SkyRenderer(gl);
 const clouds = new CloudRenderer(gl);
@@ -296,6 +298,7 @@ function connect() {
 		const origin = [Math.floor(c.x), Math.floor(c.y), Math.floor(c.z)];
 		world.reset(origin);
 		particles.clear();
+		if (data.dim && data.dim.height) renderer.setWorldHeight(data.dim.minY, data.dim.height);
 		world.setDimension(data.dim || { hasSky: c.dimension !== 'minecraft:the_nether', cardinal: c.dimension === 'minecraft:the_nether' ? 'nether' : 'default' });
 		world.setBiomes(data.biomes || {});
 		environment.setDimension(data.dim || { id: c.dimension, skybox: c.dimension === 'minecraft:the_end' ? 'end' : c.dimension === 'minecraft:the_nether' ? 'none' : 'overworld' });

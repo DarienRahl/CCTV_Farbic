@@ -173,7 +173,9 @@ to the milestone it belongs to. The roadmap on the README page is drawn from thi
 - [x] **Items like ItemModelResolver**: every item's definition (`items/*.json`: model, composite, condition,
       select, range_dispatch, special) with its tints (dye, potion, firework, grass, constant, custom model data), so dyed leather, potions and tipped arrows, loaded crossbows, trimmed armour, clocks and new
       items of later versions look like the game's
-- [ ] Terrain: the game's chunk occlusion culling (visibility graph), remaining fluid edge cases
+- [x] **Occlusion culling like the game** (VisGraph per section in the meshing workers, SectionOcclusionGraph's walk
+      from the camera with its source directions and the far sections' ray check)
+- [ ] Terrain: remaining fluid edge cases
 - [x] **Camera in water, lava and powder snow**: the underwater overlay (ScreenEffectRenderer, as bright as the
       light at the camera) and the fog of each (LavaFogEnvironment, PowderedSnowFogEnvironment)
 
@@ -187,7 +189,7 @@ to the milestone it belongs to. The roadmap on the README page is drawn from thi
       off)
 - [x] **Server memory**: far sections kept only as their message (a few KB instead of about 25), read
       back from it when a block or the light in them changes
-- [ ] Occlusion culling (see 1.3) and per-section culling inside merged regions
+- [ ] Per-section culling inside merged far regions (the occlusion graph now skips whole regions)
 - [ ] Entities: skinning on the GPU (bone matrices in a texture) instead of rebuilding vertices on
       the CPU every frame
 - [x] Video wall: frame rate cap (lower for small tiles), one pixel per CSS pixel, no rendering

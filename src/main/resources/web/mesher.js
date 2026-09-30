@@ -342,6 +342,61 @@ export class Mesher {
 	 * job: {sx, sy, sz, base: [x, y, z] vertex offset of the section, eye: [x, y, z] in the same space,
 	 * pad: Uint16Array(18^3), light: Uint8Array(18^3) (sky << 4 | block), biomes: Uint16Array(10 x 6 x 10) cells from (sx*4-3, sy*4-1, sz*4-3)}
 	 */
+	/**
+	 * VisGraph.resolve: which faces of the section can see each other through blocks that are not solid (full
+	 * opaque cubes), as VisibilitySet: vis[a] has bit b when face a sees face b (DOWN, UP, NORTH, SOUTH, WEST, EAST).
+	 * Fewer than 256 solid blocks: everything sees everything; all solid: nothing does.
+	 */
+	visibility() {
+		const solid = this.visSolid || (this.visSolid = new Uint8Array(4096));
+		const queue = this.visQueue || (this.visQueue = new Int32Array(4096));
+		let count = 0;
+		for (let y = 0; y < 16; y++) {
+			for (let z = 0; z < 16; z++) {
+				let p = ((y + 1) * PAD + (z + 1)) * PAD + 1;
+				for (let x = 0; x < 16; x++, p++) {
+					const id = this.pad[p];
+					const info = id === UNKNOWN ? null : this.infos[id];
+					const opaque = !!(info && !info.air && info.occludes === 63);
+					solid[x | y << 8 | z << 4] = opaque ? 1 : 0;
+					if (opaque) count++;
+				}
+			}
+		}
+		const vis = new Uint8Array(6);
+		if (count < 256) return vis.fill(63);
+		if (count === 4096) return vis;
+		// VisGraph.INDEX_OF_EDGES: the cells on the section's surface, x then y then z
+		for (let x = 0; x < 16; x++) {
+			for (let y = 0; y < 16; y++) {
+				for (let z = 0; z < 16; z++) {
+					if (!(x === 0 || x === 15 || y === 0 || y === 15 || z === 0 || z === 15)) continue;
+					const start = x | y << 8 | z << 4;
+					if (solid[start]) continue;
+					// floodFill: the faces this open region touches
+					let faces = 0, head = 0, tail = 0;
+					queue[tail++] = start;
+					solid[start] = 1;
+					while (head < tail) {
+						const i = queue[head++];
+						const cx = i & 15, cy = i >> 8 & 15, cz = i >> 4 & 15;
+						if (cx === 0) faces |= 1 << WEST; else if (cx === 15) faces |= 1 << EAST;
+						if (cy === 0) faces |= 1 << DOWN; else if (cy === 15) faces |= 1 << UP;
+						if (cz === 0) faces |= 1 << NORTH; else if (cz === 15) faces |= 1 << SOUTH;
+						if (cy > 0 && !solid[i - 256]) { solid[i - 256] = 1; queue[tail++] = i - 256; }
+						if (cy < 15 && !solid[i + 256]) { solid[i + 256] = 1; queue[tail++] = i + 256; }
+						if (cz > 0 && !solid[i - 16]) { solid[i - 16] = 1; queue[tail++] = i - 16; }
+						if (cz < 15 && !solid[i + 16]) { solid[i + 16] = 1; queue[tail++] = i + 16; }
+						if (cx > 0 && !solid[i - 1]) { solid[i - 1] = 1; queue[tail++] = i - 1; }
+						if (cx < 15 && !solid[i + 1]) { solid[i + 1] = 1; queue[tail++] = i + 1; }
+					}
+					for (let a = 0; a < 6; a++) if (faces & (1 << a)) vis[a] |= faces;
+				}
+			}
+		}
+		return vis;
+	}
+
 	mesh(job) {
 		this.pad = job.pad;
 		this.light = job.light;
@@ -407,7 +462,7 @@ export class Mesher {
 		}
 
 		translucent.sortQuads(job.eye);
-		return { opaque: opaque.take(), translucent: translucent.take(), blockEntities, errors, fallbacks: [...this.fallbacks] };
+		return { opaque: opaque.take(), translucent: translucent.take(), blockEntities, errors, fallbacks: [...this.fallbacks], vis: this.visibility() };
 	}
 
 	dispatchFor(info) {

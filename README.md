@@ -10,7 +10,7 @@
   <a href="https://github.com/DarienRahl/CCTV_Farbic/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/DarienRahl/CCTV_Farbic?style=for-the-badge&amp;label=release&amp;color=5d8c3e"></a>
   <img alt="Minecraft 26.3" src="https://img.shields.io/badge/minecraft-26.3-866043?style=for-the-badge">
   <img alt="Fabric, server side only" src="https://img.shields.io/badge/fabric-server%20side%20only-8b8b8b?style=for-the-badge">
-  <a href="#roadmap"><img alt="Roadmap" src="https://img.shields.io/badge/roadmap-65%2F70%20done-80ff20?style=for-the-badge"></a>
+  <a href="#roadmap"><img alt="Roadmap" src="https://img.shields.io/badge/roadmap-66%2F71%20done-80ff20?style=for-the-badge"></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-555555?style=for-the-badge"></a>
 </p>
 <!-- badges:end -->
@@ -180,7 +180,7 @@ at once as a video wall.
 ## Roadmap
 
 <!-- roadmap:start -->
-<p align="center"><img src="docs/images/roadmap/banner.svg" width="100%" alt="CCTV roadmap: 65 of 70 done"></p>
+<p align="center"><img src="docs/images/roadmap/banner.svg" width="100%" alt="CCTV roadmap: 66 of 71 done"></p>
 
 What is done and what comes next, milestone by milestone (the full plan with its principles is in
 [docs/ROADMAP.md](docs/ROADMAP.md)).
@@ -218,10 +218,10 @@ What is done and what comes next, milestone by milestone (the full plan with its
 
 </details>
 
-<img src="docs/images/roadmap/1-3.svg" width="100%" alt="1.3 — 1:1 picture: in progress - 1.3.4 is out, 44 of 46 done">
+<img src="docs/images/roadmap/1-3.svg" width="100%" alt="1.3 — 1:1 picture: in progress - 1.3.4 is out, 45 of 47 done">
 
 <details open>
-<summary><b>1.3 — 1:1 picture</b> · in progress - 1.3.4 is out · 44 of 46 done</summary>
+<summary><b>1.3 — 1:1 picture</b> · in progress - 1.3.4 is out · 45 of 47 done</summary>
 
 - [ ] **Reference renders in CI**: a Fabric client game test builds the CI scene in single player, takes a screenshot from the camera position with the game, and the viewer takes one from the same camera; both are published side by side with a difference score
 - [x] **Signs and hanging signs** with their text in the game font (text sent by the server; boards and beds are block models in 26.3 and were already drawn)
@@ -267,7 +267,8 @@ What is done and what comes next, milestone by milestone (the full plan with its
 - [x] Your own field of view (30–110°), distance fog modes and 11 built-in post effects
 - [x] The Biome Blend option (off to 15x15)
 - [x] **Items like ItemModelResolver**: every item's definition (`items/*.json`: model, composite, condition, select, range_dispatch, special) with its tints (dye, potion, firework, grass, constant, custom model data), so dyed leather, potions and tipped arrows, loaded crossbows, trimmed armour, clocks and new items of later versions look like the game's
-- [ ] Terrain: the game's chunk occlusion culling (visibility graph), remaining fluid edge cases
+- [x] **Occlusion culling like the game** (VisGraph per section in the meshing workers, SectionOcclusionGraph's walk from the camera with its source directions and the far sections' ray check)
+- [ ] Terrain: remaining fluid edge cases
 - [x] **Camera in water, lava and powder snow**: the underwater overlay (ScreenEffectRenderer, as bright as the light at the camera) and the fog of each (LavaFogEnvironment, PowderedSnowFogEnvironment)
 
 </details>
@@ -280,7 +281,7 @@ What is done and what comes next, milestone by milestone (the full plan with its
 - [ ] Binary section messages instead of JSON with base64 (sections are already palette + run-length encoded and gzipped, so this saves roughly a quarter; lower priority)
 - [x] **Section cache in the browser** (IndexedDB): the viewer keeps the sections it got; after "init" it tells the server which ones it has (position and a hash of the message) and the server answers "keep" for the unchanged ones, so reopening a camera downloads only what changed (`?cache=0` turns it off)
 - [x] **Server memory**: far sections kept only as their message (a few KB instead of about 25), read back from it when a block or the light in them changes
-- [ ] Occlusion culling (see 1.3) and per-section culling inside merged regions
+- [ ] Per-section culling inside merged far regions (the occlusion graph now skips whole regions)
 - [ ] Entities: skinning on the GPU (bone matrices in a texture) instead of rebuilding vertices on the CPU every frame
 - [x] Video wall: frame rate cap (lower for small tiles), one pixel per CSS pixel, no rendering for tiles that are off screen or in a hidden tab
 - [x] **Budgets in CI**: server milliseconds per camera tick, bytes per section message, the page's time per frame (also in `/api/status`: tick time, sections sent, kept and compacted)

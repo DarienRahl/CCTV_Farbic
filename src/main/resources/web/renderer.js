@@ -11,6 +11,7 @@
 import { program, FOG_GLSL, setFog, Target } from './gl.js';
 import { STRIDE } from './mesher.js';
 import { multiply, lookDir } from './math.js';
+import { occlusionGraph } from './occlusion.js';
 
 const NEAR_DISTANCE = 80; // sections closer than this keep their own buffers
 const REGION_SHIFT = 2; // 4x4x4 sections per region
@@ -316,6 +317,16 @@ export class Renderer {
 		this.units = new Map();
 		this.sectionUnits = new Map(); // section key -> unit
 		this.dirtyUnits = new Set();
+		// SectionOcclusionGraph: each section's VisibilitySet and the sections the camera can see into
+		this.visibility = new Map(); // section key -> Uint8Array(6), missing = open
+		this.sectionCoords = new Map();
+		this.sectionBounds = null;
+		this.worldSections = null; // [min section y, max section y]
+		this.occlusion = null;
+		this.occlusionDirty = true;
+		this.occlusionAt = 0;
+		this.occlusionStamp = 0;
+		this.occlusionEnabled = true;
 		this.camera = [0, 0, 0];
 		this.lightmap = gl.createTexture();
 		gl.bindTexture(gl.TEXTURE_2D, this.lightmap);
@@ -414,6 +425,16 @@ export class Renderer {
 	/** A section mesh from the workers (message.opaque / translucent ArrayBuffers), or null to remove it. */
 	setSectionMesh(key, section, message, now) {
 		let unit = this.sectionUnits.get(key);
+		this.occlusionDirty = true;
+		if (message && message.vis) this.visibility.set(key, message.vis);
+		else this.visibility.delete(key);
+		if (!this.sectionCoords.has(key)) {
+			this.sectionCoords.set(key, [section.x, section.y, section.z]);
+			const b = this.sectionBounds || (this.sectionBounds = { x0: section.x, x1: section.x, z0: section.z, z1: section.z, y0: section.y, y1: section.y });
+			b.x0 = Math.min(b.x0, section.x); b.x1 = Math.max(b.x1, section.x);
+			b.z0 = Math.min(b.z0, section.z); b.z1 = Math.max(b.z1, section.z);
+			b.y0 = Math.min(b.y0, section.y); b.y1 = Math.max(b.y1, section.y);
+		}
 		if (!message) {
 			if (unit) {
 				unit.pending.set(key, { opaque: null, translucent: null, order: 0 });
@@ -466,7 +487,60 @@ export class Renderer {
 		this.units.clear();
 		this.sectionUnits.clear();
 		this.dirtyUnits.clear();
+		this.visibility.clear();
+		this.sectionCoords.clear();
+		this.sectionBounds = null;
+		this.occlusion = null;
+		this.occlusionDirty = true;
 		this.origin = origin;
+	}
+
+	/** The dimension's height (from "init"), for the occlusion graph's view area. */
+	setWorldHeight(minY, height) {
+		this.worldSections = [Math.floor(minY / 16), Math.floor((minY + height - 1) / 16)];
+		this.occlusionDirty = true;
+	}
+
+	/**
+	 * SectionOcclusionGraph's full update, again when sections change (at most every 400 ms) or the camera moves
+	 * to another section.
+	 */
+	updateOcclusion(frame) {
+		if (!this.occlusionEnabled || !this.sectionBounds) {
+			this.occlusion = null;
+			return;
+		}
+		const o = this.origin || [0, 0, 0];
+		const eye = [frame.camPos[0] + o[0], frame.camPos[1] + o[1], frame.camPos[2] + o[2]];
+		const section = Math.floor(eye[0] / 16) + ',' + Math.floor(eye[1] / 16) + ',' + Math.floor(eye[2] / 16);
+		if (!(this.occlusionDirty || section !== this.occlusionSection) || frame.now - this.occlusionAt < 400) return;
+		const b = this.sectionBounds;
+		const ys = this.worldSections || [b.y0 - 1, b.y1 + 1];
+		const box = { x0: b.x0 - 1, x1: b.x1 + 1, z0: b.z0 - 1, z1: b.z1 + 1, y0: ys[0], y1: ys[1] };
+		this.occlusion = occlusionGraph(eye, box, (x, y, z) => this.visibility.get(x + ',' + y + ',' + z) || null);
+		this.occlusionDirty = false;
+		this.occlusionAt = frame.now;
+		this.occlusionSection = section;
+		this.occlusionStamp++;
+	}
+
+	/** Whether the occlusion graph reached the unit's section, or any section of a merged region. */
+	unitReached(unit) {
+		const graph = this.occlusion;
+		if (!graph) return true;
+		if (unit.occlusionStamp === this.occlusionStamp) return unit.reached;
+		let reached = false;
+		for (const key of unit.sections) {
+			const c = this.sectionCoords.get(key);
+			const i = c ? graph.index(c[0], c[1], c[2]) : -1;
+			if (i < 0 || graph.reached[i]) {
+				reached = true;
+				break;
+			}
+		}
+		unit.occlusionStamp = this.occlusionStamp;
+		unit.reached = reached;
+		return reached;
 	}
 
 	/** Uploads pending section meshes: near units right away, merged regions within a byte budget. */
@@ -553,12 +627,18 @@ export class Renderer {
 		const terrain = this.terrainProgram(shaders);
 		const cam = frame.camPos;
 
-		// Visible units, nearest first.
+		// Visible units, nearest first (in the frustum and reached by the occlusion graph).
+		this.updateOcclusion(frame);
 		const visible = [];
+		let occluded = 0;
 		for (const unit of this.units.values()) {
 			if (unit.opaque.quads === 0 && unit.translucent.quads === 0) continue;
 			const dx = unit.cx - cam[0], dy = unit.cy - cam[1], dz = unit.cz - cam[2];
 			if (!frame.frustum(dx, dy, dz, unit.radius)) continue;
+			if (!this.unitReached(unit)) {
+				occluded++;
+				continue;
+			}
 			unit.distance = Math.hypot(dx, dy, dz);
 			if (unit.distance - unit.radius > frame.fog.rdEnd + 16) continue;
 			visible.push(unit);
@@ -629,7 +709,7 @@ export class Renderer {
 
 		if (hooks.translucent) hooks.translucent(shadow);
 
-		this.stats = { units: this.units.size, drawn: visible.length, quads };
+		this.stats = { units: this.units.size, drawn: visible.length, occluded, quads };
 		return shadow;
 	}
 
