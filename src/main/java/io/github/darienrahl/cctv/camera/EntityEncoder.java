@@ -11,10 +11,13 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.IntConsumer;
 
 import org.jspecify.annotations.Nullable;
+
+import com.mojang.authlib.GameProfile;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
@@ -25,7 +28,9 @@ import net.minecraft.core.particles.ParticleOptions;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.StringRepresentable;
+import net.minecraft.util.Util;
 import net.minecraft.world.entity.AnimationState;
+import net.minecraft.world.entity.Avatar;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.entity.Crackiness;
 import net.minecraft.world.entity.Display;
@@ -37,12 +42,14 @@ import net.minecraft.world.entity.LightningBolt;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Pose;
 import net.minecraft.world.entity.decoration.ItemFrame;
+import net.minecraft.world.entity.decoration.Mannequin;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.animal.sniffer.Sniffer;
 import net.minecraft.world.entity.monster.Guardian;
 import net.minecraft.world.entity.monster.illager.AbstractIllager;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.player.PlayerModelPart;
+import net.minecraft.world.entity.player.PlayerSkin;
 import net.minecraft.world.entity.projectile.FishingHook;
 import net.minecraft.world.entity.vehicle.boat.AbstractBoat;
 import net.minecraft.world.item.CrossbowItem;
@@ -55,6 +62,7 @@ import net.minecraft.world.item.component.ChargedProjectiles;
 import net.minecraft.world.item.component.CustomModelData;
 import net.minecraft.world.item.component.DyedItemColor;
 import net.minecraft.world.item.component.FireworkExplosion;
+import net.minecraft.world.item.component.ResolvableProfile;
 import net.minecraft.world.item.equipment.Equippable;
 import net.minecraft.world.item.equipment.trim.ArmorTrim;
 import net.minecraft.world.level.block.Block;
@@ -256,6 +264,7 @@ final class EntityEncoder {
 
 	private static final Map<Class<?>, List<Map.Entry<Method, String>>> PROBE_CACHE = new ConcurrentHashMap<>();
 	private static final Map<Class<?>, Optional<Method>> SWELLING_CACHE = new ConcurrentHashMap<>();
+	private static final @Nullable Method MANNEQUIN_DESCRIPTION = findMannequinDescription();
 
 	private static final EquipmentSlot[] ARMOR = {EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET};
 	/** Bits of the {@code "foil"} mask: items drawn with the enchantment glint (ItemStack#hasFoil). */
@@ -329,21 +338,12 @@ final class EntityEncoder {
 			}
 		}
 
+		if (entity instanceof Avatar avatar) {
+			writeAvatar(json, avatar);
+		}
 		if (entity instanceof Player player) {
 			json.field("name", player.getGameProfile().name())
 					.field("uuid", player.getUUID().toString());
-			// Skin layers and cape the player turned off in their skin customisation (PlayerModelPart masks).
-			int parts = 0;
-			int all = 0;
-			for (PlayerModelPart part : PlayerModelPart.values()) {
-				all |= part.getMask();
-				if (player.isModelPartShown(part)) {
-					parts |= part.getMask();
-				}
-			}
-			if (parts != all) {
-				json.field("parts", parts);
-			}
 		} else if (entity.hasCustomName() && entity.getCustomName() != null) {
 			json.field("name", entity.getCustomName().getString());
 			if (entity.isCustomNameVisible()) {
@@ -575,6 +575,86 @@ final class EntityEncoder {
 		}
 	}
 
+	/**
+	 * What AvatarRenderer draws of players and mannequins beyond their model: the skin layers turned off (the
+	 * PlayerModelPart masks, {@code "parts"}), the arrows and bee stingers stuck in them ({@code "arrows"},
+	 * {@code "stingers"}: ArrowLayer, BeeStingerLayer), and for a mannequin its profile and description.
+	 */
+	private static void writeAvatar(Json json, Avatar avatar) {
+		int parts = 0;
+		int all = 0;
+		for (PlayerModelPart part : PlayerModelPart.values()) {
+			all |= part.getMask();
+			if (avatar.isModelPartShown(part)) {
+				parts |= part.getMask();
+			}
+		}
+		if (parts != all) {
+			json.field("parts", parts);
+		}
+		if (avatar.getArrowCount() > 0) {
+			json.field("arrows", avatar.getArrowCount());
+		}
+		if (avatar.getStingerCount() > 0) {
+			json.field("stingers", avatar.getStingerCount());
+		}
+		if (avatar instanceof Mannequin mannequin) {
+			writeMannequin(json, mannequin);
+		}
+	}
+
+	/**
+	 * The profile a mannequin shows the skin of ({@code "profile": {id, name, texture, model, cape, elytra}}, the
+	 * last four from the profile's skin patch, texture asset ids) and its description, drawn under its name
+	 * ({@code "desc"}, Mannequin.getDescription: "NPC" unless changed or hidden).
+	 */
+	private static void writeMannequin(Json json, Mannequin mannequin) {
+		ResolvableProfile profile = mannequin.getProfile();
+		GameProfile partial = profile.partialProfile();
+		json.name("profile").beginObject();
+		UUID id = partial.id();
+		if (id != null && !id.equals(Util.NIL_UUID)) {
+			json.field("id", id.toString());
+		}
+		String name = profile.name().orElse(partial.name());
+		if (name != null && !name.isEmpty()) {
+			json.field("name", name);
+		}
+		PlayerSkin.Patch patch = profile.skinPatch();
+		patch.body().ifPresent(texture -> json.field("texture", texture.id().toString()));
+		patch.cape().ifPresent(texture -> json.field("cape", texture.id().toString()));
+		patch.elytra().ifPresent(texture -> json.field("elytra", texture.id().toString()));
+		patch.model().ifPresent(model -> json.field("model", model.getSerializedName()));
+		json.endObject();
+		Component description = mannequinDescription(mannequin);
+		if (description != null) {
+			json.field("desc", description.getString());
+		}
+	}
+
+	private static @Nullable Component mannequinDescription(Mannequin mannequin) {
+		if (MANNEQUIN_DESCRIPTION == null) {
+			return null;
+		}
+		try {
+			return (Component) MANNEQUIN_DESCRIPTION.invoke(mannequin);
+		} catch (ReflectiveOperationException | RuntimeException e) {
+			return null;
+		}
+	}
+
+	/** Mannequin.getDescription is protected. */
+	private static @Nullable Method findMannequinDescription() {
+		try {
+			Method method = Mannequin.class.getDeclaredMethod("getDescription");
+			method.setAccessible(true);
+			return method;
+		} catch (ReflectiveOperationException | RuntimeException e) {
+			Problems.report(null, "mannequin description", e);
+			return null;
+		}
+	}
+
 	private static int foil(ItemStack stack, int bit) {
 		return !stack.isEmpty() && stack.hasFoil() ? bit : 0;
 	}
@@ -583,7 +663,7 @@ final class EntityEncoder {
 	 * An item id, and as {@code <name>Model} the item model it is drawn with when that is not the item's own
 	 * (the item_model component: custom music discs and other items of data packs).
 	 */
-	private static void writeItem(Json json, String name, ItemStack stack) {
+	static void writeItem(Json json, String name, ItemStack stack) {
 		if (!stack.isEmpty()) {
 			String id = BuiltInRegistries.ITEM.getKey(stack.getItem()).toString();
 			json.field(name, id);

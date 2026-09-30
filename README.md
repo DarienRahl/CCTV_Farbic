@@ -10,7 +10,7 @@
   <a href="https://github.com/DarienRahl/CCTV_Farbic/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/DarienRahl/CCTV_Farbic?style=for-the-badge&amp;label=release&amp;color=5d8c3e"></a>
   <img alt="Minecraft 26.3" src="https://img.shields.io/badge/minecraft-26.3-866043?style=for-the-badge">
   <img alt="Fabric, server side only" src="https://img.shields.io/badge/fabric-server%20side%20only-8b8b8b?style=for-the-badge">
-  <a href="#roadmap"><img alt="Roadmap" src="https://img.shields.io/badge/roadmap-76%2F80%20done-80ff20?style=for-the-badge"></a>
+  <a href="#roadmap"><img alt="Roadmap" src="https://img.shields.io/badge/roadmap-80%2F81%20done-80ff20?style=for-the-badge"></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-555555?style=for-the-badge"></a>
 </p>
 <!-- badges:end -->
@@ -197,7 +197,7 @@ at once as a video wall.
 ## Roadmap
 
 <!-- roadmap:start -->
-<p align="center"><img src="docs/images/roadmap/banner.svg" width="100%" alt="CCTV roadmap: 76 of 80 done"></p>
+<p align="center"><img src="docs/images/roadmap/banner.svg" width="100%" alt="CCTV roadmap: 80 of 81 done"></p>
 
 What is done and what comes next, milestone by milestone (the full plan with its principles is in
 [docs/ROADMAP.md](docs/ROADMAP.md)).
@@ -309,15 +309,16 @@ What is done and what comes next, milestone by milestone (the full plan with its
 
 </details>
 
-<img src="docs/images/roadmap/1-5.svg" width="100%" alt="1.5 — everything the game shows: started, 1 of 4 done">
+<img src="docs/images/roadmap/1-5.svg" width="100%" alt="1.5 — everything the game shows: started, 5 of 5 done">
 
 <details>
-<summary><b>1.5 — everything the game shows</b> · started · 1 of 4 done</summary>
+<summary><b>1.5 — everything the game shows</b> · started · 5 of 5 done</summary>
 
 - [x] **Display entities** like DisplayRenderer: block, item and text displays (the holograms, signs and decorations of servers) with their transformation interpolated like the game (Transformation.slerp), billboards facing the camera, brightness overrides, shadows, view range and teleport gliding; text displays with the game's font, colours, bold, italic, underline and strikethrough, line wrapping, alignment, background and see-through text (the cameras' own markers stay hidden)
-- [ ] Shelves (ShelfRenderer: the items standing on a shelf block)
-- [ ] Mannequins (the player-like decoration entity, drawn like a player with its profile's skin)
-- [ ] Arrows and bee stingers stuck in players and mobs (StuckInBodyLayer)
+- [x] **Shelves** like ShelfRenderer: the three items standing on a shelf, set on its middle by their model's bounding box or on its bottom when the shelf is powered
+- [x] **Mannequins** drawn by the player renderer with the skin of their profile (by id or name, the default skin of the empty profile, or the texture, model and cape of the profile's skin patch), their hidden skin layers, poses and the description under their name
+- [x] **Arrows and bee stingers stuck in players and mannequins** (StuckInBodyLayer): in the same body parts and places as in the game, from the same random seeded with the entity's id
+- [x] Players drawn at the player renderer's scale (0.9375, they were a little too big); items whose model changes with the date (the Christmas chest) pick it by the viewer's clock
 
 </details>
 

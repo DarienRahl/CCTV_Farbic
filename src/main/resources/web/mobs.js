@@ -96,11 +96,11 @@ function humanoid(p, a, e) {
 	if (p.head) {
 		if (e.pose === 'fall_flying') p.head.xRot = -PI / 4;
 		else if (a.swimAmount > 0) p.head.xRot = lerp(a.swimAmount, p.head.xRot, -PI / 4);
-		else if (e.pose === 'swimming' && !e.type.endsWith(':player')) p.head.xRot = -PI / 4;
+		else if (e.pose === 'swimming' && !isAvatar(e)) p.head.xRot = -PI / 4;
 	}
 	if (a.swimAmount > 0) swimStroke(p, a, a.attack > 0);
 	// PlayerModel.setupAnim: the skin layers the player turned off (PlayerModelPart masks), on the body model only
-	if (a.isBase && e.type === 'minecraft:player' && e.parts !== undefined) {
+	if (a.isBase && isAvatar(e) && e.parts !== undefined) {
 		const shown = mask => !!(e.parts & mask);
 		if (p.hat) p.hat.visible = shown(64);
 		if (p.jacket) p.jacket.visible = shown(2);
@@ -109,6 +109,11 @@ function humanoid(p, a, e) {
 		if (p.left_pants) p.left_pants.visible = shown(16);
 		if (p.right_pants) p.right_pants.visible = shown(32);
 	}
+}
+
+/** Players and mannequins: the entities AvatarRenderer draws. */
+export function isAvatar(e) {
+	return e.type === 'minecraft:player' || e.type === 'minecraft:mannequin';
 }
 
 /** Poses of the equipment models drawn over a mob (CapeLayer, WingsLayer), after they took the body's pose. */
@@ -1917,6 +1922,8 @@ const MOBS = {
 	piglin_brute: { layer: 'piglin_brute#main', texture: 'piglin/piglin_brute', shadow: 0.5, anim: 'humanoid', armor: 'piglin_brute' },
 	pillager: { layer: 'pillager#main', texture: 'illager/pillager', shadow: 0.5, anim: 'illager' },
 	player: { player: true, shadow: 0.5, anim: 'humanoid', armor: 'player' },
+	// Mannequin: an AvatarRenderer like players, with the skin of its profile
+	mannequin: { player: true, shadow: 0.5, anim: 'humanoid', armor: 'player' },
 	polar_bear: { layer: e => (e.baby ? 'polar_bear_baby#main' : 'polar_bear#main'), texture: e => 'bear/polarbear' + baby(e), shadow: 0.9, anim: 'polarBear' },
 	pufferfish: {
 		layer: e => ['pufferfish_small#main', 'pufferfish_medium#main', 'pufferfish_big#main'][clamp(Number(e.d && e.d.puff) || 0, 0, 2)],
@@ -2146,7 +2153,7 @@ export function describeMob(e) {
 
 	if (def.player) {
 		const slim = e.slim;
-		add(slim ? 'player_slim#main' : 'player#main', { skin: e.uuid }, {});
+		add(slim ? 'player_slim#main' : 'player#main', e.skinTexture || { skin: e.uuid }, {});
 	} else if (def.villager) {
 		const zombie = def.villager === 'zombie_villager';
 		const folder = def.villager;
@@ -2188,16 +2195,19 @@ export function describeMob(e) {
 	if (def.body) out.push(...def.body(e).map(l => ({ ...l, layer: 'minecraft:' + l.layer, mode: l.mode || 'cutout_nocull', equipment: true })));
 	const chest = strip(e.armor && e.armor[1]);
 	const showCape = def.player && (e.parts === undefined || !!(e.parts & 1));
-	if (def.player && showCape && chest !== 'elytra' && e.uuid) {
+	// the skin's cape: the profile's (Mojang) cape, or a mannequin's cape texture (its profile's skin patch)
+	const cape = e.capeTexture || (e.uuid ? { cape: e.uuid, name: e.skinName ?? e.name } : null);
+	if (def.player && showCape && chest !== 'elytra' && cape) {
 		// CapeLayer (not on invisible players); a chestplate moves the cape out a little
 		const chestplate = /_chestplate$/.test(chest);
-		out.push({ layer: 'minecraft:player#cape', texture: { cape: e.uuid, name: e.name }, mode: 'cutout', color: null,
+		out.push({ layer: 'minecraft:player#cape', texture: cape, mode: 'cutout', color: null,
 			offset: chestplate ? [0, -0.053125, 0.06875] : null });
 	}
 	if (def.armor && chest === 'elytra') {
-		// WingsLayer: the player's cape as elytra when they show it, else the elytra texture
-		out.push({ layer: e.baby ? 'minecraft:elytra_baby#main' : 'minecraft:elytra#main',
-			texture: showCape && e.uuid ? { cape: e.uuid, name: e.name, fallback: 'equipment/wings/elytra' } : 'equipment/wings/elytra',
+		// WingsLayer: the skin's elytra texture, else its cape when shown, else the elytra texture
+		const fallback = 'equipment/wings/elytra';
+		const texture = e.elytraTexture || (showCape && cape ? (typeof cape === 'string' ? cape : { ...cape, fallback }) : fallback);
+		out.push({ layer: e.baby ? 'minecraft:elytra_baby#main' : 'minecraft:elytra#main', texture,
 			mode: 'cutout', color: null, equipment: true, offset: [0, 0, 0.125], foil: 8 });
 	}
 	return { def, layers: out, anim: ANIMS[def.anim] || ANIMS.generic, shadow: value(def.shadow, 0.5) };

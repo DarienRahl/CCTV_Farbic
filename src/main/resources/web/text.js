@@ -301,26 +301,34 @@ export class TextRenderer {
 
 	/**
 	 * SubmitNodeCollection.submitNameTag. tags: [{pos: [x, y, z] camera relative attachment point (entity top),
-	 * text, discrete, light: [block, sky] (0..240)}]; right, up: the camera's axes (cameraOrientation()).
+	 * text, below (text under it, or null), discrete, light: [block, sky] (0..240)}]; right, up: the camera's axes
+	 * (cameraOrientation()).
 	 */
 	nameTags(tags, right, up) {
 		for (const tag of tags) {
-			// Attachment + 0.5 up, deadmau5 one line higher; scale(0.025, -0.025, 0.025).
-			const o = [tag.pos[0], tag.pos[1] + 0.5, tag.pos[2]];
-			const transform = (fx, fy) => [
-				o[0] + (right[0] * fx - up[0] * fy) * NAME_TAG_SCALE,
-				o[1] + (right[1] * fx - up[1] * fy) * NAME_TAG_SCALE,
-				o[2] + (right[2] * fx - up[2] * fy) * NAME_TAG_SCALE,
-			];
-			const y = tag.text === 'deadmau5' ? -10 : 0;
-			const x = -this.font.width(tag.text) / 2;
-			if (tag.discrete) {
-				this.add(transform, tag.text, x, y, SEE_THROUGH_TEXT, tag.light, 'normal', BACKGROUND);
-			} else {
-				// lightCoordsWithEmission(light, 2) for the solid text.
-				this.add(transform, tag.text, x, y, WHITE, [Math.max(tag.light[0], 32), tag.light[1]], 'normal');
-				this.add(transform, tag.text, x, y, SEE_THROUGH_TEXT, tag.light, 'see_through', BACKGROUND);
-			}
+			// EntityRenderer.submitNameDisplay: the text under the name first, then the name one line (9 * 1.15
+			// pixels of 0.025) higher
+			if (tag.below) this.nameTag(tag, tag.below, 0, right, up);
+			this.nameTag(tag, tag.text, tag.below ? 9 * 1.15 * NAME_TAG_SCALE : 0, right, up);
+		}
+	}
+
+	nameTag(tag, text, raise, right, up) {
+		// Attachment + 0.5 up, deadmau5 one line higher; scale(0.025, -0.025, 0.025).
+		const o = [tag.pos[0], tag.pos[1] + 0.5 + raise, tag.pos[2]];
+		const transform = (fx, fy) => [
+			o[0] + (right[0] * fx - up[0] * fy) * NAME_TAG_SCALE,
+			o[1] + (right[1] * fx - up[1] * fy) * NAME_TAG_SCALE,
+			o[2] + (right[2] * fx - up[2] * fy) * NAME_TAG_SCALE,
+		];
+		const y = tag.text === 'deadmau5' ? -10 : 0;
+		const x = -this.font.width(text) / 2;
+		if (tag.discrete) {
+			this.add(transform, text, x, y, SEE_THROUGH_TEXT, tag.light, 'normal', BACKGROUND);
+		} else {
+			// lightCoordsWithEmission(light, 2) for the solid text.
+			this.add(transform, text, x, y, WHITE, [Math.max(tag.light[0], 32), tag.light[1]], 'normal');
+			this.add(transform, text, x, y, SEE_THROUGH_TEXT, tag.light, 'see_through', BACKGROUND);
 		}
 	}
 

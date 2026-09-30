@@ -100,6 +100,7 @@ export class ItemDefinitions {
 			case 'context_entity_type': return ctx.entityType || null;
 			case 'custom_model_data': return (cmd.s || [])[node.index || 0] ?? null;
 			case 'block_state': return (p.bs || {})[node.block_state_property] ?? null;
+			case 'local_time': return localTime(node.pattern, node.time_zone);
 			default: return null;
 		}
 	}
@@ -146,6 +147,31 @@ export class ItemDefinitions {
 			default: return [1, 1, 1];
 		}
 	}
+}
+
+/**
+ * LocalTime: the viewer's clock (the game's is its player's) in a date pattern such as "MM-dd" (the Christmas
+ * chest), in the given time zone when there is one. Letters of the common fields, padded to their count.
+ */
+function localTime(pattern, timeZone) {
+	if (typeof pattern !== 'string') return null;
+	const now = new Date();
+	let parts = null;
+	try {
+		const format = new Intl.DateTimeFormat('en-US', {
+			timeZone: timeZone || undefined, hourCycle: 'h23',
+			year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric',
+		});
+		parts = Object.fromEntries(format.formatToParts(now).map(part => [part.type, part.value]));
+	} catch {
+		parts = { year: now.getFullYear(), month: now.getMonth() + 1, day: now.getDate(), hour: now.getHours(), minute: now.getMinutes(), second: now.getSeconds() };
+	}
+	const fields = { y: parts.year, M: parts.month, d: parts.day, H: parts.hour, m: parts.minute, s: parts.second };
+	return pattern.replace(/'([^']*)'|([yMdHms])\2*/g, (match, quoted, letter) => {
+		if (quoted !== undefined) return quoted;
+		const value = String(Number(fields[letter]));
+		return letter === 'y' && match.length === 2 ? value.slice(-2) : value.padStart(match.length, '0');
+	});
 }
 
 /** A "when" of a select case against the property's value (ids with or without "minecraft:"). */

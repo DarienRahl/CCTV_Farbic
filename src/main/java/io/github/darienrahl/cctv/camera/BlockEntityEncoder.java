@@ -35,6 +35,7 @@ import net.minecraft.world.level.block.entity.DecoratedPotBlockEntity;
 import net.minecraft.world.level.block.entity.DecoratedPotPattern;
 import net.minecraft.world.level.block.entity.JukeboxBlockEntity;
 import net.minecraft.world.level.block.entity.PotDecorations;
+import net.minecraft.world.level.block.entity.ShelfBlockEntity;
 import net.minecraft.world.level.block.entity.SignBlockEntity;
 import net.minecraft.world.level.block.entity.SignText;
 import net.minecraft.world.level.block.entity.SignTextSlot;
@@ -53,8 +54,8 @@ import io.github.darienrahl.cctv.web.Json;
 /**
  * Block entity details the viewer draws on top of the block models, per section. Only what cannot be
  * seen in the block state: the text of signs and hanging signs, banner patterns, pottery sherds on
- * decorated pots, the owners of player heads, beacon beams, food on campfires, the mobs in spawners and
- * the items in suspicious sand and gravel being brushed.
+ * decorated pots, the owners of player heads, beacon beams, food on campfires, the items on shelves, the mobs
+ * in spawners and the items in suspicious sand and gravel being brushed.
  */
 final class BlockEntityEncoder {
 	private BlockEntityEncoder() {
@@ -77,6 +78,7 @@ final class BlockEntityEncoder {
 					case SkullBlockEntity skull -> skull(skull);
 					case BeaconBlockEntity beacon -> beacon(beacon);
 					case CampfireBlockEntity campfire -> campfire(campfire);
+					case ShelfBlockEntity shelf -> shelf(shelf);
 					case BrushableBlockEntity brushable -> brushable(brushable);
 					case JukeboxBlockEntity jukebox -> jukebox(jukebox);
 					case SpawnerBlockEntity spawner -> spawner(spawner,
@@ -194,6 +196,36 @@ final class BlockEntityEncoder {
 		Json json = begin("campfire", campfire).name("i").beginArray();
 		for (ItemStack item : items) {
 			json.value(item.isEmpty() ? null : BuiltInRegistries.ITEM.getKey(item.getItem()).toString());
+		}
+		return json.endArray().endObject().toString();
+	}
+
+	/**
+	 * The items standing on a shelf (ShelfRenderer), one per slot, left to right as seen from the front, or null:
+	 * {@code {"k":"shelf", "s": [{"i": item, "iModel", "iP": like an entity's item, "g": glint}, ...], "b": aligned
+	 * to the bottom}}; empty shelves are left out.
+	 */
+	private static @Nullable String shelf(ShelfBlockEntity shelf) {
+		List<ItemStack> items = shelf.getItems();
+		if (items.stream().allMatch(ItemStack::isEmpty)) {
+			return null;
+		}
+		Json json = begin("shelf", shelf);
+		if (shelf.getAlignItemsToBottom()) {
+			json.field("b", true);
+		}
+		json.name("s").beginArray();
+		for (ItemStack item : items) {
+			if (item.isEmpty()) {
+				json.value((String) null);
+				continue;
+			}
+			json.beginObject();
+			EntityEncoder.writeItem(json, "i", item);
+			if (item.hasFoil()) {
+				json.field("g", true);
+			}
+			json.endObject();
 		}
 		return json.endArray().endObject().toString();
 	}

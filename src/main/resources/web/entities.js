@@ -6,7 +6,7 @@
 import {
 	ModelLibrary, VertexSink, FLOATS, SKIN_FLOATS, BONES_PER_ROW, emitModel, emitQuads, partMatrix, mat4, mul, translate, rotate, scale, DEG,
 } from './entity-models.js';
-import { describeMob, isKnownMob, blockEntityModel, dyeRgb, CLIENT, equipmentPose, setEquipment, setAutoMobResolver } from './mobs.js';
+import { describeMob, isKnownMob, blockEntityModel, dyeRgb, CLIENT, equipmentPose, setEquipment, setAutoMobResolver, isAvatar } from './mobs.js';
 import { Animator, AnimationStates } from './keyframes.js';
 import { collectParts } from './models.js';
 import { ItemDefinitions } from './items.js';
@@ -638,6 +638,44 @@ function normalizeSkin(image) {
 }
 
 const DEFAULT_SKINS = ['alex', 'ari', 'efe', 'kai', 'makena', 'noor', 'steve', 'sunny', 'zuri'];
+/** Util.NIL_UUID: the id of the empty profile (a mannequin's default), whose default skin is the slim Alex. */
+const NIL_UUID = '00000000-0000-0000-0000-000000000000';
+/** PlayerModel.bodyParts, in the order getRandomBodyPart picks from. */
+const STUCK_BODY_PARTS = ['head', 'body', 'left_arm', 'right_arm', 'left_leg', 'right_leg'];
+
+/** A texture asset id of the game ("minecraft:entity/player/wide/steve") as a path below textures/entity, or null. */
+function entityTexturePath(id) {
+	const match = /^(?:minecraft:)?entity\/(.+)$/.exec(id);
+	return match ? match[1] : null;
+}
+
+/**
+ * The cubes of a model part as [minX, minY, minZ, maxX, maxY, maxZ] (model pixels), from its quads: six faces of
+ * four corners each per cube (ModelPart.Cube keeps the bounds without the cube's inflation; the player model has none).
+ */
+const PART_CUBES = new WeakMap();
+function partCubes(part) {
+	if (!part) return [];
+	let cubes = PART_CUBES.get(part);
+	if (cubes) return cubes;
+	cubes = [];
+	const q = part.quads || part.q;
+	if (q) {
+		const perCube = 6 * 4 * 5;
+		for (let c = 0; c + perCube <= q.length; c += perCube) {
+			const box = [Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity];
+			for (let v = c; v < c + perCube; v += 5) {
+				for (let k = 0; k < 3; k++) {
+					box[k] = Math.min(box[k], q[v + k]);
+					box[k + 3] = Math.max(box[k + 3], q[v + k]);
+				}
+			}
+			cubes.push(box);
+		}
+	}
+	PART_CUBES.set(part, cubes);
+	return cubes;
+}
 
 /** DefaultPlayerSkin.get(uuid): one of the 18 default skins (slim ones first), picked by UUID.hashCode(). */
 function defaultSkin(uuid) {
@@ -700,6 +738,7 @@ export class EntityRenderer {
 		this.boxed = new Set();
 		this.motion = new Map();
 		this.itemMeshes = new Map();
+		this.itemHeights = new WeakMap();
 		this.frames = [];
 		this.offset = null;
 		this.showLabels = true;
@@ -921,6 +960,28 @@ export class EntityRenderer {
 		return cape;
 	}
 
+	/**
+	 * ClientMannequin.getSkin: the skin of the mannequin's profile (fetched like a player's, by id or name; the
+	 * default skin of the empty profile without either) with the profile's skin patch over it (texture, model,
+	 * cape and elytra from the resource pack).
+	 */
+	mannequinSkin(e) {
+		const profile = e.profile || {};
+		const key = profile.id || (profile.name ? 'name:' + profile.name : NIL_UUID);
+		const skin = this.skin(key, profile.name || '');
+		e.uuid = key;
+		e.skinName = profile.name || '';
+		e.slim = profile.model ? profile.model === 'slim' : skin.slim;
+		e.skinTexture = profile.texture ? entityTexturePath(profile.texture) : null;
+		e.capeTexture = profile.cape ? entityTexturePath(profile.cape) : null;
+		e.elytraTexture = profile.elytra ? entityTexturePath(profile.elytra) : null;
+		if (key === NIL_UUID) {
+			// the default skin, which has no cape
+			e.uuid = null;
+			e.skinTexture = e.skinTexture || defaultSkin(NIL_UUID).path;
+		}
+	}
+
 	/** Player skin: {texture (null while loading), slim}. Without a custom skin, the game's default skin for the UUID. */
 	skin(uuid, name) {
 		let skin = this.skins.get(uuid);
@@ -936,6 +997,10 @@ export class EntityRenderer {
 			skin.fallback = fallback.path;
 			skin.texture = this.texture(fallback.path);
 		};
+		if (uuid === NIL_UUID) {
+			useDefault();
+			return skin;
+		}
 		const url = '/skin/' + encodeURIComponent(uuid) + '?name=' + encodeURIComponent(name || '') + tokenSuffix('&');
 		fetch(url, { credentials: 'same-origin' })
 			.then(response => {
@@ -1600,6 +1665,8 @@ export class EntityRenderer {
 		if (type === 'player') {
 			const skin = this.skin(e.uuid, e.name);
 			e.slim = skin.slim;
+		} else if (type === 'mannequin') {
+			this.mannequinSkin(e);
 		}
 		const mob = describeMob(e);
 		if (!mob || !this.library.layers) return this.drawBox(e, pos, style);
@@ -1638,7 +1705,8 @@ export class EntityRenderer {
 			translate(m, gaussian() * d, 0, gaussian() * d);
 		}
 		// AvatarRenderer.getRenderOffset: crouching players sit 2 pixels lower.
-		if (type === 'player' && (e.sneak || e.pose === 'crouching')) translate(m, 0, -2 / 16 * (e.scale || 1), 0);
+		const avatar = isAvatar(e);
+		if (avatar && (e.sneak || e.pose === 'crouching')) translate(m, 0, -2 / 16 * (e.scale || 1), 0);
 		const entityScale = e.scale || 1;
 		scale(m, entityScale);
 		const body = e.body ?? e.yaw ?? 0;
@@ -1648,7 +1716,7 @@ export class EntityRenderer {
 			translate(m, 0, e.baby ? -0.6 : -1.2, 0);
 		} else if (e.pose !== 'sleeping') {
 			rotate(m, 1, (180 - body) * DEG);
-			if (type === 'player') this.avatarRotations(e, m, world, anim);
+			if (avatar) this.avatarRotations(e, m, world, anim);
 		}
 		if (e.dead && e.deathTime > 0) {
 			const fall = Math.min(1, Math.sqrt(Math.max(0, (e.deathTime - 1) / 20 * 1.6)));
@@ -1704,6 +1772,8 @@ export class EntityRenderer {
 			const invulnerable = Number(e.d && e.d.invulnerable) || 0;
 			scale(m, 2 - (invulnerable > 0 ? invulnerable / 220 * 0.5 : 0));
 		}
+		// AvatarRenderer.scale
+		if (def.player) scale(m, 0.9375);
 		translate(m, 0, -1.501, 0);
 
 		let base = null;
@@ -1741,6 +1811,9 @@ export class EntityRenderer {
 			this.batch(texture, mode, start, mode !== MODE_NOCULL && mode !== MODE_TRANSLUCENT, glint);
 		}
 		if (!base) return this.drawBox(e, pos, style);
+		// ArrowLayer, BeeStingerLayer
+		if (def.player && e.arrows) this.drawStuckInBody(e, base, m, style, 'minecraft:arrow#main', 'projectiles/arrow', e.arrows, false);
+		if (def.player && e.stingers) this.drawStuckInBody(e, base, m, style, 'minecraft:bee_stinger#main', 'bee/bee_stinger', e.stingers, true);
 
 		// Held items (ItemInHandLayer).
 		if (e.hand && base.parts.right_arm && base.parts.right_arm.visible) {
@@ -1968,6 +2041,49 @@ export class EntityRenderer {
 	}
 
 	/** AvatarRenderer.setupRotations: players lie down while swimming, crawling and gliding with elytra. */
+	/**
+	 * StuckInBodyLayer: arrows or bee stingers stuck in a player or mannequin, each in a body part and one of its
+	 * cubes picked by a random seeded with the entity's id (so they stay where they are), pointing out of it; an
+	 * arrow sticks inside the cube, a stinger on one of its faces (or its middle, snapToFace).
+	 */
+	drawStuckInBody(e, base, m, style, layer, texturePath, count, onSurface) {
+		const model = this.library.get(layer);
+		const texture = this.texture(texturePath);
+		if (!model || !texture) return;
+		model.reset();
+		// RandomSource.createThreadLocalInstance(state.id)
+		const random = new JavaRandom();
+		random.setSeedNumber(e.id);
+		const start = this.sink.mark();
+		for (let i = 0; i < Math.min(count, 64); i++) {
+			// PlayerModel.getRandomBodyPart, ModelPart.getRandomCube
+			const name = STUCK_BODY_PARTS[random.nextInt(STUCK_BODY_PARTS.length)];
+			const cubes = partCubes(base.parts[name]);
+			if (!cubes.length) return;
+			const cube = cubes[random.nextInt(cubes.length)];
+			const pm = partMatrix(base, name, m);
+			if (!pm) return;
+			let midX = random.nextFloat(), midY = random.nextFloat(), midZ = random.nextFloat();
+			if (onSurface) {
+				const snap = v => (v > 0.5 ? 1 : 0.5);
+				const plane = random.nextInt(3);
+				if (plane === 0) midX = snap(midX);
+				else if (plane === 1) midY = snap(midY);
+				else midZ = snap(midZ);
+			}
+			// (partMatrix is in model pixels)
+			translate(pm, lerp(cube[0], cube[3], midX), lerp(cube[1], cube[4], midY), lerp(cube[2], cube[5], midZ));
+			const dx = -(midX * 2 - 1), dy = -(midY * 2 - 1), dz = -(midZ * 2 - 1);
+			const yRot = Math.atan2(dx, dz) * 180 / Math.PI;
+			const xRot = Math.atan2(dy, Math.sqrt(dx * dx + dz * dz)) * 180 / Math.PI;
+			rotate(pm, 1, (yRot - 90) * DEG);
+			rotate(pm, 2, xRot * DEG);
+			scale(pm, 16);
+			emitModel(this.sink, model, pm, style);
+		}
+		this.batch(texture, MODE_CUTOUT, start, true);
+	}
+
 	avatarRotations(e, m, world, anim) {
 		const pitch = e.pitch || 0;
 		if (e.pose === 'fall_flying') {
@@ -2245,7 +2361,15 @@ export class EntityRenderer {
 		if (!definitions || !definitions.has(itemId)) return undefined;
 		const layers = definitions.resolve(itemId, props || {}, { context, dayTime: this.dayTime || 0, dimension: this.dimension });
 		if (!layers) return undefined;
-		if (layers.some(layer => layer.special)) return undefined;
+		const special = layers.find(layer => layer.special);
+		if (special) {
+			// SpecialModelWrapper: the special model this definition picks (a chest at Christmas...), drawn like the
+			// items the bundle lists as special
+			const listed = this.specialItem(itemId);
+			const picked = special.special;
+			if (!listed || strip(listed.type) === 'composite' || JSON.stringify(listed.model) === JSON.stringify(picked.model)) return undefined;
+			return this.legacyItemMesh(itemId, picked);
+		}
 		if (!layers.length) return null;
 		const key = 'def|' + layers.map(l => l.model + ':' + l.tints.map(t => t.map(c => c.toFixed(3)).join(',')).join(';')).join('|');
 		let mesh = this.itemMeshes.get(key);
@@ -2331,8 +2455,9 @@ export class EntityRenderer {
 	}
 
 	/** Items without a usable definition: the item's own sprite, special model or block model. */
-	legacyItemMesh(itemId) {
-		let mesh = this.itemMeshes.get(itemId);
+	legacyItemMesh(itemId, picked = null) {
+		const key = picked ? itemId + '|' + JSON.stringify(picked.model) : itemId;
+		let mesh = this.itemMeshes.get(key);
 		if (mesh !== undefined) return mesh;
 		mesh = null;
 		const id = itemId.includes(':') ? itemId : 'minecraft:' + itemId;
@@ -2347,7 +2472,7 @@ export class EntityRenderer {
 			const layer = model && model.textures && model.textures.layer0;
 			if (layer) sprite = this.assets.sprites.get(layer.includes(':') ? layer : 'minecraft:' + layer);
 		}
-		const special = this.specialItem(id);
+		const special = picked || this.specialItem(id);
 		if (special && strip(special.type) === 'composite') {
 			mesh = this.compositeMesh(special);
 		} else if (special && SPECIAL_ITEM_TYPES.has(strip(special.model && special.model.type)) && !(sprite && strip(special.model.type) === 'trident')) {
@@ -2374,7 +2499,7 @@ export class EntityRenderer {
 				if (quads.length) mesh = { kind: 'block', quads: this.blockQuads(quads) };
 			}
 		}
-		this.itemMeshes.set(itemId, mesh);
+		this.itemMeshes.set(key, mesh);
 		return mesh;
 	}
 
@@ -3528,6 +3653,10 @@ export class EntityRenderer {
 					if (Math.hypot(bx, by, bz) <= Math.min(frame.fogEnd, 64) && frame.frustum(bx + 0.5, by + 0.5, bz + 0.5, 1.5)) this.drawCampfireItems(be, [bx, by, bz], world);
 					continue;
 				}
+				if (be.info.shortName.endsWith('_shelf')) {
+					if (Math.hypot(bx, by, bz) <= Math.min(frame.fogEnd, 64) && frame.frustum(bx + 0.5, by + 0.5, bz + 0.5, 1.5)) this.drawShelfItems(be, [bx, by, bz], world);
+					continue;
+				}
 				if (be.info.shortName === 'end_portal' || be.info.shortName === 'end_gateway') {
 					if (be.info.shortName === 'end_gateway' && this.blockAnims.size) this.drawGatewayBeam(be, [bx, by, bz], frame);
 					this.addPortal(be, [bx, by, bz], frame, world);
@@ -3680,6 +3809,63 @@ export class EntityRenderer {
 			translate(m, -0.5, -0.5, -0.5);
 			this.emitItem(mesh, m, style);
 		});
+	}
+
+	/**
+	 * ShelfRenderer: the items standing side by side on a shelf at a quarter of their size, facing out of it, each
+	 * set on the shelf's middle (or its bottom when the shelf aligns them there) by its model's bounding box.
+	 */
+	drawShelfItems(be, p, world) {
+		const data = world.blockEntityAt(be.x, be.y, be.z);
+		if (!data || data.k !== 'shelf' || !data.s) return;
+		const [sky, block] = world.lightAt(be.x, be.y, be.z);
+		const style = { color: [1, 1, 1, 1], light: [block * 16, sky * 16], overlay: [0, 0] };
+		// -Direction.toYRot()
+		const yRot = -({ south: 0, west: 90, north: 180, east: 270 }[be.info.props.facing] ?? 180);
+		data.s.forEach((slot, i) => {
+			if (!slot || !slot.i) return;
+			const mesh = this.itemMesh(slot.iModel || slot.i, slot.iP, 'on_shelf');
+			if (!mesh) return;
+			const transform = this.displayTransform(slot.i, 'on_shelf', {}, mesh.modelId);
+			const [minY, maxY] = this.itemHeight(mesh, transform);
+			const m = mat4();
+			translate(m, p[0] + 0.5, p[1] + 0.5, p[2] + 0.5);
+			rotate(m, 1, yRot * DEG);
+			translate(m, (i - 1) * 0.3125, data.b ? -0.25 : 0, -0.25);
+			scale(m, 0.25);
+			translate(m, 0, data.b ? -minY : -minY - (maxY - minY) / 2, 0);
+			this.applyDisplay(m, transform, false);
+			this.emitItem(mesh, m, slot.g ? { ...style, glint: GLINT_ITEM } : style);
+		});
+	}
+
+	/**
+	 * ItemStackRenderState.getModelBoundingBox, its height: the lowest and highest point of the item's model after
+	 * its display transform (a special model counts as its whole block).
+	 */
+	itemHeight(mesh, transform) {
+		let cache = this.itemHeights.get(mesh);
+		if (!cache) this.itemHeights.set(mesh, cache = new Map());
+		const key = JSON.stringify(transform);
+		let height = cache.get(key);
+		if (height) return height;
+		const m = mat4();
+		this.applyDisplay(m, transform, false);
+		let minY = Infinity, maxY = -Infinity;
+		const point = (x, y, z) => {
+			const ty = m[1] * x + m[5] * y + m[9] * z + m[13];
+			if (ty < minY) minY = ty;
+			if (ty > maxY) maxY = ty;
+		};
+		if (mesh.quads) {
+			const data = mesh.quads.data;
+			for (let i = 0; i < data.length; i += 5) point(data[i], data[i + 1], data[i + 2]);
+		} else {
+			for (let c = 0; c < 8; c++) point(c & 1, c >> 1 & 1, c >> 2 & 1);
+		}
+		height = minY <= maxY ? [minY, maxY] : [0, 0];
+		cache.set(key, height);
+		return height;
 	}
 
 	/**
@@ -4075,6 +4261,8 @@ export class EntityRenderer {
 			tags.push({
 				pos: [rx, ry, rz],
 				text: e.name || (this.names && this.names[type]) || titleCase(type),
+				// EntityRenderer.extractNameTags: the text under the name (a mannequin's description) within 10 blocks
+				below: named && e.desc && distance < 10 ? e.desc : null,
 				discrete: type === 'player' && !!(e.sneak || e.pose === 'crouching'),
 				light: this.lightFor(e, world),
 			});

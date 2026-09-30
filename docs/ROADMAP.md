@@ -225,9 +225,15 @@ to the milestone it belongs to. The roadmap on the README page is drawn from thi
       the camera, brightness overrides, shadows, view range and teleport gliding; text displays with the game's
       font, colours, bold, italic, underline and strikethrough, line wrapping, alignment, background and
       see-through text (the cameras' own markers stay hidden)
-- [ ] Shelves (ShelfRenderer: the items standing on a shelf block)
-- [ ] Mannequins (the player-like decoration entity, drawn like a player with its profile's skin)
-- [ ] Arrows and bee stingers stuck in players and mobs (StuckInBodyLayer)
+- [x] **Shelves** like ShelfRenderer: the three items standing on a shelf, set on its middle by their model's
+      bounding box or on its bottom when the shelf is powered
+- [x] **Mannequins** drawn by the player renderer with the skin of their profile (by id or name, the default
+      skin of the empty profile, or the texture, model and cape of the profile's skin patch), their hidden skin
+      layers, poses and the description under their name
+- [x] **Arrows and bee stingers stuck in players and mannequins** (StuckInBodyLayer): in the same body parts and
+      places as in the game, from the same random seeded with the entity's id
+- [x] Players drawn at the player renderer's scale (0.9375, they were a little too big); items whose model
+      changes with the date (the Christmas chest) pick it by the viewer's clock
 
 ## Later
 

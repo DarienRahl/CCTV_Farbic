@@ -355,3 +355,18 @@ net/minecraft/client/particle/NoxiousGasCloudParticle
 net/minecraft/client/particle/GeyserEruptionParticle
 net/minecraft/client/particle/GeyserBaseParticle
 net/minecraft/client/particle/GeyserPlumeParticle
+# display entities (entities.js drawDisplay, DisplayEncoder)
+net/minecraft/client/renderer/entity/DisplayRenderer
+net/minecraft/world/entity/Display
+# shelves (entities.js drawShelfItems, BlockEntityEncoder shelf)
+net/minecraft/client/renderer/blockentity/ShelfRenderer
+net/minecraft/world/level/block/entity/ShelfBlockEntity
+net/minecraft/client/renderer/item/ItemStackRenderState
+# mannequins and what sticks in players (entities.js mannequinSkin, drawStuckInBody; EntityEncoder writeAvatar)
+net/minecraft/client/entity/ClientMannequin
+net/minecraft/world/entity/decoration/Mannequin
+net/minecraft/client/model/player/PlayerModel
+net/minecraft/client/renderer/entity/layers/StuckInBodyLayer
+net/minecraft/client/renderer/entity/layers/ArrowLayer
+net/minecraft/client/renderer/entity/layers/BeeStingerLayer
+net/minecraft/client/resources/DefaultPlayerSkin

@@ -75,6 +75,7 @@ class StreamReader(threading.Thread):
         self.first = {}
         self.entity_types = set()
         self.displays = {}
+        self.mannequin = None
         self.foil = set()
         self.glowing = set()
         self.leashed = set()
@@ -122,6 +123,8 @@ class StreamReader(threading.Thread):
                             self.items.update((e.get("item"), round(e["x"]), round(e["y"]), round(e["z"]))
                                               for e in data["e"] if e["type"] == "minecraft:item")
                             for e in data["e"]:
+                                if e["type"] == "minecraft:mannequin":
+                                    self.mannequin = e
                                 if e["type"] in ("minecraft:text_display", "minecraft:block_display", "minecraft:item_display"):
                                     self.displays.setdefault(e["type"], []).append(e)
                                     del self.displays[e["type"]][:-3]
@@ -309,6 +312,10 @@ def main():
     rcon.command('summon minecraft:block_display -3 -60 3 {block_state:"minecraft:stone",transformation:{translation:[0f,0f,0f],'
                  'left_rotation:[0f,0f,0f,1f],scale:[0.5f,0.5f,0.5f],right_rotation:[0f,0f,0f,1f]}}')
     rcon.command('summon minecraft:item_display 2 -58 3 {item:{id:"minecraft:diamond",count:1},item_display:"fixed"}')
+    # a shelf with two items (ShelfRenderer) and a mannequin wearing Notch's skin with its own description
+    rcon.command('setblock -2 -60 6 minecraft:oak_shelf[facing=north]{Items:[{Slot:0b,id:"minecraft:diamond",count:1},'
+                 '{Slot:2b,id:"minecraft:apple",count:1}]}')
+    rcon.command('summon minecraft:mannequin 1.5 -60 4.5 {profile:"Notch",description:"Shopkeeper",Rotation:[180f,0f]}')
 
     rcon.command("cctv create ci -1 -56 -8 10 30")
     # a camera under water, in the pool (the water fog and the underwater overlay, screenshot.mjs)
@@ -521,6 +528,10 @@ def main():
     item = (stream.displays.get("minecraft:item_display") or [{}])[-1]
     if item.get("item") != "minecraft:diamond" or item.get("disp", {}).get("ctx") != "fixed":
         failures.append(f"the item display was not streamed with its item and context (got {item})")
+    print("mannequin:", json.dumps(stream.mannequin), flush=True)
+    mannequin = stream.mannequin or {}
+    if mannequin.get("profile", {}).get("name") != "Notch" or mannequin.get("desc") != "Shopkeeper":
+        failures.append(f"the mannequin was not streamed with its profile and description (got {stream.mannequin})")
     if not any(b[0] == 0 and b[1] == -60 and b[2] == 0 for b in stream.block_updates):
         failures.append("instant block update (mixin) did not arrive")
     print("animation states:", sorted(stream.animation_states), "entity events:", sorted(stream.entity_events), flush=True)
@@ -576,6 +587,10 @@ def main():
         failures.append(f"banner patterns were not streamed (got {banner})")
     if stream.block_entities.get("pot", {}).get("front") != "minecraft:skull_pottery_pattern":
         failures.append(f"decorated pot sherds were not streamed (got {stream.block_entities.get('pot')})")
+    shelf = stream.block_entities.get("shelf", {})
+    slots = [slot and slot.get("i") for slot in shelf.get("s", [])]
+    if slots != ["minecraft:diamond", None, "minecraft:apple"]:
+        failures.append(f"the items on the shelf were not streamed (got {shelf})")
     campfire = stream.block_entities.get("campfire", {})
     if not any(item and item.endswith("beef") for item in campfire.get("i", [])):
         failures.append(f"the food on the campfire was not streamed (got {campfire})")

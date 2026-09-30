@@ -10,7 +10,7 @@ import { JavaRandom, positionSeed } from './rng.js';
 import { biomeInfoNoise2d } from './noise.js';
 import { collectParts, needsRandom, DOWN, UP, NORTH, SOUTH, WEST, EAST, DIR_VECTORS, MAT_OPAQUE, MAT_CUTOUT, MAT_TRANSLUCENT, MAT_COLOR } from './models.js';
 
-/** Blocks with a model whose block entity also draws something (a beacon's beam, food on a campfire, a book). */
+/** Blocks with a model whose block entity also draws something (a beacon's beam, food on a campfire, a book); shelves too. */
 const DRAWN_OVER = new Set(['minecraft:beacon', 'minecraft:campfire', 'minecraft:soul_campfire', 'minecraft:enchanting_table', 'minecraft:lectern',
 	'minecraft:spawner', 'minecraft:trial_spawner', 'minecraft:suspicious_sand', 'minecraft:suspicious_gravel']);
 
@@ -440,7 +440,7 @@ export class Mesher {
 						// Block entities: drawn by the viewer instead of (chests, banners...) or on top of their block model
 						// (a beacon's beam). Since 26.3 most of them have an empty block model rather than none.
 						const handled = this.handledBlockEntities.has(info.name);
-						if (handled || DRAWN_OVER.has(info.name)) blockEntities.push(wx, wy, wz, id);
+						if (handled || DRAWN_OVER.has(info.name) || info.name.endsWith('_shelf')) blockEntities.push(wx, wy, wz, id);
 						if (info.noModel || (handled && !this.dispatchFor(info))) {
 							if (!handled && !info.water && !info.lava && info.boxes.length) {
 								this.fallback(info, p, bx, by, bz, opaque);
