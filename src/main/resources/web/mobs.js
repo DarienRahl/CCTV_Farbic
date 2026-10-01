@@ -1480,7 +1480,8 @@ const ANIMS = {
 	guardian(p, a, e) {
 		headLook(p, a);
 		const m = a.memory || {};
-		const spikes = m.spikes ?? 1, tail = m.tail ?? 0;
+		// Guardian's clientSideSpikesAnimation starts at 0 (drawn in) until the client ticks it
+		const spikes = m.spikes ?? 0, tail = m.tail ?? 0;
 		const withdrawal = (1 - spikes) * 0.55;
 		for (let i = 0; i < 12; i++) {
 			const spike = p['spike' + i];
@@ -1762,7 +1763,7 @@ export const CLIENT = {
 	guardian: {
 		tick(e, st) {
 			const m = st.memory;
-			if (m.tail === undefined) { m.tail = Math.random(); m.tailSpeed = 0; m.spikes = 1; }
+			if (m.tail === undefined) { m.tail = Math.random(); m.tailSpeed = 0; m.spikes = 0; }
 			const inWater = !!(e.d && e.d.inWater), moving = !!(e.d && e.d.moving);
 			if (!inWater) m.tailSpeed = 2;
 			else if (moving) m.tailSpeed = m.tailSpeed < 0.5 ? 4 : m.tailSpeed + (0.5 - m.tailSpeed) * 0.1;

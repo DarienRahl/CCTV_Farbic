@@ -1527,6 +1527,9 @@ export class EntityRenderer {
 			// other invisible entities show nothing.
 			const showsInvisible = isKnownMob(type) || type === 'item_frame' || type === 'glow_item_frame';
 			if (e.invisible && !e.burning && !showsInvisible) continue;
+			// the entity the camera is inside (the player who stands at the camera's eyes): the game never draws the
+			// camera's own entity, and its model, drawn from both sides, would fill the picture from within
+			if (e.w && e.h && Math.abs(rx) < e.w / 2 && Math.abs(rz) < e.w / 2 && ry <= 0 && ry >= -e.h) continue;
 			let radius = Math.max(e.w || 1, e.h || 1) + 1;
 			// display entities have no size of their own: their transformation and text decide how far they reach
 			if (e.disp) {
@@ -2695,7 +2698,7 @@ export class EntityRenderer {
 			// items the bundle lists as special
 			const listed = this.specialItem(itemId);
 			const picked = special.special;
-			if (!listed || strip(listed.type) === 'composite' || JSON.stringify(listed.model) === JSON.stringify(picked.model)) return undefined;
+			if (!listed || strip(listed.type) === 'composite') return undefined;
 			return this.legacyItemMesh(itemId, picked);
 		}
 		if (!layers.length) return null;
@@ -2803,8 +2806,9 @@ export class EntityRenderer {
 		const special = picked || this.specialItem(id);
 		if (special && strip(special.type) === 'composite') {
 			mesh = this.compositeMesh(special);
-		} else if (special && SPECIAL_ITEM_TYPES.has(strip(special.model && special.model.type)) && !(sprite && strip(special.model.type) === 'trident')) {
-			// SpecialModelWrapper: drawn by the special renderer (a trident keeps its flat sprite off hand)
+		} else if (special && SPECIAL_ITEM_TYPES.has(strip(special.model && special.model.type)) && !(sprite && !picked && strip(special.model.type) === 'trident')) {
+			// SpecialModelWrapper: drawn by the special renderer (without a definition that picks it for the hands, a
+			// trident keeps its flat sprite)
 			mesh = { kind: 'block', special };
 		} else if (sprite) {
 			mesh = { kind: 'sprite', quads: this.extrude(sprite) };
