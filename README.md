@@ -10,7 +10,7 @@
   <a href="https://github.com/DarienRahl/CCTV_Farbic/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/DarienRahl/CCTV_Farbic?style=for-the-badge&amp;label=release&amp;color=5d8c3e"></a>
   <img alt="Minecraft 26.3" src="https://img.shields.io/badge/minecraft-26.3-866043?style=for-the-badge">
   <img alt="Fabric, server side only" src="https://img.shields.io/badge/fabric-server%20side%20only-8b8b8b?style=for-the-badge">
-  <a href="#roadmap"><img alt="Roadmap" src="https://img.shields.io/badge/roadmap-116%2F117%20done-80ff20?style=for-the-badge"></a>
+  <a href="#roadmap"><img alt="Roadmap" src="https://img.shields.io/badge/roadmap-116%2F119%20done-80ff20?style=for-the-badge"></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-555555?style=for-the-badge"></a>
 </p>
 <!-- badges:end -->
@@ -205,7 +205,7 @@ at once as a video wall.
 ## Roadmap
 
 <!-- roadmap:start -->
-<p align="center"><img src="docs/images/roadmap/banner.svg" width="100%" alt="CCTV roadmap: 116 of 117 done"></p>
+<p align="center"><img src="docs/images/roadmap/banner.svg" width="100%" alt="CCTV roadmap: 116 of 119 done"></p>
 
 What is done and what comes next, milestone by milestone (the full plan with its principles is in
 [docs/ROADMAP.md](docs/ROADMAP.md)).
@@ -443,6 +443,16 @@ What is done and what comes next, milestone by milestone (the full plan with its
 
 - [x] **Three more reference shots**: translucency (stained glass in front of a pig, panes in front of glass, a tank of water, ice, slime, honey, tinted glass and a beacon's beam through light blue glass), decorations (banners, paintings, an enchanted sword and golden apple in item frames, a sign with glowing text, dyed, trimmed and enchanted armour, a decorated pot, a head, a lectern, candles, a bell) and redstone at work (lamps, dust, a repeater, an extended piston, powered rails, a comparator, an observer, a copper bulb, a chest minecart)
 - [x] Bounds for the new shots, then close the gaps they show: glass panes and iron bars without a seam where two of them meet (their faces hidden where both connect towards each other, like IronBarsBlock.skipRendering) — all fourteen shots within 1 % of the game (0.6 % without rain or snow)
+
+</details>
+
+<img src="docs/images/roadmap/1-16.svg" width="100%" alt="1.16 — every mob up close: planned, 0 of 2 done">
+
+<details>
+<summary><b>1.16 — every mob up close</b> · planned · 0 of 2 done</summary>
+
+- [ ] **Every kind of mob in the reference renders, up close**: thirteen rows of mobs (farm animals, pets, the undead, illagers, the Nether's, small ones, flyers, fish and squid, big ones, mounts, rare ones, sea creatures and ghasts) seen from a few blocks, with the world frozen (/tick freeze) so the game and the viewer show the same pose
+- [ ] Bounds for the rows, then close the gaps they show in models, textures and poses
 
 </details>
 

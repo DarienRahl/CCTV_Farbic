@@ -367,6 +367,13 @@ to the milestone it belongs to. The roadmap on the README page is drawn from thi
       them meet (their faces hidden where both connect towards each other, like IronBarsBlock.skipRendering) — all
       fourteen shots within 1 % of the game (0.6 % without rain or snow)
 
+## 1.16 — every mob up close
+
+- [ ] **Every kind of mob in the reference renders, up close**: thirteen rows of mobs (farm animals, pets, the undead,
+      illagers, the Nether's, small ones, flyers, fish and squid, big ones, mounts, rare ones, sea creatures and
+      ghasts) seen from a few blocks, with the world frozen (/tick freeze) so the game and the viewer show the same pose
+- [ ] Bounds for the rows, then close the gaps they show in models, textures and poses
+
 ## Later
 
 - [x] **Recording and timelapse** of a camera in the browser: a video with the game's sounds, or one picture

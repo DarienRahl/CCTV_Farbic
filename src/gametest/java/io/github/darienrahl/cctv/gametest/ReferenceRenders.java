@@ -14,10 +14,10 @@ import net.fabricmc.loader.api.FabricLoader;
 
 /**
  * Reference renders for CI: builds small scenes in a single player world (flat, time and weather stopped) and, for
- * each shot (day, night, mobs, a room, under water, dusk, rain, snow, a cave, the Nether, the End, glass, decorations
- * and redstone), takes the game's picture from a spectator's eyes with the GUI hidden, moves a CCTV camera to the same
- * eyes and waits while CI takes the viewer's picture of that camera (.github/e2e/reference.mjs), so both can be
- * compared (compare_reference.py).
+ * each shot (day, night, mobs, a room, under water, dusk, rain, snow, a cave, the Nether, the End, glass, decorations,
+ * redstone and rows of every kind of mob up close), takes the game's picture from a spectator's eyes with the GUI
+ * hidden, moves a CCTV camera to the same eyes and waits while CI takes the viewer's picture of that camera
+ * (.github/e2e/reference.mjs), so both can be compared (compare_reference.py).
  *
  * <p>Hand-off through files in {@code <game dir>/reference}: {@code ready-<shot>.json} when the game's picture of a
  * shot is taken, {@code done-<shot>} from the viewer's side, and {@code finished} after the last shot.
@@ -344,7 +344,62 @@ public class ReferenceRenders implements FabricClientGameTest {
 		new Shot("glass", new String[0], "0.5 -58.5 -38.5 180 10", 100, "minecraft:overworld", GLASS),
 		new Shot("decor", new String[0], "30.5 -58.5 -45.5 180 8", 40, "minecraft:overworld", DECOR),
 		new Shot("redstone", new String[0], "57.5 -57.5 -40.5 180 30", 40, "minecraft:overworld", REDSTONE),
+		// every kind of mob up close, in rows; the world stands still from here on (see zoo)
+		zoo("zoo-farm", 0, 2.5, 7, 0, "minecraft:cow", "minecraft:pig", "minecraft:sheep Color:3b", "minecraft:chicken",
+				"minecraft:rabbit RabbitType:0", "minecraft:mooshroom Type:\"brown\""),
+		zoo("zoo-pets", 20, 2.5, 7, 0, "minecraft:wolf", "minecraft:cat variant:\"minecraft:black\"",
+				"minecraft:parrot Variant:2", "minecraft:fox Type:\"snow\"", "minecraft:axolotl Variant:1", "minecraft:ocelot"),
+		zoo("zoo-undead", 40, 2.2, 7, 0, "minecraft:zombie", "minecraft:husk",
+				"minecraft:drowned equipment:{mainhand:{id:\"minecraft:trident\",count:1}}",
+				"minecraft:skeleton equipment:{mainhand:{id:\"minecraft:bow\",count:1}}", "minecraft:stray", "minecraft:bogged",
+				"minecraft:parched"),
+		zoo("zoo-illagers", 60, 2.5, 7, 0,
+				"minecraft:villager VillagerData:{type:\"minecraft:plains\",profession:\"minecraft:librarian\",level:2}",
+				"minecraft:witch", "minecraft:pillager equipment:{mainhand:{id:\"minecraft:crossbow\",count:1}}",
+				"minecraft:vindicator equipment:{mainhand:{id:\"minecraft:iron_axe\",count:1}}", "minecraft:evoker",
+				"minecraft:wandering_trader"),
+		zoo("zoo-nether", 80, 2.5, 7, 0, "minecraft:piglin equipment:{mainhand:{id:\"minecraft:golden_sword\",count:1}}",
+				"minecraft:piglin_brute equipment:{mainhand:{id:\"minecraft:golden_axe\",count:1}}",
+				"minecraft:zombified_piglin equipment:{mainhand:{id:\"minecraft:golden_sword\",count:1}}",
+				"minecraft:wither_skeleton equipment:{mainhand:{id:\"minecraft:stone_sword\",count:1}}", "minecraft:blaze",
+				"minecraft:magma_cube Size:1"),
+		zoo("zoo-small", 100, 2, 6, 0, "minecraft:spider", "minecraft:cave_spider", "minecraft:slime Size:1",
+				"minecraft:endermite", "minecraft:silverfish", "minecraft:creeper", "minecraft:frog", "minecraft:armadillo"),
+		zoo("zoo-flyers", 120, 2.5, 7, 1.5, "minecraft:bee", "minecraft:allay", "minecraft:vex", "minecraft:bat",
+				"minecraft:phantom Size:0", "minecraft:breeze"),
+		zoo("zoo-water", 140, 2, 6, 0, "minecraft:cod", "minecraft:salmon", "minecraft:tropical_fish",
+				"minecraft:pufferfish PuffState:2", "minecraft:squid", "minecraft:glow_squid", "minecraft:tadpole", "minecraft:turtle"),
+		zoo("zoo-big", 160, 4.5, 11, 0, "minecraft:iron_golem", "minecraft:ravager", "minecraft:hoglin", "minecraft:zoglin",
+				"minecraft:polar_bear", "minecraft:panda MainGene:\"playful\""),
+		zoo("zoo-ride", 190, 4, 11, 0, "minecraft:horse Variant:513", "minecraft:donkey", "minecraft:mule",
+				"minecraft:llama Variant:1", "minecraft:camel", "minecraft:skeleton_horse"),
+		zoo("zoo-rare", 220, 3.5, 10, 0, "minecraft:enderman", "minecraft:warden", "minecraft:sniffer", "minecraft:goat",
+				"minecraft:creaking", "minecraft:copper_golem", "minecraft:snow_golem"),
+		zoo("zoo-sea", 250, 3.5, 10, 0, "minecraft:dolphin", "minecraft:guardian", "minecraft:elder_guardian", "minecraft:nautilus",
+				"minecraft:zombie_nautilus", "minecraft:camel_husk"),
+		zoo("zoo-ghasts", 280, 7, 14, 2, "minecraft:ghast", "minecraft:happy_ghast"),
 	};
+
+	/**
+	 * A close look at a row of mobs (a type, then NBT of its own) standing {@code spacing} blocks apart at z -99.5 and
+	 * looking south at the eyes {@code distance} blocks away, {@code lift} blocks off the ground (flying ones). The world
+	 * stands still first (/tick freeze), so the game and the viewer show them in the same pose: no AI, no idle
+	 * animation running on between the game's picture and the viewer's, no fish drying out on land.
+	 */
+	private static Shot zoo(String name, int x, double spacing, double distance, double lift, String... mobs) {
+		String[] build = new String[mobs.length + 1];
+		build[0] = "tick freeze";
+		for (int i = 0; i < mobs.length; i++) {
+			String[] mob = mobs[i].split(" ", 2);
+			double mx = x + 0.5 + (i - (mobs.length - 1) / 2.0) * spacing;
+			build[i + 1] = String.format(java.util.Locale.ROOT, "summon %s %.2f %.2f -99.5 {NoAI:1b,PersistenceRequired:1b,"
+					+ "Silent:1b,Rotation:[0f,0f]%s}", mob[0], mx, -60 + lift, mob.length > 1 ? "," + mob[1] : "");
+		}
+		// eyes a little above the rows' middle, a bit higher for the big ones
+		String eyes = String.format(java.util.Locale.ROOT, "%.1f %.2f %.1f 180 8", x + 0.5, -60 + distance * 0.1,
+				-99.5 + distance);
+		return new Shot(name, new String[0], eyes, 40, "minecraft:overworld", build);
+	}
 	/** Chunks render slowly on CI's software renderer: up to five minutes. */
 	private static final int CHUNK_TICKS = 20 * 60 * 5;
 
