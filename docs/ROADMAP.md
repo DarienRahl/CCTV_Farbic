@@ -356,14 +356,16 @@ to the milestone it belongs to. The roadmap on the README page is drawn from thi
       dropped them), snow golems' pumpkins facing forward (the carved pumpkin's default state) and the End's flashes
       standing still while the world's time does — every shot within 1 % of the game (0.6 % without rain or snow)
 
-## 1.15 — the judge looks closer
+## 1.15 — the judge looks closer (released: 1.15.0)
 
-- [ ] **Three more reference shots**: translucency (stained glass in front of a pig, panes in front of glass, a tank
+- [x] **Three more reference shots**: translucency (stained glass in front of a pig, panes in front of glass, a tank
       of water, ice, slime, honey, tinted glass and a beacon's beam through light blue glass), decorations (banners,
       paintings, an enchanted sword and golden apple in item frames, a sign with glowing text, dyed, trimmed and
       enchanted armour, a decorated pot, a head, a lectern, candles, a bell) and redstone at work (lamps, dust, a
       repeater, an extended piston, powered rails, a comparator, an observer, a copper bulb, a chest minecart)
-- [ ] Bounds for the new shots, then close the gaps they show
+- [x] Bounds for the new shots, then close the gaps they show: glass panes and iron bars without a seam where two of
+      them meet (their faces hidden where both connect towards each other, like IronBarsBlock.skipRendering) — all
+      fourteen shots within 1 % of the game (0.6 % without rain or snow)
 
 ## Later
 
