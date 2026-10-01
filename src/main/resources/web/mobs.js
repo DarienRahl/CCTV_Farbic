@@ -2080,7 +2080,11 @@ const MOBS = {
 	},
 	blaze: { layer: 'blaze#main', texture: 'blaze/blaze', shadow: 0.5, anim: 'blaze', fullBright: true },
 	bogged: { layer: 'bogged#main', texture: 'skeleton/bogged', shadow: 0.5, anim: 'skeleton', armor: 'bogged', layers: [{ layer: 'bogged#outer', texture: 'skeleton/bogged_overlay' }] },
-	breeze: { layer: 'breeze#main', texture: 'breeze/breeze', shadow: 0.5, anim: 'breeze', layers: [{ layer: 'breeze#eyes', texture: 'breeze/breeze_eyes', mode: 'eyes' }] },
+	// BreezeWindLayer: the whirl of wind (RenderTypes.breezeWind), its texture scrolled by xOffset(ageInTicks) % 1;
+	// BreezeEyesLayer: RenderTypes.breezeEyes is entityTranslucentEmissive
+	breeze: { layer: 'breeze#main', texture: 'breeze/breeze', shadow: 0.5, anim: 'breeze', layers: [
+		{ layer: 'breeze#wind', texture: 'breeze/breeze_wind', mode: 'breeze_wind', scroll: t => [t * 0.02 % 1, 0] },
+		{ layer: 'breeze#eyes', texture: 'breeze/breeze_eyes', mode: 'translucent_emissive' }] },
 	camel: { layer: e => (e.baby ? 'camel_baby#main' : 'camel#main'), texture: e => 'camel/camel' + baby(e), shadow: 0.7, anim: 'camel', saddle: ['camel#saddle', 'equipment/camel_saddle/saddle'] },
 	camel_husk: { layer: 'camel#main', texture: 'camel/camel_husk', shadow: 0.7, anim: 'camel', saddle: ['camel_husk#saddle', 'equipment/camel_husk_saddle/saddle'] },
 	cat: {
@@ -2432,7 +2436,7 @@ export function describeMob(e) {
 	const value = (v, fallback) => (typeof v === 'function' ? v(e) : v ?? fallback);
 	const out = [];
 	const add = (layer, texture, extra = {}) => out.push({ layer: 'minecraft:' + layer, texture, mode: extra.mode || 'cutout_nocull', color: extra.color || null,
-		swirl: extra.swirl || null, alpha: extra.alpha || null });
+		swirl: extra.swirl || null, scroll: extra.scroll || null, alpha: extra.alpha || null });
 
 	if (def.player) {
 		const slim = e.slim;
@@ -2481,7 +2485,7 @@ export function describeMob(e) {
 		if (extra.when && !extra.when(e)) continue;
 		const texture = value(extra.texture);
 		if (!texture) continue;
-		add(value(extra.layer), texture, { mode: extra.mode, color: extra.color ? extra.color(e) : null, swirl: extra.swirl, alpha: extra.alpha });
+		add(value(extra.layer), texture, { mode: extra.mode, color: extra.color ? extra.color(e) : null, swirl: extra.swirl, scroll: extra.scroll, alpha: extra.alpha });
 	}
 	// Equipment layers (saddle, armour) are drawn on invisible mobs too.
 	if (def.saddle && e.saddle) { add(def.saddle[0], def.saddle[1]); out[out.length - 1].equipment = true; }

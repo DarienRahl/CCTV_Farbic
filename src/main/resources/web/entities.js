@@ -33,7 +33,8 @@ function axisRotation(x, y, z, angle) {
 /** A standard normal random number (Random.nextGaussian). */
 const gaussian = () => Math.sqrt(-2 * Math.log(1 - Math.random())) * Math.cos(2 * PI * Math.random());
 
-const MODE_CUTOUT = 0, MODE_NOCULL = 1, MODE_TRANSLUCENT = 2, MODE_EYES = 3, MODE_ENERGY = 4, MODE_CRUMBLING = 5, MODE_TRANSLUCENT_EMISSIVE = 6;
+const MODE_CUTOUT = 0, MODE_NOCULL = 1, MODE_TRANSLUCENT = 2, MODE_EYES = 3, MODE_ENERGY = 4, MODE_CRUMBLING = 5, MODE_TRANSLUCENT_EMISSIVE = 6,
+	MODE_BREEZE_WIND = 7;
 
 /**
  * Enchantment glint kinds (RenderTypes ITEM_CUTOUT_GLINT, ARMOR_CUTOUT_NO_CULL_GLINT, ENTITY_SOLID_GLINT): the glint
@@ -117,7 +118,7 @@ const FACING_STEP = { north: [0, 0, -1], south: [0, 0, 1], west: [-1, 0, 0], eas
 const FACING_YROT = { south: 0, west: 90, north: 180, east: 270 };
 
 const MODES = { cutout: MODE_CUTOUT, cutout_nocull: MODE_NOCULL, translucent: MODE_TRANSLUCENT, eyes: MODE_EYES, energy: MODE_ENERGY,
-	translucent_emissive: MODE_TRANSLUCENT_EMISSIVE };
+	translucent_emissive: MODE_TRANSLUCENT_EMISSIVE, breeze_wind: MODE_BREEZE_WIND };
 
 // GPU skinning: models stay on the GPU in their parts' own space (aBone = the part's index) and each part's matrix of
 // this frame is read from a float texture, four texels per matrix; vertices made on the CPU have aBone -1.
@@ -229,11 +230,25 @@ void main() {
 		outColor = apply_fog(color, vSph, vCyl);
 		return;
 	}
+	if (uMode == 3) {
+		// RenderPipelines.EYES: blended (TRANSLUCENT) over the model, not lit and not darkened by the lightmap
+		color *= vColor;
+		outColor = apply_fog(color, vSph, vCyl);
+		return;
+	}
+	if (uMode == 7) {
+		// RenderPipelines.BREEZE_WIND: alpha cutout 0.1, blended, lit by the lightmap only (NO_CARDINAL_LIGHTING)
+		if (color.a < 0.1) discard;
+		color *= vColor * vLightColor;
+		outColor = apply_fog(color, vSph, vCyl);
+		return;
+	}
 	if (uMode <= 1 && color.a < 0.1) discard;
 	if (uMode == 2 && color.a < 0.004) discard;
 	color *= vColor;
 	if (uGlint > 0) color.a = max(color.a, uGlintAlpha);
-	if (uMode >= 3) {
+	if (uMode == 4) {
+		// RenderPipelines.ENERGY_SWIRL: added (ADDITIVE), fading into the fog
 		outColor = vec4(color.rgb * color.a * (1.0 - total_fog_value(vSph, vCyl)), 1.0);
 		return;
 	}
@@ -1930,9 +1945,10 @@ export class EntityRenderer {
 			// render layers draw with entityCutout too: both sides
 			const mode = MODES[layer.mode] ?? MODE_NOCULL;
 			const glint = layer.foil && (e.foil & layer.foil) ? GLINT_ARMOR : 0;
-			// EnergySwirlLayer: the texture offset by xOffset(ageInTicks) % 1 and ageInTicks * 0.01 % 1
-			const uv = layer.swirl ? [layer.swirl(age) % 1, age * 0.01 % 1] : null;
-			this.batch(texture, mode, start, mode !== MODE_NOCULL && mode !== MODE_TRANSLUCENT && mode !== MODE_TRANSLUCENT_EMISSIVE, glint, uv);
+			// EnergySwirlLayer: the texture offset by xOffset(ageInTicks) % 1 and ageInTicks * 0.01 % 1; others scroll their own way
+			const uv = layer.swirl ? [layer.swirl(age) % 1, age * 0.01 % 1] : layer.scroll ? layer.scroll(age) : null;
+			this.batch(texture, mode, start, mode !== MODE_NOCULL && mode !== MODE_TRANSLUCENT && mode !== MODE_TRANSLUCENT_EMISSIVE && mode !== MODE_BREEZE_WIND,
+				glint, uv);
 		}
 		if (!base) return this.drawBox(e, pos, style);
 		// SulfurCubeInnerLayer: the block a sulfur cube holds, upside down inside it, white while the fuse is lit
@@ -4658,9 +4674,10 @@ export class EntityRenderer {
 		gl.enable(gl.BLEND);
 		gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
 		gl.depthMask(false);
-		drawBatches(b => b.mode === MODE_TRANSLUCENT || b.mode === MODE_TRANSLUCENT_EMISSIVE);
+		drawBatches(b => b.mode === MODE_TRANSLUCENT || b.mode === MODE_TRANSLUCENT_EMISSIVE || b.mode === MODE_BREEZE_WIND);
+		drawBatches(b => b.mode === MODE_EYES);
 		gl.blendFunc(gl.ONE, gl.ONE);
-		drawBatches(b => b.mode === MODE_EYES || b.mode === MODE_ENERGY);
+		drawBatches(b => b.mode === MODE_ENERGY);
 		// RenderPipelines.CRUMBLING: multiplied into the block, pulled towards the camera (depth bias 1, 10)
 		gl.blendFuncSeparate(gl.DST_COLOR, gl.SRC_COLOR, gl.ONE, gl.ZERO);
 		gl.enable(gl.POLYGON_OFFSET_FILL);

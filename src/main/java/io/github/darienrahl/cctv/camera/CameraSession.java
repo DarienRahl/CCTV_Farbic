@@ -207,6 +207,8 @@ final class CameraSession {
 	private volatile long ticks;
 	private volatile long lastTick;
 	private final EnvironmentSampler environment = new EnvironmentSampler();
+	/** Whether the level's ticks were frozen (/tick freeze) when the environment was last sent. */
+	private boolean frozen;
 
 	CameraSession(Camera camera, CctvConfig config, BlockPalette palette, Executor workers) {
 		this.camera = camera;
@@ -370,6 +372,15 @@ final class CameraSession {
 		syncViewers(tick);
 		phase(9);
 
+		// /tick freeze or unfreeze reaches the viewers before the next entities, like the game's ticking state packet
+		// comes before the entities spawned after it: a frozen client never starts their animations
+		boolean frozenNow = !level.tickRateManager().runsNormally();
+		boolean freezeChanged = frozenNow != frozen;
+		frozen = frozenNow;
+		if (freezeChanged) {
+			sendEnvironment(level, tick);
+		}
+
 		if (tick % config.entityUpdateTicks == 0) {
 			entityBlockStates.clear();
 			String entities = entitiesJson(level, tick);
@@ -384,13 +395,8 @@ final class CameraSession {
 		}
 		phase(10);
 
-		if (tick % EnvironmentSampler.INTERVAL_TICKS == 0) {
-			String env = sampleEnvironment(level, tick);
-			if (env != null) {
-				for (ViewerState state : viewers) {
-					state.viewer.send("env", env);
-				}
-			}
+		if (tick % EnvironmentSampler.INTERVAL_TICKS == 0 && !freezeChanged) {
+			sendEnvironment(level, tick);
 		}
 		phase(11);
 		if (tick % WeatherSampler.INTERVAL_TICKS == 5) {
@@ -511,6 +517,15 @@ final class CameraSession {
 					.endObject();
 		}
 		json.endArray();
+	}
+
+	private void sendEnvironment(ServerLevel level, long tick) {
+		String env = sampleEnvironment(level, tick);
+		if (env != null) {
+			for (ViewerState state : viewers) {
+				state.viewer.send("env", env);
+			}
+		}
 	}
 
 	private @Nullable String sampleEnvironment(ServerLevel level, long tick) {

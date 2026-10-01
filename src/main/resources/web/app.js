@@ -658,7 +658,8 @@ function frame(now) {
 	// Game ticks drive texture animations, torch flicker and flashes, like the client. While the server's ticks are
 	// frozen (/tick freeze) the client ticks no entity, particle, block animation or texture (Minecraft.tick).
 	const tick = Math.floor(now / 50);
-	const frozen = !!(environment.current && environment.current.frozen);
+	// (from the latest sample: the freeze arrives just before the entities spawned after it)
+	const frozen = !!(environment.b && environment.b.frozen);
 	entities.frozen = frozen;
 	let deltaTicks = 0;
 	if (tick !== state.gameTick) {
