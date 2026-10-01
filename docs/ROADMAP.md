@@ -342,6 +342,15 @@ to the milestone it belongs to. The roadmap on the README page is drawn from thi
       game's MipmapGenerator (each texture's mipmap_strategy: mean, cutout, strict_cutout and leaves' dark_cutout,
       in linear light) — every shot now within 0.5 % of the game
 
+## 1.14 — the judge everywhere
+
+- [ ] **Four more reference shots**: dusk towards the setting sun (the sunset colours in the sky and the fog), the day
+      view in the rain (the rain, the darker sky and fog), a room in the Nether (its thick fog and ambient light, lava,
+      magma and glowstone light, a portal, a piglin and a strider) and a platform in the End (its sky, flashes and fog,
+      an end portal, purpur and chorus, a shulker); the scenes keep still (no mob spawning, no random ticks, time and
+      weather stopped)
+- [ ] Bounds for the new shots, then close the gaps they show
+
 ## Later
 
 - [x] **Recording and timelapse** of a camera in the browser: a video with the game's sounds, or one picture

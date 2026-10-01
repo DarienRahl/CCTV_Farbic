@@ -14,9 +14,9 @@ import net.fabricmc.loader.api.FabricLoader;
 
 /**
  * Reference renders for CI: builds small scenes in a single player world (flat, time and weather stopped) and, for
- * each shot (day, night, mobs, a room, under water), takes the game's picture from a spectator's eyes with the GUI
- * hidden, moves a CCTV camera to the same eyes and waits while CI takes the viewer's picture of that camera
- * (.github/e2e/reference.mjs), so both can be compared (compare_reference.py).
+ * each shot (day, night, mobs, a room, under water, dusk, rain, the Nether and the End), takes the game's picture from
+ * a spectator's eyes with the GUI hidden, moves a CCTV camera to the same eyes and waits while CI takes the viewer's
+ * picture of that camera (.github/e2e/reference.mjs), so both can be compared (compare_reference.py).
  *
  * <p>Hand-off through files in {@code <game dir>/reference}: {@code ready-<shot>.json} when the game's picture of a
  * shot is taken, {@code done-<shot>} from the viewer's side, and {@code finished} after the last shot.
@@ -32,6 +32,11 @@ public class ReferenceRenders implements FabricClientGameTest {
 	private static final String[] SCENE = {
 		"gamemode spectator @a",
 		"time set noon",
+		// no mob comes into a picture by itself, plants do not grow and the world's time stays where it is set
+		"gamerule spawn_mobs false",
+		"gamerule random_tick_speed 0",
+		"gamerule advance_time false",
+		"gamerule advance_weather false",
 		"weather clear",
 		// a small house with a slab roof, windows, a door and a torch
 		"fill 2 -60 6 7 -57 11 minecraft:oak_planks hollow",
@@ -108,13 +113,71 @@ public class ReferenceRenders implements FabricClientGameTest {
 
 	/**
 	 * A picture: the commands that set it up, where the eyes are (x y z yaw pitch of the spectator's feet) and how
-	 * many ticks to wait there before it is taken.
+	 * many ticks to wait there before it is taken; in another dimension, the commands that build its scene once the
+	 * spectator is there (its chunks are only loaded then).
 	 */
-	private record Shot(String name, String[] commands, String eyes, int settle) {
+	private record Shot(String name, String[] commands, String eyes, int settle, String dimension, String[] build) {
 		Shot(String name, String[] commands, String eyes) {
 			this(name, commands, eyes, 40);
 		}
+
+		Shot(String name, String[] commands, String eyes, int settle) {
+			this(name, commands, eyes, settle, "minecraft:overworld", new String[0]);
+		}
 	}
+
+	/** A room in the Nether: lava, magma and glowstone light, soul sand with nether wart, both nylium forests, a portal. */
+	private static final String[] NETHER = {
+		"fill 0 58 0 47 75 31 minecraft:netherrack hollow",
+		"fill 1 59 1 46 59 30 minecraft:netherrack",
+		// nether wastes everywhere around the camera: its fog colour and no ambient particles
+		"fillbiome 0 58 0 47 75 31 minecraft:nether_wastes",
+		"fill 18 59 12 25 59 19 minecraft:lava",
+		"fill 8 59 6 10 59 8 minecraft:magma_block",
+		"fill 10 59 21 13 59 24 minecraft:soul_sand",
+		"setblock 11 60 22 minecraft:nether_wart[age=3]",
+		"setblock 12 60 23 minecraft:nether_wart[age=1]",
+		"fill 30 60 6 31 66 7 minecraft:nether_bricks",
+		"fill 32 60 6 35 60 6 minecraft:nether_brick_fence",
+		"fill 32 59 18 38 59 24 minecraft:crimson_nylium",
+		"setblock 34 60 20 minecraft:crimson_fungus",
+		"setblock 36 60 22 minecraft:crimson_roots",
+		"setblock 33 60 23 minecraft:crimson_roots",
+		"fill 39 59 10 44 59 15 minecraft:warped_nylium",
+		"setblock 41 60 12 minecraft:warped_fungus",
+		"setblock 42 60 14 minecraft:warped_roots",
+		"setblock 40 60 14 minecraft:nether_sprouts",
+		"fill 36 60 3 39 64 3 minecraft:obsidian",
+		"fill 37 61 3 38 63 3 minecraft:nether_portal[axis=x]",
+		"fill 20 72 14 21 74 15 minecraft:glowstone",
+		"fill 34 73 22 35 74 23 minecraft:glowstone",
+		"fill 12 73 4 13 74 5 minecraft:glowstone",
+		"setblock 47 62 10 minecraft:nether_gold_ore",
+		"setblock 47 66 20 minecraft:nether_quartz_ore",
+		"summon minecraft:piglin 14.5 60 16.5 {NoAI:1b,PersistenceRequired:1b,IsImmuneToZombification:1b,Rotation:[90f,0f],"
+				+ "equipment:{mainhand:{id:\"minecraft:golden_sword\",count:1}}}",
+		"summon minecraft:strider 21.5 60 15.5 {NoAI:1b,PersistenceRequired:1b,Rotation:[60f,0f]}",
+	};
+
+	/** A platform of end stone out in the End's void (far from the dragon's island): purpur, chorus, a portal, a shulker. */
+	private static final String[] END = {
+		"fill 588 58 -14 621 59 12 minecraft:end_stone",
+		"fill 606 60 -6 607 66 -5 minecraft:purpur_pillar",
+		"setblock 606 67 -6 minecraft:end_rod[facing=up]",
+		"setblock 607 67 -5 minecraft:dragon_head[rotation=4]",
+		"fill 600 60 4 603 60 7 minecraft:end_stone_bricks",
+		"setblock 601 61 5 minecraft:purpur_slab",
+		"setblock 598 60 -2 minecraft:chorus_plant",
+		"setblock 598 61 -2 minecraft:chorus_plant",
+		"setblock 599 61 -2 minecraft:chorus_plant",
+		"setblock 599 62 -2 minecraft:chorus_flower[age=5]",
+		"setblock 598 62 -2 minecraft:chorus_flower[age=5]",
+		"fill 595 59 1 599 59 5 minecraft:end_portal_frame[eye=true]",
+		"fill 596 59 2 598 59 4 minecraft:end_portal",
+		"setblock 603 60 -3 minecraft:ender_chest[facing=west]",
+		"setblock 604 60 3 minecraft:magenta_shulker_box[facing=up]",
+		"summon minecraft:shulker 604 60 -1 {NoAI:1b,PersistenceRequired:1b}",
+	};
 
 	private static final Shot[] SHOTS = {
 		new Shot("day", new String[] {"time set noon"}, "0.5 -58.5 -6.5 -20 18"),
@@ -126,6 +189,14 @@ public class ReferenceRenders implements FabricClientGameTest {
 		// under water: the water fog and the underwater overlay (which the game draws for players, not spectators),
 		// after 600 ticks in the water, when the player sees as far as a camera always does (Player.getWaterVision)
 		new Shot("water", new String[] {"gamemode creative @a"}, "-16.5 -61.5 -24.5 0 6", 640),
+		// towards the setting sun: the sunset colours in the sky and the fog
+		new Shot("dusk", new String[] {"gamemode spectator @a", "time set 12600"}, "0.5 -58.5 -6.5 90 -5"),
+		// the day view once the rain has set in (the rain level grows by 0.01 a tick): the rain and the darker sky
+		new Shot("rain", new String[] {"time set noon", "weather rain"}, "0.5 -58.5 -6.5 -20 18", 160),
+		// the Nether's thick fog, its ambient light and its own lightmap
+		new Shot("nether", new String[] {"weather clear"}, "3.5 61.5 16.5 -90 10", 40, "minecraft:the_nether", NETHER),
+		// the End's sky (and its flashes) and fog
+		new Shot("end", new String[0], "592.5 61 -10.5 -40 5", 40, "minecraft:the_end", END),
 	};
 	/** Chunks render slowly on CI's software renderer: up to five minutes. */
 	private static final int CHUNK_TICKS = 20 * 60 * 5;
@@ -159,7 +230,15 @@ public class ReferenceRenders implements FabricClientGameTest {
 				for (String command : shot.commands()) {
 					server.runCommand(command);
 				}
-				server.runCommand("tp @a " + shot.eyes());
+				server.runCommand("execute in " + shot.dimension() + " run tp @a " + shot.eyes());
+				if (shot.build().length > 0) {
+					// the dimension's chunks around the spectator are loaded now: build its scene
+					context.waitTicks(40);
+					singleplayer.getConnection().waitForChunksRender(CHUNK_TICKS);
+					for (String command : shot.build()) {
+						server.runCommand("execute in " + shot.dimension() + " run " + command);
+					}
+				}
 				server.runCommand(first ? "execute as @p at @p run cctv create ref ~ ~ ~ ~ ~" : "execute as @p at @p run cctv move ref ~ ~ ~ ~ ~");
 				if (first) {
 					server.runCommand("cctv range ref 96");

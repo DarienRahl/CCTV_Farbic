@@ -252,7 +252,7 @@ def main():
     rcon = wait_for_server()
     rcon.command("forceload add -48 -48 48 48")
     rcon.command("time set 1000")
-    rcon.command("gamerule doDaylightCycle false")
+    rcon.command("gamerule advance_time false")
     rcon.command("fill 2 -60 8 8 -56 14 minecraft:oak_planks hollow")
     rcon.command("fill 2 -55 8 8 -55 14 minecraft:cobblestone_slab")
     rcon.command("setblock 5 -59 8 minecraft:glass")
