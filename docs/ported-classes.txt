@@ -456,3 +456,9 @@ net/minecraft/client/renderer/entity/DragonFireballRenderer
 net/minecraft/client/model/object/armorstand/ArmorStandModel
 net/minecraft/client/model/object/armorstand/ArmorStandArmorModel
 net/minecraft/client/renderer/entity/ArmorStandRenderer
+# the block atlas's mip levels (assets.js buildMips) and the multi-shot reference renders' fixes
+net/minecraft/client/renderer/texture/MipmapGenerator
+net/minecraft/client/renderer/texture/MipmapStrategy
+net/minecraft/client/resources/metadata/texture/TextureMetadataSection
+com/mojang/blaze3d/platform/TextureUtil
+net/minecraft/client/renderer/entity/SkeletonRenderer

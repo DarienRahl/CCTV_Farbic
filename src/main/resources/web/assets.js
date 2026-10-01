@@ -38,49 +38,170 @@ function transparencyOf(pixels) {
 	return transparent ? 1 : 0;
 }
 
-function coverage(pixels, scale) {
-	let covered = 0;
-	for (let i = 3; i < pixels.length; i += 4) {
-		if (Math.min(255, pixels[i] * scale) >= 128) covered++;
+// --- MipmapGenerator (26.3): the mip levels of a sprite by its texture's mipmap_strategy -----------------
+
+// ARGB.SRGB_TO_LINEAR / LINEAR_TO_SRGB: 10-bit linear lookup tables
+const SRGB_TO_LINEAR = new Uint16Array(256);
+const LINEAR_TO_SRGB = new Uint8Array(1024);
+for (let i = 0; i < 256; i++) {
+	const c = i / 255;
+	SRGB_TO_LINEAR[i] = Math.round((c >= 0.04045 ? Math.pow((c + 0.055) / 1.055, 2.4) : c / 12.92) * 1023);
+}
+for (let i = 0; i < 1024; i++) {
+	const c = i / 1023;
+	LINEAR_TO_SRGB[i] = Math.round((c >= 0.0031308 ? 1.055 * Math.pow(c, 1 / 2.4) - 0.055 : 12.92 * c) * 255);
+}
+const MIP_ALPHA_CUTOFF = 0.5, STRICT_ALPHA_CUTOFF = 0.3;
+
+/** Transparency.hasTransparent: a pixel with no alpha at all. */
+function hasTransparentPixel(pixels) {
+	for (let i = 3; i < pixels.length; i += 4) if (pixels[i] === 0) return true;
+	return false;
+}
+
+/** MipmapGenerator.alphaTestCoverage: the share passing the alpha test, sampled 4x4 between texel centres. */
+function alphaTestCoverage(px, size, alphaRef, alphaScale) {
+	let total = 0;
+	const alphaAt = (x, y) => Math.min(1, Math.max(0, px[(y * size + x) * 4 + 3] / 255 * alphaScale));
+	for (let y = 0; y < size - 1; y++) {
+		for (let x = 0; x < size - 1; x++) {
+			const a00 = alphaAt(x, y), a10 = alphaAt(x + 1, y), a01 = alphaAt(x, y + 1), a11 = alphaAt(x + 1, y + 1);
+			let texel = 0;
+			for (let sy = 0; sy < 4; sy++) {
+				const fy = (sy + 0.5) / 4;
+				for (let sx = 0; sx < 4; sx++) {
+					const fx = (sx + 0.5) / 4;
+					const alpha = a00 * (1 - fx) * (1 - fy) + a10 * fx * (1 - fy) + a01 * (1 - fx) * fy + a11 * fx * fy;
+					if (alpha > alphaRef) texel++;
+				}
+			}
+			total += texel / 16;
+		}
 	}
-	return covered / (pixels.length / 4);
+	return size > 1 ? total / ((size - 1) * (size - 1)) : 0;
+}
+
+/** MipmapGenerator.scaleAlphaToCoverage: the alpha scale (searched 5 steps) that keeps level 0's coverage. */
+function scaleAlphaToCoverage(px, size, desired, alphaRef, bias) {
+	let min = 0, max = 4, scale = 1, best = 1, bestError = Infinity;
+	for (let i = 0; i < 5; i++) {
+		const current = alphaTestCoverage(px, size, alphaRef, scale);
+		const error = Math.abs(current - desired);
+		if (error < bestError) {
+			bestError = error;
+			best = scale;
+		}
+		if (current < desired) min = scale;
+		else if (current > desired) max = scale;
+		else break;
+		scale = (min + max) * 0.5;
+	}
+	for (let i = 3; i < px.length; i += 4) {
+		const alpha = Math.min(1, Math.max(0, px[i] / 255 * best + bias + 0.025));
+		px[i] = Math.floor(alpha * 255);
+	}
+}
+
+/** TextureUtil.solidify: invisible pixels take the colour of the nearest visible one (a breadth-first fill). */
+function solidify(px, size) {
+	const n = size * size;
+	const distance = new Int32Array(n).fill(0x7fffffff);
+	const nearest = new Int32Array(n);
+	const queue = [];
+	for (let i = 0; i < n; i++) {
+		if (px[i * 4 + 3] !== 0) {
+			distance[i] = 0;
+			nearest[i] = i;
+			queue.push(i);
+		}
+	}
+	for (let head = 0; head < queue.length; head++) {
+		const i = queue[head], x = i % size, y = (i / size) | 0;
+		for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+			const nx = x + dx, ny = y + dy;
+			if (nx < 0 || ny < 0 || nx >= size || ny >= size) continue;
+			const j = ny * size + nx;
+			if (distance[j] > distance[i] + 1) {
+				distance[j] = distance[i] + 1;
+				nearest[j] = nearest[i];
+				queue.push(j);
+			}
+		}
+	}
+	if (!queue.length) return;
+	for (let i = 0; i < n; i++) {
+		if (px[i * 4 + 3] !== 0) continue;
+		const from = nearest[i] * 4;
+		px[i * 4] = px[from]; px[i * 4 + 1] = px[from + 1]; px[i * 4 + 2] = px[from + 2];
+	}
+}
+
+/** TextureUtil.fillEmptyAreasWithDarkColor: invisible pixels take 3/4 of the darkest visible colour. */
+function fillEmptyAreasWithDarkColor(px) {
+	let darkest = -1, min = Infinity;
+	for (let i = 0; i < px.length; i += 4) {
+		if (px[i + 3] === 0) continue;
+		const brightness = px[i] + px[i + 1] + px[i + 2];
+		if (brightness < min) {
+			min = brightness;
+			darkest = i;
+		}
+	}
+	// ARGB of -1 (no visible pixel) is white
+	const r = darkest < 0 ? 255 : px[darkest], g = darkest < 0 ? 255 : px[darkest + 1], b = darkest < 0 ? 255 : px[darkest + 2];
+	for (let i = 0; i < px.length; i += 4) {
+		if (px[i + 3] !== 0) continue;
+		px[i] = Math.floor(3 * r / 4); px[i + 1] = Math.floor(3 * g / 4); px[i + 2] = Math.floor(3 * b / 4);
+	}
 }
 
 /**
- * Mip chain of one square sprite (RGBA, size x size): alpha weighted box filter; cutout sprites keep
- * their alpha-test coverage so leaves and plants do not thin out in the distance.
+ * MipmapGenerator.generateMipLevels: the mip chain of one square sprite (RGBA, size x size). strategy is the
+ * texture's mipmap_strategy (auto: cutout when it has invisible pixels, else mean); the colours are averaged in
+ * linear light (ARGB.meanLinear), leaves' dark_cutout blends only visible pixels, and the cutout strategies scale
+ * each level's alpha so as much of it passes the alpha test as of level 0 (plus alpha_cutoff_bias).
  */
-function buildMips(pixels, size, cutout) {
-	const levels = [pixels];
-	const target = cutout ? coverage(pixels, 1) : 0;
-	let src = pixels, s = size;
+function buildMips(pixels, size, { strategy = 'auto', bias = 0, item = false, transparent = null } = {}) {
+	if (strategy === 'auto') strategy = (transparent ?? hasTransparentPixel(pixels)) ? 'cutout' : 'mean';
+	const cutout = strategy === 'cutout' || strategy === 'strict_cutout' || strategy === 'dark_cutout';
+	let base = pixels;
+	if (!item && strategy !== 'mean') {
+		base = Uint8ClampedArray.from(pixels);
+		if (strategy === 'dark_cutout') fillEmptyAreasWithDarkColor(base);
+		else solidify(base, size);
+	}
+	const levels = [base];
+	const cutoutRef = strategy === 'strict_cutout' ? STRICT_ALPHA_CUTOFF : MIP_ALPHA_CUTOFF;
+	const original = cutout ? alphaTestCoverage(base, size, cutoutRef, 1) : 0;
+	let src = base, s = size;
 	while (s > 1) {
 		const d = s >> 1;
 		const out = new Uint8ClampedArray(d * d * 4);
 		for (let y = 0; y < d; y++) {
 			for (let x = 0; x < d; x++) {
-				let r = 0, g = 0, b = 0, a = 0, w = 0;
-				for (let k = 0; k < 4; k++) {
-					const i = (((y * 2 + (k >> 1)) * s) + x * 2 + (k & 1)) * 4;
-					const alpha = src[i + 3];
-					const weight = alpha + 1;
-					r += src[i] * weight; g += src[i + 1] * weight; b += src[i + 2] * weight;
-					a += alpha;
-					w += weight;
-				}
+				const i1 = ((y * 2) * s + x * 2) * 4, i2 = i1 + 4, i3 = i1 + s * 4, i4 = i3 + 4;
 				const o = (y * d + x) * 4;
-				out[o] = r / w; out[o + 1] = g / w; out[o + 2] = b / w; out[o + 3] = a / 4;
+				if (strategy === 'dark_cutout') {
+					// darkenedAlphaBlend: the linear mean of the visible pixels only, alpha included
+					let a = 0, r = 0, g = 0, b = 0;
+					for (const i of [i1, i2, i3, i4]) {
+						if (src[i + 3] === 0) continue;
+						a += SRGB_TO_LINEAR[src[i + 3]] / 1023; r += SRGB_TO_LINEAR[src[i]] / 1023;
+						g += SRGB_TO_LINEAR[src[i + 1]] / 1023; b += SRGB_TO_LINEAR[src[i + 2]] / 1023;
+					}
+					const srgb = v => LINEAR_TO_SRGB[Math.floor(v / 4 * 1023)];
+					out[o] = srgb(r); out[o + 1] = srgb(g); out[o + 2] = srgb(b); out[o + 3] = srgb(a);
+				} else {
+					// ARGB.meanLinear
+					for (let c = 0; c < 3; c++) {
+						out[o + c] = LINEAR_TO_SRGB[(SRGB_TO_LINEAR[src[i1 + c]] + SRGB_TO_LINEAR[src[i2 + c]]
+							+ SRGB_TO_LINEAR[src[i3 + c]] + SRGB_TO_LINEAR[src[i4 + c]]) >> 2];
+					}
+					out[o + 3] = (src[i1 + 3] + src[i2 + 3] + src[i3 + 3] + src[i4 + 3]) >> 2;
+				}
 			}
 		}
-		if (cutout && target > 0) {
-			// Scale alpha until the share of pixels passing the 0.5 test matches level 0.
-			let lo = 0.5, hi = 8;
-			for (let i = 0; i < 12; i++) {
-				const mid = (lo + hi) / 2;
-				if (coverage(out, mid) < target) lo = mid; else hi = mid;
-			}
-			for (let i = 3; i < out.length; i += 4) out[i] = Math.min(255, out[i] * hi);
-		}
+		if (cutout) scaleAlphaToCoverage(out, d, original, cutoutRef, bias);
 		levels.push(out);
 		src = out;
 		s = d;
@@ -172,7 +293,7 @@ export class Assets {
 				missing.set(magenta ? [248, 0, 248, 255] : [0, 0, 0, 255], (y * cell + x) * 4);
 			}
 		}
-		this.missing = { ...place(0, buildMips(missing, cell, false)), material: MAT_OPAQUE };
+		this.missing = { ...place(0, buildMips(missing, cell)), material: MAT_OPAQUE };
 
 		const animations = this.bundle.animations || {};
 		for (let i = 0; i < entries.length; i++) {
@@ -194,7 +315,13 @@ export class Assets {
 				if (!meta && f === 0) break;
 			}
 			const material = transparency === 2 ? MAT_TRANSLUCENT : transparency === 1 ? MAT_CUTOUT : MAT_OPAQUE;
-			const sprite = { ...place(i + 1, buildMips(frames[0], cell, material === MAT_CUTOUT)), material };
+			// TextureMetadataSection (the .mcmeta's "texture" part) and the sprite's Transparency over all frames
+			const texture = (animations[id] && animations[id].texture) || {};
+			const mipOptions = {
+				strategy: texture.mipmap_strategy || 'auto', bias: Number(texture.alpha_cutoff_bias) || 0,
+				item: /^[^:]*:item\//.test(id), transparent: frames.some(hasTransparentPixel),
+			};
+			const sprite = { ...place(i + 1, buildMips(frames[0], cell, mipOptions)), material };
 			this.sprites.set(id, sprite);
 
 			if (meta && frames.length > 1) {
@@ -204,7 +331,7 @@ export class Assets {
 					.filter(f => frames[f.index]);
 				if (order.length > 1) {
 					this.animated.push({
-						sprite, frames, order, interpolate: !!meta.interpolate, cutout: material === MAT_CUTOUT,
+						sprite, frames, order, interpolate: !!meta.interpolate, mipOptions,
 						total: order.reduce((sum, f) => sum + f.time, 0), mips: new Map(), current: '',
 					});
 				}
@@ -253,12 +380,12 @@ export class Assets {
 				const from = a.frames[frame.index], to = a.frames[next.index];
 				const pixels = new Uint8ClampedArray(from.length);
 				for (let i = 0; i < pixels.length; i++) pixels[i] = from[i] + (to[i] - from[i]) * mix;
-				mips = buildMips(pixels, this.cell, a.cutout);
+				mips = buildMips(pixels, this.cell, a.mipOptions);
 			} else {
 				if (key === a.current) continue;
 				mips = a.mips.get(frame.index);
 				if (!mips) {
-					mips = buildMips(a.frames[frame.index], this.cell, a.cutout);
+					mips = buildMips(a.frames[frame.index], this.cell, a.mipOptions);
 					a.mips.set(frame.index, mips);
 				}
 			}
