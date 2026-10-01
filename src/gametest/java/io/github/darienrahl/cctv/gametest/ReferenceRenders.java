@@ -15,8 +15,8 @@ import net.fabricmc.loader.api.FabricLoader;
 /**
  * Reference renders for CI: builds small scenes in a single player world (flat, time and weather stopped) and, for
  * each shot (day, night, mobs, a room, under water, dusk, rain, snow, a cave, the Nether, the End, glass, decorations,
- * redstone, shapes of blocks, plants, lights at night, biome colours, blocks of work and rows of every kind of mob up
- * close), takes the game's picture from a spectator's eyes with the GUI hidden, moves a CCTV camera to the same eyes
+ * redstone, shapes of blocks, plants, lights at night, biome colours, blocks of work, flowing water and lava, rows of
+ * every kind of mob up close, display entities, mannequins, vehicles and projectiles), takes the game's picture from a spectator's eyes with the GUI hidden, moves a CCTV camera to the same eyes
  * and waits while CI takes the viewer's picture of that camera (.github/e2e/reference.mjs), so both can be compared
  * (compare_reference.py).
  *
@@ -549,6 +549,76 @@ public class ReferenceRenders implements FabricClientGameTest {
 		return build.toArray(new String[0]);
 	}
 
+	/**
+	 * Water and lava: before a wall, a water source and a lava source fall into holes in the ground; in front of it
+	 * trenches with flowing water (one and three wide) and lava (its three blocks of flow); in front two rows of blocks
+	 * full of water exactly as given (strict, so the water does not flow out): stairs, a slab, a fence, a pane, bars, a
+	 * lantern, a chest, a grate, seagrass, kelp, sea pickles, roots, a coral fan and a lone source.
+	 */
+	private static final String[] FLUIDS = {
+		"fill 204 -60 -149 227 -55 -149 minecraft:stone_bricks",
+		"setblock 209 -61 -148 minecraft:air",
+		"setblock 222 -61 -148 minecraft:air",
+		"setblock 209 -56 -148 minecraft:water",
+		"setblock 222 -56 -148 minecraft:lava",
+		"fill 205 -61 -146 205 -61 -141 minecraft:air",
+		"fill 210 -61 -146 212 -61 -141 minecraft:air",
+		"fill 218 -61 -146 220 -61 -141 minecraft:air",
+		"setblock 205 -61 -146 minecraft:water",
+		"setblock 211 -61 -146 minecraft:water",
+		"setblock 219 -61 -146 minecraft:lava",
+		"fill 225 -61 -146 227 -61 -142 minecraft:water strict",
+		"setblock 226 -61 -144 minecraft:kelp_plant strict",
+		"setblock 226 -60 -144 minecraft:kelp[age=10] strict",
+		"setblock 208 -60 -138 minecraft:oak_stairs[facing=west,waterlogged=true] strict",
+		"setblock 210 -60 -138 minecraft:oak_slab[type=bottom,waterlogged=true] strict",
+		"setblock 212 -60 -138 minecraft:oak_fence[waterlogged=true] strict",
+		"setblock 214 -60 -138 minecraft:glass_pane[waterlogged=true] strict",
+		"setblock 216 -60 -138 minecraft:iron_bars[east=true,west=true,waterlogged=true] strict",
+		"setblock 218 -60 -138 minecraft:lantern[waterlogged=true] strict",
+		"setblock 220 -60 -138 minecraft:chest[facing=south,waterlogged=true] strict",
+		"setblock 222 -60 -138 minecraft:copper_grate[waterlogged=true] strict",
+		"setblock 209 -60 -136 minecraft:seagrass strict",
+		"setblock 211 -60 -136 minecraft:tall_seagrass[half=lower] strict",
+		"setblock 211 -59 -136 minecraft:tall_seagrass[half=upper] strict",
+		"setblock 213 -60 -136 minecraft:sea_pickle[pickles=3,waterlogged=true] strict",
+		"setblock 215 -60 -136 minecraft:mangrove_roots[waterlogged=true] strict",
+		"setblock 217 -60 -136 minecraft:tube_coral_fan[waterlogged=true] strict",
+		"setblock 219 -60 -136 minecraft:water strict",
+		"setblock 221 -60 -136 minecraft:oak_slab[type=top,waterlogged=true] strict",
+	};
+
+	/**
+	 * Display entities: blocks (one turned, one stretched, a chest, a lantern twice as big), items in some of their
+	 * display contexts (fixed, gui, ground, head, none), and texts above them (turned to the camera, wrapped, with a
+	 * background, a shadow, see through, left aligned, both ways round).
+	 */
+	private static final String[] DISPLAYS = {
+		"tick freeze",
+		"summon minecraft:block_display 313 -60 -100 {block_state:{Name:\"minecraft:grass_block\"}}",
+		"summon minecraft:block_display 315.5 -60 -100 {block_state:{Name:\"minecraft:oak_stairs\",Properties:{facing:\"east\"}},"
+				+ "transformation:{left_rotation:[0f,0.3826834f,0f,0.9238795f],right_rotation:[0f,0f,0f,1f],"
+				+ "translation:[0f,0f,0f],scale:[1f,1f,1f]}}",
+		"summon minecraft:block_display 317 -60 -100 {block_state:{Name:\"minecraft:chest\",Properties:{facing:\"south\"}}}",
+		"summon minecraft:block_display 319 -60 -100 {block_state:{Name:\"minecraft:lantern\"},"
+				+ "transformation:{left_rotation:[0f,0f,0f,1f],right_rotation:[0f,0f,0f,1f],translation:[-0.5f,0f,0f],scale:[2f,2f,2f]}}",
+		"summon minecraft:block_display 321.5 -60 -100 {block_state:{Name:\"minecraft:stone_bricks\"},"
+				+ "transformation:{left_rotation:[0f,0f,0f,1f],right_rotation:[0f,0f,0f,1f],translation:[0f,0f,0f],scale:[2f,0.5f,1f]}}",
+		"summon minecraft:item_display 324.5 -59.5 -99.5 {item:{id:\"minecraft:diamond_sword\",count:1},item_display:\"fixed\"}",
+		"summon minecraft:item_display 326.5 -59.5 -99.5 {item:{id:\"minecraft:grass_block\",count:1},item_display:\"gui\"}",
+		"summon minecraft:item_display 314.5 -58 -97.5 {item:{id:\"minecraft:golden_apple\",count:1},item_display:\"ground\"}",
+		"summon minecraft:item_display 316.5 -58.5 -97.5 {item:{id:\"minecraft:carved_pumpkin\",count:1},item_display:\"head\"}",
+		"summon minecraft:item_display 324.5 -58 -97.5 {item:{id:\"minecraft:trident\",count:1},item_display:\"none\"}",
+		"summon minecraft:item_display 326.5 -58 -97.5 {item:{id:\"minecraft:shield\",count:1},item_display:\"fixed\"}",
+		"summon minecraft:text_display 320.5 -57 -100.5 {text:{text:\"CCTV\",color:\"gold\",bold:true},billboard:\"center\","
+				+ "transformation:{left_rotation:[0f,0f,0f,1f],right_rotation:[0f,0f,0f,1f],translation:[0f,0f,0f],scale:[2f,2f,2f]}}",
+		"summon minecraft:text_display 315 -57.5 -100.5 {text:{text:\"Every block and every mob, like the game\"},line_width:80,"
+				+ "background:-2130771968,shadow:1b,alignment:\"left\",Rotation:[0f,0f]}",
+		"summon minecraft:text_display 326 -57.5 -100.5 {text:{text:\"Turned round\",color:\"aqua\"},Rotation:[180f,0f]}",
+		"summon minecraft:text_display 320.5 -58.4 -97.5 {text:[{text:\"See \",color:\"red\"},{text:\"through\",italic:true}],"
+				+ "see_through:1b,default_background:1b,billboard:\"vertical\"}",
+	};
+
 	/** The biomes of {@link #biomes()}: the far row, then the near row (before SHOTS, which builds from it). */
 	private static final String[] BIOMES = {
 		"plains", "swamp", "jungle", "dark_forest", "cherry_grove",
@@ -587,6 +657,8 @@ public class ReferenceRenders implements FabricClientGameTest {
 		new Shot("lights", new String[] {"time set midnight"}, "80.5 -56.5 -129.5 180 25", 40, "minecraft:overworld", LIGHTS),
 		new Shot("biomes", new String[] {"time set noon"}, "140.0 -52 -126.0 180 30", 40, "minecraft:overworld", biomes()),
 		new Shot("workshop", new String[0], "-47.5 -56.5 -127.5 180 22", 40, "minecraft:overworld", WORKSHOP),
+		// water and lava flowing (lava spreads a block every 30 ticks): settled for 15 seconds before the picture
+		new Shot("fluids", new String[0], "215.5 -56.5 -129.5 180 25", 300, "minecraft:overworld", FLUIDS),
 		// every kind of mob up close, in rows; the world stands still from here on (see zoo)
 		zoo("zoo-farm", 0, 2.5, 7, 0, "minecraft:cow", "minecraft:pig", "minecraft:sheep Color:3b", "minecraft:chicken",
 				"minecraft:rabbit RabbitType:0", "minecraft:mooshroom Type:\"brown\""),
@@ -621,11 +693,46 @@ public class ReferenceRenders implements FabricClientGameTest {
 		zoo("zoo-sea", 250, 3.5, 10, 0, "minecraft:dolphin", "minecraft:guardian", "minecraft:elder_guardian", "minecraft:nautilus",
 				"minecraft:zombie_nautilus", "minecraft:camel_husk"),
 		zoo("zoo-ghasts", 280, 7, 14, 2, "minecraft:ghast", "minecraft:happy_ghast"),
+		// display entities, mannequins, vehicles and projectiles, still in the frozen world
+		new Shot("displays", new String[0], "320.5 -59 -91.5 180 6", 40, "minecraft:overworld", DISPLAYS),
+		zoo("mannequins", 350, 1.7, 7, 0, "minecraft:mannequin",
+				"minecraft:mannequin profile:{texture:\"entity/player/wide/steve\",model:\"wide\"},pose:\"crouching\"",
+				"minecraft:mannequin profile:{texture:\"entity/player/slim/zuri\",model:\"slim\"},main_hand:\"left\","
+						+ "equipment:{mainhand:{id:\"minecraft:iron_sword\",count:1},offhand:{id:\"minecraft:shield\",count:1}}",
+				"minecraft:mannequin profile:{texture:\"entity/player/wide/kai\",model:\"wide\"},"
+						+ "equipment:{head:{id:\"minecraft:diamond_helmet\",count:1},chest:{id:\"minecraft:iron_chestplate\",count:1},"
+						+ "legs:{id:\"minecraft:chainmail_leggings\",count:1},feet:{id:\"minecraft:golden_boots\",count:1}}",
+				"minecraft:mannequin profile:{texture:\"entity/player/wide/noor\",model:\"wide\"},hidden_layers:[\"hat\",\"jacket\","
+						+ "\"left_sleeve\",\"right_sleeve\",\"left_pants_leg\",\"right_pants_leg\"]",
+				"minecraft:mannequin profile:{texture:\"entity/player/slim/sunny\",model:\"slim\"},"
+						+ "equipment:{chest:{id:\"minecraft:elytra\",count:1},mainhand:{id:\"minecraft:diamond_pickaxe\",count:1},"
+						+ "offhand:{id:\"minecraft:torch\",count:1}}",
+				"minecraft:mannequin profile:{texture:\"entity/player/wide/ari\",model:\"wide\"},CustomName:\"Guard\","
+						+ "CustomNameVisible:1b,description:\"On duty\""),
+		zoo("vehicles", 380, 2.2, 9, 0, "minecraft:oak_boat Rotation:[90f,0f]", "minecraft:spruce_chest_boat Rotation:[90f,0f]",
+				"minecraft:bamboo_raft Rotation:[90f,0f]", "minecraft:minecart Rotation:[90f,0f]",
+				"minecraft:chest_minecart Rotation:[90f,0f]", "minecraft:furnace_minecart Rotation:[90f,0f],Fuel:200s",
+				"minecraft:tnt_minecart Rotation:[90f,0f]", "minecraft:hopper_minecart Rotation:[90f,0f]"),
+		zoo("projectiles", 410, 1.25, 6.5, 1.2, "minecraft:arrow Rotation:[90f,0f],NoGravity:1b",
+				"minecraft:spectral_arrow Rotation:[90f,-30f],NoGravity:1b", "minecraft:trident Rotation:[90f,0f],NoGravity:1b",
+				"minecraft:snowball NoGravity:1b", "minecraft:egg NoGravity:1b", "minecraft:ender_pearl NoGravity:1b",
+				"minecraft:eye_of_ender", "minecraft:firework_rocket", "minecraft:splash_potion NoGravity:1b",
+				"minecraft:experience_bottle NoGravity:1b", "minecraft:wind_charge", "minecraft:breeze_wind_charge"),
+		zoo("fireballs", 440, 1.7, 7, 1.2, "minecraft:fireball", "minecraft:small_fireball", "minecraft:dragon_fireball",
+				"minecraft:wither_skull Rotation:[30f,0f]", "minecraft:wither_skull dangerous:1b", "minecraft:shulker_bullet",
+				"minecraft:llama_spit Rotation:[60f,0f]", "minecraft:experience_orb Value:3s",
+				"minecraft:experience_orb Value:200s"),
+		zoo("blocks", 470, 2, 8, 0, "minecraft:tnt fuse:80", "minecraft:tnt fuse:76", "minecraft:tnt fuse:4",
+				"minecraft:falling_block BlockState:{Name:\"minecraft:sand\"},NoGravity:1b",
+				"minecraft:falling_block BlockState:{Name:\"minecraft:anvil\",Properties:{facing:\"east\"}},NoGravity:1b",
+				"minecraft:falling_block BlockState:{Name:\"minecraft:pointed_dripstone\",Properties:{vertical_direction:\"down\"}},"
+						+ "NoGravity:1b"),
 	};
 
 	/**
 	 * A close look at a row of mobs (a type, then NBT of its own) standing {@code spacing} blocks apart at z -99.5 and
-	 * looking south at the eyes {@code distance} blocks away, {@code lift} blocks off the ground (flying ones). The world
+	 * looking south (unless the NBT turns them) at the eyes {@code distance} blocks away, {@code lift} blocks off the
+	 * ground (flying ones; the rows of vehicles and projectiles too). The world
 	 * stands still first (/tick freeze), so the game and the viewer show them in the same pose: no AI, no idle
 	 * animation running on between the game's picture and the viewer's, no fish drying out on land.
 	 */
@@ -635,8 +742,10 @@ public class ReferenceRenders implements FabricClientGameTest {
 		for (int i = 0; i < mobs.length; i++) {
 			String[] mob = mobs[i].split(" ", 2);
 			double mx = x + 0.5 + (i - (mobs.length - 1) / 2.0) * spacing;
+			String nbt = mob.length > 1 ? mob[1] : "";
 			build[i + 1] = String.format(java.util.Locale.ROOT, "summon %s %.2f %.2f -99.5 {NoAI:1b,PersistenceRequired:1b,"
-					+ "Silent:1b,Rotation:[0f,0f]%s}", mob[0], mx, -60 + lift, mob.length > 1 ? "," + mob[1] : "");
+					+ "Silent:1b%s%s}", mob[0], mx, -60 + lift, nbt.contains("Rotation:") ? "" : ",Rotation:[0f,0f]",
+					nbt.isEmpty() ? "" : "," + nbt);
 		}
 		// eyes a little above the rows' middle, a bit higher for the big ones
 		String eyes = String.format(java.util.Locale.ROOT, "%.1f %.2f %.1f 180 8", x + 0.5, -60 + distance * 0.1,
