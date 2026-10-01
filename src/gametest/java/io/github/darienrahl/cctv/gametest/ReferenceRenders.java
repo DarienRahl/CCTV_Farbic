@@ -594,15 +594,14 @@ public class ReferenceRenders implements FabricClientGameTest {
 	 * background, a shadow, see through, left aligned, both ways round).
 	 */
 	private static final String[] DISPLAYS = {
-		"tick freeze",
-		"summon minecraft:block_display 313 -60 -100 {block_state:{Name:\"minecraft:grass_block\"}}",
-		"summon minecraft:block_display 315.5 -60 -100 {block_state:{Name:\"minecraft:oak_stairs\",Properties:{facing:\"east\"}},"
+		"summon minecraft:block_display 313 -60 -100 {block_state:{id:\"minecraft:grass_block\"}}",
+		"summon minecraft:block_display 315.5 -60 -100 {block_state:{id:\"minecraft:oak_stairs\",properties:{facing:\"east\"}},"
 				+ "transformation:{left_rotation:[0f,0.3826834f,0f,0.9238795f],right_rotation:[0f,0f,0f,1f],"
 				+ "translation:[0f,0f,0f],scale:[1f,1f,1f]}}",
-		"summon minecraft:block_display 317 -60 -100 {block_state:{Name:\"minecraft:chest\",Properties:{facing:\"south\"}}}",
-		"summon minecraft:block_display 319 -60 -100 {block_state:{Name:\"minecraft:lantern\"},"
+		"summon minecraft:block_display 317 -60 -100 {block_state:{id:\"minecraft:chest\",properties:{facing:\"south\"}}}",
+		"summon minecraft:block_display 319 -60 -100 {block_state:{id:\"minecraft:lantern\"},"
 				+ "transformation:{left_rotation:[0f,0f,0f,1f],right_rotation:[0f,0f,0f,1f],translation:[-0.5f,0f,0f],scale:[2f,2f,2f]}}",
-		"summon minecraft:block_display 321.5 -60 -100 {block_state:{Name:\"minecraft:stone_bricks\"},"
+		"summon minecraft:block_display 321.5 -60 -100 {block_state:{id:\"minecraft:stone_bricks\"},"
 				+ "transformation:{left_rotation:[0f,0f,0f,1f],right_rotation:[0f,0f,0f,1f],translation:[0f,0f,0f],scale:[2f,0.5f,1f]}}",
 		"summon minecraft:item_display 324.5 -59.5 -99.5 {item:{id:\"minecraft:diamond_sword\",count:1},item_display:\"fixed\"}",
 		"summon minecraft:item_display 326.5 -59.5 -99.5 {item:{id:\"minecraft:grass_block\",count:1},item_display:\"gui\"}",
@@ -659,6 +658,23 @@ public class ReferenceRenders implements FabricClientGameTest {
 		new Shot("workshop", new String[0], "-47.5 -56.5 -127.5 180 22", 40, "minecraft:overworld", WORKSHOP),
 		// water and lava flowing (lava spreads a block every 30 ticks): settled for 15 seconds before the picture
 		new Shot("fluids", new String[0], "215.5 -56.5 -129.5 180 25", 300, "minecraft:overworld", FLUIDS),
+		// display entities, before the world stands still: a display is drawn once it has ticked (Display.tick)
+		new Shot("displays", new String[0], "320.5 -59 -91.5 180 6", 40, "minecraft:overworld", DISPLAYS),
+		// mannequins in their profiles' skins, which a mannequin takes when it ticks (ClientMannequin.tick)
+		row("mannequins", 350, 1.7, 7, 0, false, "minecraft:mannequin",
+				"minecraft:mannequin profile:{texture:\"entity/player/wide/steve\",model:\"wide\"},pose:\"crouching\"",
+				"minecraft:mannequin profile:{texture:\"entity/player/slim/zuri\",model:\"slim\"},main_hand:\"left\","
+						+ "equipment:{mainhand:{id:\"minecraft:iron_sword\",count:1},offhand:{id:\"minecraft:shield\",count:1}}",
+				"minecraft:mannequin profile:{texture:\"entity/player/wide/kai\",model:\"wide\"},"
+						+ "equipment:{head:{id:\"minecraft:diamond_helmet\",count:1},chest:{id:\"minecraft:iron_chestplate\",count:1},"
+						+ "legs:{id:\"minecraft:chainmail_leggings\",count:1},feet:{id:\"minecraft:golden_boots\",count:1}}",
+				"minecraft:mannequin profile:{texture:\"entity/player/wide/noor\",model:\"wide\"},hidden_layers:[\"hat\",\"jacket\","
+						+ "\"left_sleeve\",\"right_sleeve\",\"left_pants_leg\",\"right_pants_leg\"]",
+				"minecraft:mannequin profile:{texture:\"entity/player/slim/sunny\",model:\"slim\"},"
+						+ "equipment:{chest:{id:\"minecraft:elytra\",count:1},mainhand:{id:\"minecraft:diamond_pickaxe\",count:1},"
+						+ "offhand:{id:\"minecraft:torch\",count:1}}",
+				"minecraft:mannequin profile:{texture:\"entity/player/wide/ari\",model:\"wide\"},pose:\"crouching\","
+						+ "equipment:{mainhand:{id:\"minecraft:crossbow\",count:1}}"),
 		// every kind of mob up close, in rows; the world stands still from here on (see zoo)
 		zoo("zoo-farm", 0, 2.5, 7, 0, "minecraft:cow", "minecraft:pig", "minecraft:sheep Color:3b", "minecraft:chicken",
 				"minecraft:rabbit RabbitType:0", "minecraft:mooshroom Type:\"brown\""),
@@ -693,22 +709,7 @@ public class ReferenceRenders implements FabricClientGameTest {
 		zoo("zoo-sea", 250, 3.5, 10, 0, "minecraft:dolphin", "minecraft:guardian", "minecraft:elder_guardian", "minecraft:nautilus",
 				"minecraft:zombie_nautilus", "minecraft:camel_husk"),
 		zoo("zoo-ghasts", 280, 7, 14, 2, "minecraft:ghast", "minecraft:happy_ghast"),
-		// display entities, mannequins, vehicles and projectiles, still in the frozen world
-		new Shot("displays", new String[0], "320.5 -59 -91.5 180 6", 40, "minecraft:overworld", DISPLAYS),
-		zoo("mannequins", 350, 1.7, 7, 0, "minecraft:mannequin",
-				"minecraft:mannequin profile:{texture:\"entity/player/wide/steve\",model:\"wide\"},pose:\"crouching\"",
-				"minecraft:mannequin profile:{texture:\"entity/player/slim/zuri\",model:\"slim\"},main_hand:\"left\","
-						+ "equipment:{mainhand:{id:\"minecraft:iron_sword\",count:1},offhand:{id:\"minecraft:shield\",count:1}}",
-				"minecraft:mannequin profile:{texture:\"entity/player/wide/kai\",model:\"wide\"},"
-						+ "equipment:{head:{id:\"minecraft:diamond_helmet\",count:1},chest:{id:\"minecraft:iron_chestplate\",count:1},"
-						+ "legs:{id:\"minecraft:chainmail_leggings\",count:1},feet:{id:\"minecraft:golden_boots\",count:1}}",
-				"minecraft:mannequin profile:{texture:\"entity/player/wide/noor\",model:\"wide\"},hidden_layers:[\"hat\",\"jacket\","
-						+ "\"left_sleeve\",\"right_sleeve\",\"left_pants_leg\",\"right_pants_leg\"]",
-				"minecraft:mannequin profile:{texture:\"entity/player/slim/sunny\",model:\"slim\"},"
-						+ "equipment:{chest:{id:\"minecraft:elytra\",count:1},mainhand:{id:\"minecraft:diamond_pickaxe\",count:1},"
-						+ "offhand:{id:\"minecraft:torch\",count:1}}",
-				"minecraft:mannequin profile:{texture:\"entity/player/wide/ari\",model:\"wide\"},CustomName:\"Guard\","
-						+ "CustomNameVisible:1b,description:\"On duty\""),
+		// vehicles and projectiles, still in the frozen world
 		zoo("vehicles", 380, 2.2, 9, 0, "minecraft:oak_boat Rotation:[90f,0f]", "minecraft:spruce_chest_boat Rotation:[90f,0f]",
 				"minecraft:bamboo_raft Rotation:[90f,0f]", "minecraft:minecart Rotation:[90f,0f]",
 				"minecraft:chest_minecart Rotation:[90f,0f]", "minecraft:furnace_minecart Rotation:[90f,0f],Fuel:200s",
@@ -723,9 +724,9 @@ public class ReferenceRenders implements FabricClientGameTest {
 				"minecraft:llama_spit Rotation:[60f,0f]", "minecraft:experience_orb Value:3s",
 				"minecraft:experience_orb Value:200s"),
 		zoo("blocks", 470, 2, 8, 0, "minecraft:tnt fuse:80", "minecraft:tnt fuse:76", "minecraft:tnt fuse:4",
-				"minecraft:falling_block BlockState:{Name:\"minecraft:sand\"},NoGravity:1b",
-				"minecraft:falling_block BlockState:{Name:\"minecraft:anvil\",Properties:{facing:\"east\"}},NoGravity:1b",
-				"minecraft:falling_block BlockState:{Name:\"minecraft:pointed_dripstone\",Properties:{vertical_direction:\"down\"}},"
+				"minecraft:falling_block BlockState:{id:\"minecraft:sand\"},NoGravity:1b",
+				"minecraft:falling_block BlockState:{id:\"minecraft:anvil\",properties:{facing:\"east\"}},NoGravity:1b",
+				"minecraft:falling_block BlockState:{id:\"minecraft:pointed_dripstone\",properties:{vertical_direction:\"down\"}},"
 						+ "NoGravity:1b"),
 	};
 
@@ -737,21 +738,29 @@ public class ReferenceRenders implements FabricClientGameTest {
 	 * animation running on between the game's picture and the viewer's, no fish drying out on land.
 	 */
 	private static Shot zoo(String name, int x, double spacing, double distance, double lift, String... mobs) {
-		String[] build = new String[mobs.length + 1];
-		build[0] = "tick freeze";
+		return row(name, x, spacing, distance, lift, true, mobs);
+	}
+
+	/** A row like {@link #zoo}'s, in a world that stands still from then on or (freeze false) one that goes on. */
+	private static Shot row(String name, int x, double spacing, double distance, double lift, boolean freeze, String... mobs) {
+		java.util.List<String> build = new java.util.ArrayList<>();
+		if (freeze) {
+			build.add("tick freeze");
+		}
 		for (int i = 0; i < mobs.length; i++) {
 			String[] mob = mobs[i].split(" ", 2);
 			double mx = x + 0.5 + (i - (mobs.length - 1) / 2.0) * spacing;
 			String nbt = mob.length > 1 ? mob[1] : "";
-			build[i + 1] = String.format(java.util.Locale.ROOT, "summon %s %.2f %.2f -99.5 {NoAI:1b,PersistenceRequired:1b,"
+			build.add(String.format(java.util.Locale.ROOT, "summon %s %.2f %.2f -99.5 {NoAI:1b,PersistenceRequired:1b,"
 					+ "Silent:1b%s%s}", mob[0], mx, -60 + lift, nbt.contains("Rotation:") ? "" : ",Rotation:[0f,0f]",
-					nbt.isEmpty() ? "" : "," + nbt);
+					nbt.isEmpty() ? "" : "," + nbt));
 		}
 		// eyes a little above the rows' middle, a bit higher for the big ones
 		String eyes = String.format(java.util.Locale.ROOT, "%.1f %.2f %.1f 180 8", x + 0.5, -60 + distance * 0.1,
 				-99.5 + distance);
-		return new Shot(name, new String[0], eyes, 40, "minecraft:overworld", build);
+		return new Shot(name, new String[0], eyes, 40, "minecraft:overworld", build.toArray(new String[0]));
 	}
+
 	/**
 	 * Biome colours: ten patches of 8 by 8 blocks (aligned to the 4 by 4 cells biomes are stored in), two rows of five,
 	 * each a biome of its own with grass, a pool of water with a lily pad, sugar cane, a block of oak leaves with vines,

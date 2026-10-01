@@ -823,6 +823,8 @@ export class EntityRenderer {
 		this.blockAnims = new Map();
 		/** Display entities' interpolation (transformation, text opacity and background, teleport): entity id -> state */
 		this.displays = new Map();
+		/** Mannequins seen while the world was not frozen: they have ticked and wear their profile's skin. */
+		this.tickedMannequins = new Set();
 		/** Parrots dancing to a jukebox: entity id -> the jukebox's position (Parrot.jukebox) */
 		this.partyParrots = new Map();
 		this.breaking = [];
@@ -1068,7 +1070,10 @@ export class EntityRenderer {
 	 * cape and elytra from the resource pack).
 	 */
 	mannequinSkin(e) {
-		const profile = e.profile || {};
+		// ClientMannequin.tick takes the skin its profile's lookup found: until a mannequin has ticked (one that
+		// appeared while the world is frozen) it wears DEFAULT_SKIN, the empty profile's
+		if (!this.frozen) this.tickedMannequins.add(e.id);
+		const profile = this.tickedMannequins.has(e.id) ? e.profile || {} : {};
 		const key = profile.id || (profile.name ? 'name:' + profile.name : NIL_UUID);
 		const skin = this.skin(key, profile.name || '');
 		e.uuid = key;
@@ -1343,6 +1348,7 @@ export class EntityRenderer {
 
 	cleanupStates(now) {
 		for (const [id, state] of this.displays) if (this.tick - state.seen > 100) this.displays.delete(id);
+		if (this.tickedMannequins.size > 64 && this.byId) for (const id of this.tickedMannequins) if (!this.byId.has(id)) this.tickedMannequins.delete(id);
 		for (const [id, queue] of this.events) if (!queue.length || this.tick - queue[queue.length - 1].t > 200) this.events.delete(id);
 		for (const [key, b] of this.books) if (now - b.seen > 5000) this.books.delete(key);
 		if (this.states.size < 64) return;
@@ -1756,8 +1762,9 @@ export class EntityRenderer {
 			case 'cushion': return this.drawCushion(e, pos, style);
 			case 'dragon_fireball': return this.drawDragonFireball(pos, style);
 			case 'experience_orb': return this.drawOrb(e, pos, style);
-			case 'arrow': case 'spectral_arrow': return this.drawProjectile(e, pos, style, 'arrow#main', type === 'spectral_arrow' ? 'projectiles/arrow_spectral' : 'projectiles/arrow', -90, 0);
-			case 'trident': return this.drawProjectile(e, pos, style, 'trident#main', 'trident/trident', -90, 90);
+			// ArrowModel: entityCutoutCull, each side of its flat crosses lit by its own normal
+			case 'arrow': case 'spectral_arrow': return this.drawProjectile(e, pos, style, 'arrow#main', type === 'spectral_arrow' ? 'projectiles/arrow_spectral' : 'projectiles/arrow', -90, 0, true);
+			case 'trident': return this.drawProjectile(e, pos, style, 'trident#main', 'trident/trident', -90, 90, false);
 			case 'tnt': return this.drawPrimedTnt(e, pos, style);
 			case 'falling_block': return this.drawFallingBlock(e, pos, style, world);
 			case 'block_display': case 'item_display': case 'text_display': return this.drawDisplay(e, type, pos, style, world);
@@ -2591,7 +2598,8 @@ export class EntityRenderer {
 		this.batch(texture, MODE_NOCULL, start, false);
 	}
 
-	drawProjectile(e, pos, style, layer, texturePath, yawOffset, pitchOffset) {
+	/** ArrowRenderer / ThrownTridentRenderer: the model turned by the yaw less 90° and the pitch (plus an offset). */
+	drawProjectile(e, pos, style, layer, texturePath, yawOffset, pitchOffset, cull) {
 		const model = this.library.get('minecraft:' + layer);
 		const texture = this.texture(texturePath);
 		if (!model || !texture) return;
@@ -2602,7 +2610,7 @@ export class EntityRenderer {
 		rotate(m, 2, ((e.pitch || 0) + pitchOffset) * DEG);
 		const start = this.sink.mark();
 		emitModel(this.sink, model, m, style);
-		this.batch(texture, MODE_NOCULL, start, false);
+		this.batch(texture, cull ? MODE_CUTOUT : MODE_NOCULL, start, cull);
 	}
 
 	drawBoat(e, type, pos, style) {
@@ -3690,6 +3698,10 @@ export class EntityRenderer {
 		// Display.shouldRenderAtSqrDistance: view range times 64 blocks
 		if (Math.hypot(pos[0], pos[1], pos[2]) >= (d.vr ?? 1) * 64) return;
 		const s = this.displayState(e, d);
+		// Display.tick (client) makes the render state: a display that has not ticked yet, like one that appeared
+		// while the world is frozen (/tick freeze), is not drawn
+		if (!this.frozen) s.ticked = true;
+		if (!s.ticked) return;
 		const tick = this.tick;
 		const t = s.from && s.duration > 0
 			? slerpTransformation(s.from, s.to, Math.min(1, Math.max(0, (tick - s.start) / s.duration)))

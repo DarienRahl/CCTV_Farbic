@@ -23,12 +23,12 @@ final class CameraMarker {
 		}
 
 		// Display entities use the same yaw/pitch convention as the camera; the observer's face points along +Z (south).
-		// The block state is written as a string, which 26.3's block_state field reads (the old Name/Properties map
-		// is not accepted any more).
+		// 26.3's block state codec (BlockState.CODEC): a block's id alone for its default state, else a map of its
+		// "id" and "properties" (the old Name/Properties map and "id[property=value]" strings are not read).
 		String command = String.format(Locale.ROOT,
 				"execute in %s run summon minecraft:block_display %.4f %.4f %.4f "
 						+ "{Tags:[\"cctv_camera\",\"%s\"],Rotation:[%.2ff,%.2ff],"
-						+ "block_state:\"minecraft:observer[facing=south]\","
+						+ "block_state:{id:\"minecraft:observer\",properties:{facing:\"south\"}},"
 						+ "transformation:{left_rotation:[0f,0f,0f,1f],right_rotation:[0f,0f,0f,1f],"
 						+ "translation:[-0.15f,-0.15f,-0.15f],scale:[0.3f,0.3f,0.3f]}}",
 				camera.dimension(), camera.x(), camera.y(), camera.z(), tag(camera), camera.yaw(), camera.pitch());

@@ -362,6 +362,11 @@ def main():
     print("camera markers:", markers, flush=True)
     if "passed" not in markers.lower():
         failures.append(f"no camera marker was placed: {markers}")
+    # an observer: a block state the game does not read leaves the display empty (air)
+    marker_block = rcon.command("data get entity @e[type=minecraft:block_display,tag=cctv_camera,limit=1] block_state")
+    print("camera marker block:", marker_block, flush=True)
+    if "observer" not in marker_block:
+        failures.append(f"the camera marker shows no observer: {marker_block}")
     listing = rcon.command("cctv list")
     assert "ci" in listing, "camera not listed"
 
