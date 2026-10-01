@@ -379,15 +379,16 @@ to the milestone it belongs to. The roadmap on the README page is drawn from thi
       (placed ones were missing, ones in frames upside down) and a frozen world that reaches the viewer before
       anything spawned in it — every row within 0.3 % of the game
 
-## 1.17 — every block and every biome
+## 1.17 — every block and every biome (released: 1.17.0)
 
-- [ ] **Blocks and biomes in the reference renders**: shapes of blocks (doors, trapdoors, stairs that meet, fences,
+- [x] **Blocks and biomes in the reference renders**: shapes of blocks (doors, trapdoors, stairs that meet, fences,
       walls, rails, a hanging sign, scaffolding, a cauldron of water, a chiseled bookshelf, a crafter, a shelf...),
       plants (crops in each age, flowers moved about by their offset, double plants, leaves of every kind with the
       poplar's, vines, petals, leaf litter), lights at night (every kind of light block on a white floor), the
       colours of ten biomes side by side (grass, foliage, dry foliage, water and their blending) and blocks of work
       (lit furnaces, the tables, a beehive, sculk, a trial spawner, a vault, campfires, cauldrons, corals...)
-- [ ] Bounds for the new shots, then close the gaps they show
+- [x] Bounds for the new shots, then close the gaps they show: a model face may name its texture slot without the
+      '#' (the heavy core was drawn with the missing texture) — every new shot within 0.25 % of the game
 
 ## Later
 
