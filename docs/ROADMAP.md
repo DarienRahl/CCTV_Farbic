@@ -342,16 +342,19 @@ to the milestone it belongs to. The roadmap on the README page is drawn from thi
       game's MipmapGenerator (each texture's mipmap_strategy: mean, cutout, strict_cutout and leaves' dark_cutout,
       in linear light) — every shot now within 0.5 % of the game
 
-## 1.14 — the judge everywhere
+## 1.14 — the judge everywhere (released: 1.14.0)
 
-- [ ] **Six more reference shots**: dusk towards the setting sun (the sunset colours in the sky and the fog), the day
+- [x] **Six more reference shots**: dusk towards the setting sun (the sunset colours in the sky and the fog), the day
       view in the rain (the rain, the darker sky and fog), a snowy plain while it snows (snowfall, a cold biome's
       colours, ice and powder snow, a snow golem and a polar bear), a cave lit only by blocks (the lightmap without
       sky light, glow lichen, amethyst, a spider's glowing eyes), a room in the Nether (its thick fog and ambient
       light, lava, magma and glowstone light, a portal, a piglin and a strider) and a platform in the End (its sky,
       flashes and fog, an end portal, purpur, a shulker); the scenes keep still (no mob spawning, no random ticks,
       time and weather stopped)
-- [ ] Bounds for the new shots, then close the gaps they show
+- [x] Bounds for the new shots, then close the gaps they show: the sunset glow without two wedges beside the sun
+      (with a camera looking exactly along an axis the ends of the sunrise fan lay beside it and software renderers
+      dropped them), snow golems' pumpkins facing forward (the carved pumpkin's default state) and the End's flashes
+      standing still while the world's time does — every shot within 1 % of the game (0.6 % without rain or snow)
 
 ## Later
 

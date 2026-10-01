@@ -10,7 +10,7 @@
   <a href="https://github.com/DarienRahl/CCTV_Farbic/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/DarienRahl/CCTV_Farbic?style=for-the-badge&amp;label=release&amp;color=5d8c3e"></a>
   <img alt="Minecraft 26.3" src="https://img.shields.io/badge/minecraft-26.3-866043?style=for-the-badge">
   <img alt="Fabric, server side only" src="https://img.shields.io/badge/fabric-server%20side%20only-8b8b8b?style=for-the-badge">
-  <a href="#roadmap"><img alt="Roadmap" src="https://img.shields.io/badge/roadmap-112%2F115%20done-80ff20?style=for-the-badge"></a>
+  <a href="#roadmap"><img alt="Roadmap" src="https://img.shields.io/badge/roadmap-114%2F115%20done-80ff20?style=for-the-badge"></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-555555?style=for-the-badge"></a>
 </p>
 <!-- badges:end -->
@@ -205,7 +205,7 @@ at once as a video wall.
 ## Roadmap
 
 <!-- roadmap:start -->
-<p align="center"><img src="docs/images/roadmap/banner.svg" width="100%" alt="CCTV roadmap: 112 of 115 done"></p>
+<p align="center"><img src="docs/images/roadmap/banner.svg" width="100%" alt="CCTV roadmap: 114 of 115 done"></p>
 
 What is done and what comes next, milestone by milestone (the full plan with its principles is in
 [docs/ROADMAP.md](docs/ROADMAP.md)).
@@ -426,13 +426,13 @@ What is done and what comes next, milestone by milestone (the full plan with its
 
 </details>
 
-<img src="docs/images/roadmap/1-14.svg" width="100%" alt="1.14 — the judge everywhere: planned, 0 of 2 done">
+<img src="docs/images/roadmap/1-14.svg" width="100%" alt="1.14 — the judge everywhere: released 1.14.0, 2 of 2 done">
 
 <details>
-<summary><b>1.14 — the judge everywhere</b> · planned · 0 of 2 done</summary>
+<summary><b>1.14 — the judge everywhere</b> · released 1.14.0 · 2 of 2 done</summary>
 
-- [ ] **Six more reference shots**: dusk towards the setting sun (the sunset colours in the sky and the fog), the day view in the rain (the rain, the darker sky and fog), a snowy plain while it snows (snowfall, a cold biome's colours, ice and powder snow, a snow golem and a polar bear), a cave lit only by blocks (the lightmap without sky light, glow lichen, amethyst, a spider's glowing eyes), a room in the Nether (its thick fog and ambient light, lava, magma and glowstone light, a portal, a piglin and a strider) and a platform in the End (its sky, flashes and fog, an end portal, purpur, a shulker); the scenes keep still (no mob spawning, no random ticks, time and weather stopped)
-- [ ] Bounds for the new shots, then close the gaps they show
+- [x] **Six more reference shots**: dusk towards the setting sun (the sunset colours in the sky and the fog), the day view in the rain (the rain, the darker sky and fog), a snowy plain while it snows (snowfall, a cold biome's colours, ice and powder snow, a snow golem and a polar bear), a cave lit only by blocks (the lightmap without sky light, glow lichen, amethyst, a spider's glowing eyes), a room in the Nether (its thick fog and ambient light, lava, magma and glowstone light, a portal, a piglin and a strider) and a platform in the End (its sky, flashes and fog, an end portal, purpur, a shulker); the scenes keep still (no mob spawning, no random ticks, time and weather stopped)
+- [x] Bounds for the new shots, then close the gaps they show: the sunset glow without two wedges beside the sun (with a camera looking exactly along an axis the ends of the sunrise fan lay beside it and software renderers dropped them), snow golems' pumpkins facing forward (the carved pumpkin's default state) and the End's flashes standing still while the world's time does — every shot within 1 % of the game (0.6 % without rain or snow)
 
 </details>
 
