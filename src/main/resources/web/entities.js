@@ -2033,7 +2033,8 @@ export class EntityRenderer {
 				rotate(pm, 1, 180 * DEG);
 				scale(pm, 0.625, -0.625, -0.625);
 				translate(pm, -0.5, -0.5, -0.5);
-				this.emitBlock('minecraft:carved_pumpkin', pm, style);
+				// Blocks.CARVED_PUMPKIN.defaultBlockState(): its face to the north, the way the golem looks
+				this.emitBlock('minecraft:carved_pumpkin', pm, style, false, false, { facing: 'north' });
 			}
 		}
 		// CrossedArmsItemLayer (villagers, wandering traders) and WitchItemLayer: the main hand's item held in the
@@ -3444,8 +3445,11 @@ export class EntityRenderer {
 		this.batch(texture, MODE_NOCULL, start, false);
 	}
 
-	/** Emits a block model (by block name with default state) with the atlas texture. */
-	emitBlock(name, m, style, chestFallback = false, frameModel = false) {
+	/**
+	 * Emits a block model with the atlas texture: the block's state given as properties (the game's defaultBlockState(),
+	 * which its blockstates file does not name), else its first variant.
+	 */
+	emitBlock(name, m, style, chestFallback = false, frameModel = false, state = null) {
 		if (!this.assets) return;
 		if (!name) {
 			if (chestFallback) {
@@ -3460,12 +3464,12 @@ export class EntityRenderer {
 			}
 			return;
 		}
-		const key = 'block:' + name + (frameModel ? ':frame' + (frameModel === 'map' ? ':map' : '') : '');
+		const key = 'block:' + name + (frameModel ? ':frame' + (frameModel === 'map' ? ':map' : '') : '') + (state ? JSON.stringify(state) : '');
 		let mesh = this.itemMeshes.get(key);
 		if (mesh === undefined) {
 			mesh = null;
 			const models = this.assets.models;
-			const dispatch = models && models.dispatch(name, frameModel ? { map: frameModel === 'map' ? 'true' : 'false' } : { __item: true });
+			const dispatch = models && models.dispatch(name, frameModel ? { map: frameModel === 'map' ? 'true' : 'false' } : { ...state, __item: true });
 			if (dispatch) {
 				const parts = [];
 				const random = new JavaRandom();

@@ -65,6 +65,8 @@ try {
 			sections: window.cctv.world.sections.size,
 			stats: window.cctv.renderer.stats,
 			entities: window.cctv.entities.visibleCount,
+			// what the viewer knows near the camera, to tell what a picture shows that the game's does not
+			near: (window.cctv.state.entityList || []).map(e => [e.type, +e.x.toFixed(1), +e.y.toFixed(1), +e.z.toFixed(1)]).slice(0, 30),
 		})));
 		await page.screenshot({ path: path.join(dir, `viewer-${info.shot}.png`) });
 		await page.evaluate(() => { window.lastShotInit = window.cctv.state.init; });
