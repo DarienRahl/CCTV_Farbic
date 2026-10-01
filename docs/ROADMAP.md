@@ -330,14 +330,17 @@ to the milestone it belongs to. The roadmap on the README page is drawn from thi
       stands, items held even without arms
 - [x] Armour stands wiggle when hit (ArmorStandRenderer.setupRotations, entity event 32)
 
-## 1.13 — the game as the judge
+## 1.13 — the game as the judge (released: 1.13.0)
 
-- [ ] **Reference renders of five shots**: the game (a client game test) and the viewer take pictures of the same
+- [x] **Reference renders of five shots**: the game (a client game test) and the viewer take pictures of the same
       scenes from the same eyes — day, night (the lightmap, torches, lanterns, the moon and stars), a row of mobs
       with their equipment, a room with block entities and smooth lighting, and under water — scored side by side
       in every CI run
-- [ ] Bounds for every shot, so a change (or a new Minecraft version) that moves the viewer away from the game shows
-      up in CI; then close the gaps the new shots show
+- [x] Bounds for every shot, so a change (or a new Minecraft version) that moves the viewer away from the game shows
+      up in CI; then close the gaps the new shots show: the water shot taken at full water vision like a camera
+      sees, skeletons that only raise their bow when aggressive, and the block atlas's mip levels made like the
+      game's MipmapGenerator (each texture's mipmap_strategy: mean, cutout, strict_cutout and leaves' dark_cutout,
+      in linear light) — every shot now within 0.5 % of the game
 
 ## Later
 

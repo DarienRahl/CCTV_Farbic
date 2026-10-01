@@ -17,9 +17,10 @@ import sys
 
 from PIL import Image, ImageChops, ImageFilter
 
-# Coarse difference (%) above which a shot counts as a regression: a little over what each shot scores today, so a
-# change that moves the picture away from the game's shows up (the game's own random textures and particles stay under).
-BOUNDS = {"day": 1.0, "night": 1.5, "mobs": 1.5, "room": 2.0, "water": 2.0}
+# Coarse difference (%) above which a shot counts as a regression: about three times what each shot scored in 1.13
+# (day 0.10, night 0.06, mobs 0.10, room 0.20, water 0.36-0.45), so a change that moves the picture away from the
+# game's shows up, while the game's own random particles (bubbles, smoke) stay under.
+BOUNDS = {"day": 0.4, "night": 0.3, "mobs": 0.4, "room": 0.6, "water": 1.2}
 DEFAULT_BOUND = 2.0
 
 

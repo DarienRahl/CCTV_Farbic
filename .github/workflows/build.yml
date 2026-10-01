@@ -99,7 +99,8 @@ jobs:
 
   # Reference renders: the game itself (a Fabric client game test under a virtual display) and the viewer take
   # pictures of the same scenes from the same eyes (day, night, mobs, a room, under water); the scores go into the
-  # job summary and the pictures into the "reference-renders" artifact side by side. Informational while it settles in.
+  # job summary and the pictures into the "reference-renders" artifact side by side. A shot over its bound fails the
+  # job (it does not fail the run: the software renderer on CI is slow and sometimes does not get a picture).
   reference-renders:
     needs: build
     runs-on: ubuntu-24.04
@@ -132,7 +133,7 @@ jobs:
           .github/e2e/reference.sh
       - name: compare
         if: always()
-        run: python3 .github/e2e/compare_reference.py build/run/clientGameTest/reference
+        run: python3 .github/e2e/compare_reference.py build/run/clientGameTest/reference --strict
       - name: upload results
         if: always()
         uses: actions/upload-artifact@v7

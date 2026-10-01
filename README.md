@@ -10,7 +10,7 @@
   <a href="https://github.com/DarienRahl/CCTV_Farbic/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/DarienRahl/CCTV_Farbic?style=for-the-badge&amp;label=release&amp;color=5d8c3e"></a>
   <img alt="Minecraft 26.3" src="https://img.shields.io/badge/minecraft-26.3-866043?style=for-the-badge">
   <img alt="Fabric, server side only" src="https://img.shields.io/badge/fabric-server%20side%20only-8b8b8b?style=for-the-badge">
-  <a href="#roadmap"><img alt="Roadmap" src="https://img.shields.io/badge/roadmap-110%2F113%20done-80ff20?style=for-the-badge"></a>
+  <a href="#roadmap"><img alt="Roadmap" src="https://img.shields.io/badge/roadmap-112%2F113%20done-80ff20?style=for-the-badge"></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-555555?style=for-the-badge"></a>
 </p>
 <!-- badges:end -->
@@ -59,7 +59,8 @@ off the main thread where it can.
 ### 🎯 1:1 with Minecraft 26.3
 Block meshes, smooth lighting, the lightmap, fog, sky, weather and mob models are ported from the game's
 own code and read from its `client.jar`. **Every particle type** of the game is there too, from the
-Nether's ash to glyphs flying into enchanting tables.
+Nether's ash to glyphs flying into enchanting tables. Every build is checked against the game's own
+pictures of five scenes.
 
 </td>
 </tr>
@@ -204,7 +205,7 @@ at once as a video wall.
 ## Roadmap
 
 <!-- roadmap:start -->
-<p align="center"><img src="docs/images/roadmap/banner.svg" width="100%" alt="CCTV roadmap: 110 of 113 done"></p>
+<p align="center"><img src="docs/images/roadmap/banner.svg" width="100%" alt="CCTV roadmap: 112 of 113 done"></p>
 
 What is done and what comes next, milestone by milestone (the full plan with its principles is in
 [docs/ROADMAP.md](docs/ROADMAP.md)).
@@ -415,13 +416,13 @@ What is done and what comes next, milestone by milestone (the full plan with its
 
 </details>
 
-<img src="docs/images/roadmap/1-13.svg" width="100%" alt="1.13 — the game as the judge: planned, 0 of 2 done">
+<img src="docs/images/roadmap/1-13.svg" width="100%" alt="1.13 — the game as the judge: released 1.13.0, 2 of 2 done">
 
 <details>
-<summary><b>1.13 — the game as the judge</b> · planned · 0 of 2 done</summary>
+<summary><b>1.13 — the game as the judge</b> · released 1.13.0 · 2 of 2 done</summary>
 
-- [ ] **Reference renders of five shots**: the game (a client game test) and the viewer take pictures of the same scenes from the same eyes — day, night (the lightmap, torches, lanterns, the moon and stars), a row of mobs with their equipment, a room with block entities and smooth lighting, and under water — scored side by side in every CI run
-- [ ] Bounds for every shot, so a change (or a new Minecraft version) that moves the viewer away from the game shows up in CI; then close the gaps the new shots show
+- [x] **Reference renders of five shots**: the game (a client game test) and the viewer take pictures of the same scenes from the same eyes — day, night (the lightmap, torches, lanterns, the moon and stars), a row of mobs with their equipment, a room with block entities and smooth lighting, and under water — scored side by side in every CI run
+- [x] Bounds for every shot, so a change (or a new Minecraft version) that moves the viewer away from the game shows up in CI; then close the gaps the new shots show: the water shot taken at full water vision like a camera sees, skeletons that only raise their bow when aggressive, and the block atlas's mip levels made like the game's MipmapGenerator (each texture's mipmap_strategy: mean, cutout, strict_cutout and leaves' dark_cutout, in linear light) — every shot now within 0.5 % of the game
 
 </details>
 
