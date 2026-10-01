@@ -14,10 +14,10 @@ import net.fabricmc.loader.api.FabricLoader;
 
 /**
  * Reference renders for CI: builds small scenes in a single player world (flat, time and weather stopped) and, for
- * each shot (day, night, mobs, a room, under water, dusk, rain, snow, a cave, the Nether and the End), takes the
- * game's picture from a spectator's eyes with the GUI hidden, moves a CCTV camera to the same eyes and waits while CI
- * takes the viewer's picture of that camera (.github/e2e/reference.mjs), so both can be compared
- * (compare_reference.py).
+ * each shot (day, night, mobs, a room, under water, dusk, rain, snow, a cave, the Nether, the End, glass, decorations
+ * and redstone), takes the game's picture from a spectator's eyes with the GUI hidden, moves a CCTV camera to the same
+ * eyes and waits while CI takes the viewer's picture of that camera (.github/e2e/reference.mjs), so both can be
+ * compared (compare_reference.py).
  *
  * <p>Hand-off through files in {@code <game dir>/reference}: {@code ready-<shot>.json} when the game's picture of a
  * shot is taken, {@code done-<shot>} from the viewer's side, and {@code finished} after the last shot.
@@ -173,6 +173,98 @@ public class ReferenceRenders implements FabricClientGameTest {
 		"summon minecraft:spider 53.5 -60 -14.5 {NoAI:1b,PersistenceRequired:1b,Rotation:[90f,0f]}",
 	};
 
+	/**
+	 * Translucency: a row of stained glass with a pig behind it, stained glass panes in front, a glass tank of water,
+	 * ice, slime, honey and tinted glass, and a beacon whose beam goes up through light blue glass.
+	 */
+	private static final String[] GLASS = {
+		"fill -4 -60 -48 -4 -59 -48 minecraft:red_stained_glass",
+		"fill -3 -60 -48 -3 -59 -48 minecraft:orange_stained_glass",
+		"fill -2 -60 -48 -2 -59 -48 minecraft:yellow_stained_glass",
+		"fill -1 -60 -48 -1 -59 -48 minecraft:lime_stained_glass",
+		"fill 0 -60 -48 0 -59 -48 minecraft:light_blue_stained_glass",
+		"fill 1 -60 -48 1 -59 -48 minecraft:blue_stained_glass",
+		"fill 2 -60 -48 2 -59 -48 minecraft:purple_stained_glass",
+		"fill 3 -60 -48 3 -59 -48 minecraft:magenta_stained_glass",
+		"fill 4 -60 -48 4 -59 -48 minecraft:white_stained_glass",
+		"summon minecraft:pig 0.5 -60 -50.5 {NoAI:1b,PersistenceRequired:1b,Rotation:[20f,0f]}",
+		"fill -3 -60 -44 -1 -59 -44 minecraft:blue_stained_glass_pane",
+		"fill 1 -60 -44 3 -59 -44 minecraft:red_stained_glass_pane",
+		"fill -9 -60 -44 -6 -58 -44 minecraft:glass_pane",
+		"fill -9 -60 -52 -6 -57 -49 minecraft:glass hollow",
+		"fill -8 -59 -51 -7 -58 -50 minecraft:water",
+		"setblock 6 -60 -47 minecraft:ice",
+		"setblock 7 -60 -47 minecraft:packed_ice",
+		"setblock 8 -60 -47 minecraft:blue_ice",
+		"setblock 6 -60 -50 minecraft:slime_block",
+		"setblock 7 -60 -50 minecraft:honey_block",
+		"setblock 8 -60 -50 minecraft:tinted_glass",
+		"fill -1 -61 -57 1 -61 -55 minecraft:iron_block",
+		"setblock 0 -60 -56 minecraft:beacon",
+		"setblock 0 -59 -56 minecraft:light_blue_stained_glass",
+	};
+
+	/**
+	 * Decorations on a wall and before it: banners, paintings, an enchanted sword and a golden apple in item frames,
+	 * a sign with glowing text, an armour stand in dyed, trimmed and enchanted armour, a decorated pot, a head, a
+	 * lectern, a potted fern, lit candles, a bell and a chest.
+	 */
+	private static final String[] DECOR = {
+		"fill 22 -60 -55 38 -56 -55 minecraft:stone_bricks",
+		"setblock 24 -58 -54 minecraft:white_wall_banner[facing=south]{patterns:[{pattern:\"minecraft:stripe_top\",color:\"red\"},"
+				+ "{pattern:\"minecraft:cross\",color:\"blue\"},{pattern:\"minecraft:border\",color:\"black\"}]}",
+		"setblock 37 -60 -52 minecraft:lime_banner[rotation=8]{patterns:[{pattern:\"minecraft:creeper\",color:\"black\"}]}",
+		"summon minecraft:painting 27 -58 -54 {facing:0b,variant:\"minecraft:kebab\"}",
+		"summon minecraft:painting 30 -58 -54 {facing:0b,variant:\"minecraft:pool\"}",
+		"summon minecraft:item_frame 33 -58 -54 {Facing:3b,Fixed:1b,Item:{id:\"minecraft:diamond_sword\",count:1,"
+				+ "components:{\"minecraft:enchantments\":{\"minecraft:sharpness\":1}}}}",
+		"summon minecraft:glow_item_frame 35 -58 -54 {Facing:3b,Fixed:1b,Item:{id:\"minecraft:enchanted_golden_apple\",count:1}}",
+		"setblock 25 -59 -54 minecraft:oak_wall_sign[facing=south]{front_text:{has_glowing_text:1b,color:\"lime\","
+				+ "messages:[\"\",\"GLOW\",\"\",\"\"]}}",
+		"summon minecraft:armor_stand 36.5 -60 -49.5 {Rotation:[200f,0f],ShowArms:1b,equipment:{"
+				+ "head:{id:\"minecraft:leather_helmet\",count:1,components:{\"minecraft:dyed_color\":16711680}},"
+				+ "chest:{id:\"minecraft:iron_chestplate\",count:1,"
+				+ "components:{\"minecraft:trim\":{material:\"minecraft:gold\",pattern:\"minecraft:coast\"}}},"
+				+ "legs:{id:\"minecraft:diamond_leggings\",count:1,components:{\"minecraft:enchantments\":{\"minecraft:protection\":1}}},"
+				+ "mainhand:{id:\"minecraft:trident\",count:1}}}",
+		"setblock 23 -60 -51 minecraft:decorated_pot{sherds:[\"minecraft:angler_pottery_sherd\",\"minecraft:brick\","
+				+ "\"minecraft:heart_pottery_sherd\",\"minecraft:brick\"]}",
+		"setblock 25 -60 -51 minecraft:player_head[rotation=8]",
+		"setblock 27 -60 -51 minecraft:lectern[facing=south,has_book=true]",
+		"setblock 29 -60 -51 minecraft:potted_fern",
+		"setblock 31 -60 -51 minecraft:red_candle[candles=3,lit=true]",
+		"setblock 33 -60 -51 minecraft:bell[attachment=floor,facing=south]",
+		"setblock 35 -60 -53 minecraft:chest[facing=south]",
+	};
+
+	/**
+	 * Redstone at work: a redstone block lighting a lamp and powering dust, a repeater and another lamp, an extended
+	 * sticky piston, powered rails, a torch, a lever, a comparator, an observer, a hopper, a daylight detector, a
+	 * target, a lit copper bulb and a chest minecart on rails.
+	 */
+	private static final String[] REDSTONE = {
+		"setblock 52 -60 -50 minecraft:redstone_block",
+		"setblock 51 -60 -50 minecraft:redstone_lamp",
+		"setblock 52 -60 -47 minecraft:redstone_lamp",
+		"fill 53 -60 -50 56 -60 -50 minecraft:redstone_wire",
+		"setblock 57 -60 -50 minecraft:repeater[facing=west]",
+		"setblock 58 -60 -50 minecraft:redstone_wire",
+		"setblock 59 -60 -50 minecraft:redstone_lamp",
+		"setblock 52 -60 -51 minecraft:sticky_piston[facing=north]",
+		"setblock 56 -60 -45 minecraft:redstone_block",
+		"fill 57 -60 -45 61 -60 -45 minecraft:powered_rail[shape=east_west]",
+		"setblock 54 -60 -47 minecraft:redstone_torch",
+		"setblock 56 -60 -47 minecraft:lever[face=floor,facing=south]",
+		"setblock 58 -60 -47 minecraft:comparator[facing=south]",
+		"setblock 61 -60 -51 minecraft:hopper",
+		"setblock 62 -60 -51 minecraft:observer[facing=north]",
+		"setblock 61 -60 -48 minecraft:daylight_detector",
+		"setblock 62 -60 -48 minecraft:target",
+		"setblock 63 -60 -48 minecraft:copper_bulb[lit=true]",
+		"fill 50 -60 -46 50 -60 -41 minecraft:rail",
+		"summon minecraft:chest_minecart 50.5 -60 -43.5",
+	};
+
 	/** A room in the Nether: lava, magma and glowstone light, soul sand with nether wart, both nylium forests, a portal. */
 	private static final String[] NETHER = {
 		"fill 0 58 0 47 75 31 minecraft:netherrack hollow",
@@ -248,6 +340,10 @@ public class ReferenceRenders implements FabricClientGameTest {
 		new Shot("nether", new String[0], "3.5 61.5 16.5 -90 10", 40, "minecraft:the_nether", NETHER),
 		// the End's sky (and its flashes) and fog
 		new Shot("end", new String[0], "592.5 61 -10.5 -40 5", 40, "minecraft:the_end", END),
+		// translucent blocks in front of each other and of a pig, and a beacon's beam (beacons look up every 80 ticks)
+		new Shot("glass", new String[0], "0.5 -58.5 -38.5 180 10", 100, "minecraft:overworld", GLASS),
+		new Shot("decor", new String[0], "30.5 -58.5 -45.5 180 8", 40, "minecraft:overworld", DECOR),
+		new Shot("redstone", new String[0], "57.5 -57.5 -40.5 180 30", 40, "minecraft:overworld", REDSTONE),
 	};
 	/** Chunks render slowly on CI's software renderer: up to five minutes. */
 	private static final int CHUNK_TICKS = 20 * 60 * 5;
