@@ -2936,7 +2936,7 @@ export class EntityRenderer {
 			const texture = this.texture(texturePath);
 			if (!entityModel || !texture) return false;
 			entityModel.reset();
-			if (pose) pose(entityModel.parts);
+			if (pose) pose(entityModel.parts, entityModel.root);
 			const start = this.sink.mark();
 			emitModel(this.sink, entityModel, lm, color ? { ...style, color } : style);
 			this.batch(texture, mode, start, false, style.glint || 0);
@@ -2992,9 +2992,13 @@ export class EntityRenderer {
 				emit('minecraft:bell#main', 'bell/bell_body');
 				break;
 			case 'copper_golem_statue': {
+				// CopperGolemStatueModel.setupAnim: the root at y 0, turned upside down (the definition turns it back)
 				const pose = strip(model.pose || 'standing');
 				emit('minecraft:copper_golem' + (pose === 'standing' ? '' : '_' + pose) + '#main',
-					texture.replace(/^textures\/entity\//, '').replace(/\.png$/, '') || 'copper_golem/copper_golem');
+					texture.replace(/^textures\/entity\//, '').replace(/\.png$/, '') || 'copper_golem/copper_golem', (parts, root) => {
+						root.y = 0;
+						root.zRot = Math.PI;
+					});
 				break;
 			}
 			case 'trident':
@@ -4470,10 +4474,22 @@ export class EntityRenderer {
 			if (pose) pose(model.parts);
 			const start = this.sink.mark();
 			emitModel(this.sink, model, matrix, color ? { ...style, color } : style);
-			this.batch(texture, mode, start, mode !== MODE_TRANSLUCENT);
+			this.batch(texture, mode, start, mode !== MODE_TRANSLUCENT && mode !== MODE_NOCULL);
 			return model;
 		};
 		switch (def.kind) {
+			case 'statue': {
+				// CopperGolemStatueBlockRenderer.createModelTransformation: to the middle of the block, turned to face
+				// away from the block's facing; CopperGolemStatueModel.setupAnim: the root at y 0, upside down
+				const opposite = { north: 'south', south: 'north', east: 'west', west: 'east' }[def.facing] || 'south';
+				translate(m, 0.5, 0, 0.5);
+				rotate(m, 1, -(FACING_YROT[opposite] ?? 0) * DEG);
+				emit(def.layer, def.texture, m, null, MODE_NOCULL, parts => {
+					parts.root.y = 0;
+					parts.root.zRot = Math.PI;
+				});
+				break;
+			}
 			case 'chest': {
 				translate(m, 0.5, 0.5, 0.5);
 				rotate(m, 1, -def.yRot * DEG);

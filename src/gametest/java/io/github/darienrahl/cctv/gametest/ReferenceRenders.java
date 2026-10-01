@@ -207,7 +207,7 @@ public class ReferenceRenders implements FabricClientGameTest {
 	/**
 	 * Decorations on a wall and before it: banners, paintings, an enchanted sword, a golden apple and a copper golem
 	 * statue in item frames, a sign with glowing text, an armour stand in dyed, trimmed and enchanted armour, a
-	 * decorated pot, a head, a lectern, a potted fern, lit candles, a bell and a chest.
+	 * decorated pot, a head, a lectern, a potted fern, lit candles, a bell, a chest and a weathered copper golem statue.
 	 */
 	private static final String[] DECOR = {
 		"fill 22 -60 -55 38 -56 -55 minecraft:stone_bricks",
@@ -236,6 +236,7 @@ public class ReferenceRenders implements FabricClientGameTest {
 		"setblock 31 -60 -51 minecraft:red_candle[candles=3,lit=true]",
 		"setblock 33 -60 -51 minecraft:bell[attachment=floor,facing=south]",
 		"setblock 35 -60 -53 minecraft:chest[facing=south]",
+		"setblock 32 -60 -53 minecraft:weathered_copper_golem_statue[facing=south,copper_golem_pose=running]",
 	};
 
 	/**

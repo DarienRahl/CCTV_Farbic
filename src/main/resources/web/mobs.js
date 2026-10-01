@@ -2582,6 +2582,13 @@ export function blockEntityModel(info) {
 		return { kind: 'banner', wall, color, facing: props.facing || 'north', rotation: Number(props.rotation || 0) };
 	}
 	if (name === 'bell') return { kind: 'bell', layer: 'minecraft:bell#main', texture: 'bell/bell_body' };
+	const statue = /^(?:(exposed|weathered|oxidized)_)?copper_golem_statue$/.exec(name);
+	if (statue) {
+		// CopperGolemStatueBlockRenderer: the copper golem model of the block's pose, textured by its oxidation
+		const pose = props.copper_golem_pose || 'standing';
+		return { kind: 'statue', layer: 'minecraft:copper_golem' + (pose === 'standing' ? '' : '_' + pose) + '#main',
+			texture: 'copper_golem/copper_golem' + (statue[1] ? '_' + statue[1] : ''), facing: props.facing || 'north' };
+	}
 	if (name === 'decorated_pot') return { kind: 'pot', facing: props.facing || 'north' };
 	return null;
 }
@@ -2591,5 +2598,6 @@ export const BLOCK_ENTITY_NAMES = (() => {
 	for (const color of Object.keys(DYE)) names.push(color + '_shulker_box', color + '_banner', color + '_wall_banner');
 	for (const head of Object.keys(HEADS)) names.push(head, head.replace(/_(skull|head)$/, '_wall_$1'));
 	names.push('end_portal', 'end_gateway', 'conduit');
+	for (const age of ['', 'exposed_', 'weathered_', 'oxidized_']) names.push(age + 'copper_golem_statue', 'waxed_' + age + 'copper_golem_statue');
 	return names.map(n => 'minecraft:' + n);
 })();

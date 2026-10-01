@@ -296,6 +296,11 @@ final class CameraSession {
 				state.reset();
 				sendInit(state, tick);
 			}
+			// a viewer forgets the environment with every "init": it gets it again before the next entities (a frozen
+			// world must not run the client's animations in between)
+			if (level != null && !viewers.isEmpty()) {
+				sendEnvironment(level, tick);
+			}
 		}
 		phase(REBUILD);
 
