@@ -9,6 +9,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 import org.jspecify.annotations.Nullable;
 
@@ -34,6 +35,8 @@ import net.minecraft.world.level.block.RenderShape;
 import net.minecraft.world.level.block.sounds.AmbientLeavesBlockSoundPlayer;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.properties.BooleanProperty;
+import net.minecraft.world.level.block.state.properties.Property;
 import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.shapes.Shapes;
@@ -73,6 +76,9 @@ final class BlockPalette {
 	private static final float MAX_FLUID_HEIGHT = 0.8888889F;
 
 	private static final BlockPos SEED_PROBE = new BlockPos(5, 70, 9);
+
+	/** The names of the properties that connect a block to its neighbours (panes, bars, fences, walls...). */
+	private static final Set<String> SIDES = Set.of("north", "east", "south", "west", "up", "down");
 
 	private static final int MAX_BOXES = 24;
 
@@ -402,10 +408,14 @@ final class BlockPalette {
 			json.field("fo", 63);
 		}
 
+		// Block.shouldRenderFace asks skipRendering(state, neighbour, direction), whose answer can depend on the
+		// neighbour's state too (IronBarsBlock: two panes or bars that connect towards each other). It is asked against
+		// the same block connected on every side, and the viewer skips a face only where both blocks' masks agree.
+		BlockState partner = connectedPartner(state);
 		int skip = 0;
 		for (Direction direction : Direction.values()) {
 			try {
-				if (state.skipRendering(state, direction)) {
+				if (state.skipRendering(partner, direction)) {
 					skip |= 1 << direction.get3DDataValue();
 				}
 			} catch (RuntimeException ignored) {
@@ -417,6 +427,17 @@ final class BlockPalette {
 		}
 
 		writeFluidCover(json, state);
+	}
+
+	/** The state with every side's connection (north, east, south, west, up, down) on. */
+	private static BlockState connectedPartner(BlockState state) {
+		BlockState partner = state;
+		for (Property<?> property : state.getProperties()) {
+			if (property instanceof BooleanProperty side && SIDES.contains(side.getName())) {
+				partner = partner.setValue(side, true);
+			}
+		}
+		return partner;
 	}
 
 	/**

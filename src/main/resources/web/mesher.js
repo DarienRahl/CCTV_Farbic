@@ -532,7 +532,8 @@ export class Mesher {
 		const neighbor = this.infos[nid];
 		if (!neighbor || neighbor.air) return true;
 		if (neighbor.occludes & (1 << OPPOSITE[d])) return false;
-		if ((info.skip & (1 << d)) && (nid === id || neighbor.name === info.name)) return false;
+		// Block.skipRendering against the same block, where both agree (panes and bars that connect towards each other)
+		if ((info.skip & (1 << d)) && neighbor.name === info.name && (neighbor.skip & (1 << OPPOSITE[d]))) return false;
 		// Far away, leaves hide each other like the "fast" leaves setting.
 		if (this.lod && info.leaves && neighbor.leaves) return false;
 		return true;
