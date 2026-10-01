@@ -12,6 +12,7 @@ import org.slf4j.LoggerFactory;
 
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.loader.api.FabricLoader;
@@ -21,6 +22,7 @@ import net.minecraft.world.level.storage.LevelResource;
 import io.github.darienrahl.cctv.assets.ClientAssets;
 import io.github.darienrahl.cctv.camera.CameraManager;
 import io.github.darienrahl.cctv.camera.CameraStore;
+import io.github.darienrahl.cctv.command.CameraMarker;
 import io.github.darienrahl.cctv.command.CctvCommand;
 
 /**
@@ -71,6 +73,8 @@ public final class CctvMod implements ModInitializer {
 				stopping.stop();
 			}
 		});
+
+		ServerEntityEvents.ENTITY_LOAD.register((entity, level) -> CameraMarker.repair(level.getServer(), entity));
 
 		ServerTickEvents.END_SERVER_TICK.register(server -> {
 			CameraManager current = manager;

@@ -367,6 +367,14 @@ def main():
     print("camera marker block:", marker_block, flush=True)
     if "observer" not in marker_block:
         failures.append(f"the camera marker shows no observer: {marker_block}")
+    # an empty marker (as placed before 1.18.0) gets its observer back when it is loaded
+    rcon.command('summon minecraft:block_display 3 -55 -8 {Tags:["cctv_camera","cctv_cam_empty"]}')
+    time.sleep(1)
+    repaired = rcon.command("data get entity @e[type=minecraft:block_display,tag=cctv_cam_empty,limit=1] block_state")
+    print("empty camera marker after loading:", repaired, flush=True)
+    if "observer" not in repaired:
+        failures.append(f"an empty camera marker was not given its observer: {repaired}")
+    rcon.command("kill @e[type=minecraft:block_display,tag=cctv_cam_empty]")
     listing = rcon.command("cctv list")
     assert "ci" in listing, "camera not listed"
 

@@ -37,7 +37,7 @@ import io.github.darienrahl.cctv.web.Json;
  *     w line width, o text opacity byte, bg background ARGB, f style flags}
  * </pre>
  */
-final class DisplayEncoder {
+public final class DisplayEncoder {
 	/** Longest text sent for one text display (holograms are short; this keeps a runaway component in check). */
 	private static final int MAX_TEXT = 2048;
 	private static final Map<String, Optional<EntityDataAccessor<?>>> ACCESSORS = new ConcurrentHashMap<>();
@@ -102,6 +102,11 @@ final class DisplayEncoder {
 			writeText(json, display);
 		}
 		json.endObject();
+	}
+
+	/** The block a block display shows, or null (its getter is private). */
+	public static @Nullable BlockState blockState(Display display) {
+		return display instanceof Display.BlockDisplay ? get(display, Display.BlockDisplay.class, "DATA_BLOCK_STATE_ID") : null;
 	}
 
 	/** The item an item display shows (EntityEncoder writes it like the item of an item frame), or null. */
