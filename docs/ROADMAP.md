@@ -384,8 +384,9 @@ to the milestone it belongs to. The roadmap on the README page is drawn from thi
 - [ ] **Blocks and biomes in the reference renders**: shapes of blocks (doors, trapdoors, stairs that meet, fences,
       walls, rails, a hanging sign, scaffolding, a cauldron of water, a chiseled bookshelf, a crafter, a shelf...),
       plants (crops in each age, flowers moved about by their offset, double plants, leaves of every kind with the
-      poplar's, vines, petals, leaf litter), lights at night (every kind of light block on a white floor) and the
-      colours of ten biomes side by side (grass, foliage, dry foliage, water and their blending)
+      poplar's, vines, petals, leaf litter), lights at night (every kind of light block on a white floor), the
+      colours of ten biomes side by side (grass, foliage, dry foliage, water and their blending) and blocks of work
+      (lit furnaces, the tables, a beehive, sculk, a trial spawner, a vault, campfires, cauldrons, corals...)
 - [ ] Bounds for the new shots, then close the gaps they show
 
 ## Later

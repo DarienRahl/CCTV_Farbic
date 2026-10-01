@@ -15,9 +15,10 @@ import net.fabricmc.loader.api.FabricLoader;
 /**
  * Reference renders for CI: builds small scenes in a single player world (flat, time and weather stopped) and, for
  * each shot (day, night, mobs, a room, under water, dusk, rain, snow, a cave, the Nether, the End, glass, decorations,
- * redstone, shapes of blocks, plants, lights at night, biome colours and rows of every kind of mob up close), takes the
- * game's picture from a spectator's eyes with the GUI hidden, moves a CCTV camera to the same eyes and waits while CI
- * takes the viewer's picture of that camera (.github/e2e/reference.mjs), so both can be compared (compare_reference.py).
+ * redstone, shapes of blocks, plants, lights at night, biome colours, blocks of work and rows of every kind of mob up
+ * close), takes the game's picture from a spectator's eyes with the GUI hidden, moves a CCTV camera to the same eyes
+ * and waits while CI takes the viewer's picture of that camera (.github/e2e/reference.mjs), so both can be compared
+ * (compare_reference.py).
  *
  * <p>Hand-off through files in {@code <game dir>/reference}: {@code ready-<shot>.json} when the game's picture of a
  * shot is taken, {@code done-<shot>} from the viewer's side, and {@code finished} after the last shot.
@@ -511,6 +512,43 @@ public class ReferenceRenders implements FabricClientGameTest {
 		"setblock 90 -60 -138 minecraft:pearlescent_froglight",
 	};
 
+	/**
+	 * Blocks of work and their faces, in three rows of thirteen: a crafting table, lit furnaces, a loom, the tables, a
+	 * stonecutter, an open barrel, a beehive full of honey, a dispenser, an observer; a note block, a jukebox, a target,
+	 * a lodestone, a charged respawn anchor, sculk, a trial spawner, a vault, a bee nest, a dropper, budding amethyst;
+	 * campfires, cauldrons of lava and powder snow, an enchanting table, the dragon egg, a sniffer egg, corals, soul fire,
+	 * a calibrated sculk sensor and sea pickles.
+	 */
+	private static final String[] WORKSHOP = workshop(new String[] {
+		"crafting_table", "furnace[facing=south,lit=true]", "smoker[facing=south,lit=true]",
+		"blast_furnace[facing=south,lit=true]", "loom[facing=south]", "cartography_table", "smithing_table",
+		"fletching_table", "stonecutter[facing=south]", "barrel[facing=south,open=true]",
+		"beehive[facing=south,honey_level=5]", "dispenser[facing=south]", "observer[facing=south]",
+	}, new String[] {
+		"note_block", "jukebox", "target", "lodestone", "respawn_anchor[charges=4]", "sculk_sensor", "sculk_shrieker",
+		"sculk_catalyst", "trial_spawner", "vault[facing=south]", "bee_nest[facing=south,honey_level=5]",
+		"dropper[facing=south]", "budding_amethyst",
+	}, new String[] {
+		"campfire[lit=false,facing=south]", "soul_campfire[lit=false,facing=south]", "lava_cauldron",
+		"powder_snow_cauldron[level=3]", "enchanting_table", "dragon_egg", "sniffer_egg[hatch=1]",
+		"tube_coral_fan", "brain_coral", "dead_bubble_coral_fan", "soul_fire", "calibrated_sculk_sensor[facing=south]",
+		"sea_pickle[pickles=4]",
+	});
+
+	/** Three rows of blocks 2 apart at z -145, -142 and -139 from x -59, each placed exactly as given (strict). */
+	private static String[] workshop(String[]... rows) {
+		java.util.List<String> build = new java.util.ArrayList<>();
+		// soul soil under the soul fire (the third row's eleventh block)
+		build.add("setblock -39 -61 -139 minecraft:soul_soil");
+		for (int row = 0; row < rows.length; row++) {
+			for (int i = 0; i < rows[row].length; i++) {
+				build.add(String.format(java.util.Locale.ROOT, "setblock %d -60 %d minecraft:%s strict", -59 + 2 * i, -145 + 3 * row,
+						rows[row][i]));
+			}
+		}
+		return build.toArray(new String[0]);
+	}
+
 	/** The biomes of {@link #biomes()}: the far row, then the near row (before SHOTS, which builds from it). */
 	private static final String[] BIOMES = {
 		"plains", "swamp", "jungle", "dark_forest", "cherry_grove",
@@ -543,11 +581,12 @@ public class ReferenceRenders implements FabricClientGameTest {
 		new Shot("glass", new String[0], "0.5 -58.5 -38.5 180 10", 100, "minecraft:overworld", GLASS),
 		new Shot("decor", new String[0], "30.5 -58.5 -45.5 180 8", 40, "minecraft:overworld", DECOR),
 		new Shot("redstone", new String[0], "57.5 -57.5 -40.5 180 30", 40, "minecraft:overworld", REDSTONE),
-		// shapes of blocks, plants, lights at night and biome colours, each in a scene of its own
+		// shapes of blocks, plants, lights at night, biome colours and blocks of work, each in a scene of its own
 		new Shot("shapes", new String[0], "0.5 -56.5 -129.5 180 25", 40, "minecraft:overworld", SHAPES),
 		new Shot("plants", new String[0], "40.5 -56.5 -129.5 180 25", 40, "minecraft:overworld", PLANTS),
 		new Shot("lights", new String[] {"time set midnight"}, "80.5 -56.5 -129.5 180 25", 40, "minecraft:overworld", LIGHTS),
-		new Shot("biomes", new String[] {"time set noon"}, "140.0 -46 -120.0 180 32", 40, "minecraft:overworld", biomes()),
+		new Shot("biomes", new String[] {"time set noon"}, "140.0 -52 -126.0 180 30", 40, "minecraft:overworld", biomes()),
+		new Shot("workshop", new String[0], "-47.5 -56.5 -127.5 180 22", 40, "minecraft:overworld", WORKSHOP),
 		// every kind of mob up close, in rows; the world stands still from here on (see zoo)
 		zoo("zoo-farm", 0, 2.5, 7, 0, "minecraft:cow", "minecraft:pig", "minecraft:sheep Color:3b", "minecraft:chicken",
 				"minecraft:rabbit RabbitType:0", "minecraft:mooshroom Type:\"brown\""),

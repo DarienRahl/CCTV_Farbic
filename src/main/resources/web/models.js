@@ -293,7 +293,10 @@ export class BlockModels {
 		for (const [dirName, face] of Object.entries(element.faces || {})) {
 			const dir = DIR_INDEX[dirName];
 			if (dir === undefined || !face) continue;
-			const texture = this.resolveTexture(textures, face.texture);
+			// CuboidFace.texture names a texture slot with or without its '#' (TextureSlots.getMaterial): the heavy
+			// core's faces say "all"
+			const slot = typeof face.texture === 'string' && !face.texture.startsWith('#') ? '#' + face.texture : face.texture;
+			const texture = this.resolveTexture(textures, slot);
 			const sprite = texture ? this.sprite(texture.id) : this.missing;
 
 			let positions = FACE_VERTICES[dir].map(c => [c[0] ? to[0] : from[0], c[1] ? to[1] : from[1], c[2] ? to[2] : from[2]]);
