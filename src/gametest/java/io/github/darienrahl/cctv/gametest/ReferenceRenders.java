@@ -205,9 +205,9 @@ public class ReferenceRenders implements FabricClientGameTest {
 	};
 
 	/**
-	 * Decorations on a wall and before it: banners, paintings, an enchanted sword and a golden apple in item frames,
-	 * a sign with glowing text, an armour stand in dyed, trimmed and enchanted armour, a decorated pot, a head, a
-	 * lectern, a potted fern, lit candles, a bell and a chest.
+	 * Decorations on a wall and before it: banners, paintings, an enchanted sword, a golden apple and a copper golem
+	 * statue in item frames, a sign with glowing text, an armour stand in dyed, trimmed and enchanted armour, a
+	 * decorated pot, a head, a lectern, a potted fern, lit candles, a bell and a chest.
 	 */
 	private static final String[] DECOR = {
 		"fill 22 -60 -55 38 -56 -55 minecraft:stone_bricks",
@@ -219,6 +219,7 @@ public class ReferenceRenders implements FabricClientGameTest {
 		"summon minecraft:item_frame 33 -58 -54 {Facing:3b,Fixed:1b,Item:{id:\"minecraft:diamond_sword\",count:1,"
 				+ "components:{\"minecraft:enchantments\":{\"minecraft:sharpness\":1}}}}",
 		"summon minecraft:glow_item_frame 35 -58 -54 {Facing:3b,Fixed:1b,Item:{id:\"minecraft:enchanted_golden_apple\",count:1}}",
+		"summon minecraft:item_frame 37 -57 -54 {Facing:3b,Fixed:1b,Item:{id:\"minecraft:copper_golem_statue\",count:1}}",
 		"setblock 25 -59 -54 minecraft:oak_wall_sign[facing=south]{front_text:{has_glowing_text:1b,color:\"lime\","
 				+ "messages:[\"\",\"GLOW\",\"\",\"\"]}}",
 		"summon minecraft:armor_stand 36.5 -60 -49.5 {Rotation:[200f,0f],ShowArms:1b,equipment:{"

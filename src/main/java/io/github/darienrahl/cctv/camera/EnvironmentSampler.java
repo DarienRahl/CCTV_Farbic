@@ -73,6 +73,10 @@ final class EnvironmentSampler {
 				.field("gt", level.getGameTime())
 				.field("rain", level.getRainLevel(1.0F), 4)
 				.field("thunder", level.getThunderLevel(1.0F), 4);
+		// /tick freeze: the clients stop ticking entities, particles, block animations and textures
+		if (!level.tickRateManager().runsNormally()) {
+			json.field("frozen", true);
+		}
 
 		color(json, "sky", attributes.getValue(EnvironmentAttributes.SKY_COLOR, pos));
 		color(json, "fog", attributes.getValue(EnvironmentAttributes.FOG_COLOR, pos));

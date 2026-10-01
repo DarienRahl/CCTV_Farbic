@@ -228,6 +228,8 @@ final class EntityEncoder {
 			{"isScared", "scared", "minecraft:panda"},
 			{"isInWater", "inWater", HORSES},
 			{"getArmPose", "armPose", ILLAGERS},
+			// PiglinModel: dancing, holding a weapon high, the crossbow, admiring an item (AbstractPiglin.getArmPose)
+			{"getArmPose", "armPose", "minecraft:piglin minecraft:piglin_brute"},
 			{"getMainArm", "mainArm", ILLAGERS},
 			// Protected: which spell a spellcaster's hands glow with (SpellcasterIllager.tick, client).
 			{"getCurrentSpell", "spell", "minecraft:evoker minecraft:illusioner"},

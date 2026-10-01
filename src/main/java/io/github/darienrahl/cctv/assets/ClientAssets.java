@@ -881,30 +881,44 @@ public final class ClientAssets implements AutoCloseable {
 
 	/**
 	 * The first "minecraft:special" or "minecraft:composite" item model in an item definition (it may sit inside
-	 * selects and conditions): the items that are not simply one model, like chests, heads, banners and beds.
+	 * selects and conditions): the items that are not simply one model, like chests, heads, banners and beds. The
+	 * transformations of the nodes above it (a condition or select can move everything it picks, like the trident's
+	 * flip) come with it as "transforms", outermost first.
 	 */
 	private static @Nullable JsonElement findSpecial(JsonElement element, int depth) {
+		return findSpecial(element, depth, new JsonArray());
+	}
+
+	private static @Nullable JsonElement findSpecial(JsonElement element, int depth, JsonArray transforms) {
 		if (depth > 16) {
 			return null;
 		}
 		if (element.isJsonObject()) {
 			JsonObject object = element.getAsJsonObject();
 			JsonElement type = object.get("type");
-			if (type != null && type.isJsonPrimitive()) {
-				String name = type.getAsString().replace("minecraft:", "");
-				if (name.equals("special") || name.equals("composite")) {
+			String name = type != null && type.isJsonPrimitive() ? type.getAsString().replace("minecraft:", "") : "";
+			if (name.equals("special") || name.equals("composite")) {
+				if (transforms.isEmpty()) {
 					return object;
 				}
+				JsonObject copy = object.deepCopy();
+				copy.add("transforms", transforms.deepCopy());
+				return copy;
+			}
+			JsonArray inner = transforms;
+			if (!name.isEmpty() && !name.equals("model") && object.has("transformation")) {
+				inner = transforms.deepCopy();
+				inner.add(object.get("transformation"));
 			}
 			for (Map.Entry<String, JsonElement> child : object.entrySet()) {
-				JsonElement found = findSpecial(child.getValue(), depth + 1);
+				JsonElement found = findSpecial(child.getValue(), depth + 1, inner);
 				if (found != null) {
 					return found;
 				}
 			}
 		} else if (element.isJsonArray()) {
 			for (JsonElement child : element.getAsJsonArray()) {
-				JsonElement found = findSpecial(child, depth + 1);
+				JsonElement found = findSpecial(child, depth + 1, transforms);
 				if (found != null) {
 					return found;
 				}

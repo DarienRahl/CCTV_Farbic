@@ -86,9 +86,7 @@ function humanoid(p, a, e) {
 	if (isAvatar(e)) {
 		avatarArms(p, a, e);
 	} else {
-		const [inRight, inLeft] = e.mainArm === 'left' ? [e.offhand, e.hand] : [e.hand, e.offhand];
-		if (inRight && p.right_arm) p.right_arm.xRot = p.right_arm.xRot * 0.5 - PI / 10;
-		if (inLeft && p.left_arm) p.left_arm.xRot = p.left_arm.xRot * 0.5 - PI / 10;
+		mobArms(p, a, e);
 	}
 	if (a.attack > 0 && p.right_arm && p.body && !isAvatar(e)) {
 		const t = a.attack;
@@ -277,14 +275,24 @@ function swimStroke(p, a, attacking) {
 
 /** AnimationUtils.animateZombieArms (26.3: no bobbing of its own; a baby holding an item keeps its arms down) */
 function animateZombieArms(p, a, e, aggressive) {
+	const pose = a.armPose || {};
+	if (pose.right === 'spear' || pose.left === 'spear') return;
 	const raise = !e.baby || !e.hand;
 	const armDrop = raise ? -PI / (aggressive ? 1.5 : 2.25) : 0;
 	const attackY = (raise ? 1 : -1) * sin(a.attack * PI);
 	const attackX = sin((1 - (1 - a.attack) * (1 - a.attack)) * PI);
 	const xRot = armDrop + attackY * 1.2 - attackX * 0.4;
 	const yRot = 0.1 - attackY * 0.6;
-	if (p.right_arm) Object.assign(p.right_arm, { xRot, yRot: raise ? -yRot : yRot, zRot: 0 });
-	if (p.left_arm) Object.assign(p.left_arm, { xRot, yRot: raise ? yRot : -yRot, zRot: 0 });
+	if (p.right_arm && pose.right !== 'throw_trident') Object.assign(p.right_arm, { xRot, yRot: raise ? -yRot : yRot, zRot: 0 });
+	if (p.left_arm && pose.left !== 'throw_trident') Object.assign(p.left_arm, { xRot, yRot: raise ? yRot : -yRot, zRot: 0 });
+}
+
+/** AbstractPiglinModel.setupAnim: the ears flap with the piglin's age and walk, from their default angle. */
+function piglinEars(p, a, e) {
+	const angle = (e.baby ? 5 : 30) * DEG;
+	const frequency = a.age * 0.1 + a.walk * 0.5, amplitude = 0.08 + a.walkSpeed * 0.4;
+	if (p.left_ear) p.left_ear.zRot = -angle - cos(frequency * 1.2) * amplitude;
+	if (p.right_ear) p.right_ear.zRot = angle + cos(frequency) * amplitude;
 }
 
 /** ZombieModel.setupAttackAnimation, then the arms' bob that HumanoidModel.setupAnim ends with. */
@@ -394,6 +402,36 @@ function poseArm(p, e, side, pose) {
 	}
 }
 
+/** The skeletons of AbstractSkeletonRenderer (getArmPose: the bow drawn while aggressive). */
+const SKELETONS = new Set(['skeleton', 'stray', 'bogged', 'wither_skeleton', 'parched']);
+
+/**
+ * HumanoidMobRenderer.getArmPose: whatever a mob holds, its arm stays as it is (EMPTY), except a spear (SPEAR);
+ * DrownedRenderer throws its trident and AbstractSkeletonRenderer draws its bow, with the main arm, while aggressive.
+ */
+function mobArmPose(e, side) {
+	const main = e.mainArm === 'left' ? 'left' : 'right';
+	const item = side === main ? e.hand : e.offhand;
+	if (!item) return 'empty';
+	const type = String(e.type || '').replace(/^minecraft:/, '');
+	if (side === main && e.d && e.d.aggressive) {
+		if (type === 'drowned' && /(^|:)trident$/.test(item)) return 'throw_trident';
+		if (SKELETONS.has(type) && /(^|:)bow$/.test(item)) return 'bow_and_arrow';
+	}
+	return /_spear$/.test(item) ? 'spear' : 'empty';
+}
+
+/** HumanoidModel.setupAnim's poseRightArm / poseLeftArm for a mob: the off hand first unless the main hand holds with both. */
+function mobArms(p, a, e) {
+	const main = e.mainArm === 'left' ? 'left' : 'right', other = main === 'left' ? 'right' : 'left';
+	const pose = { right: mobArmPose(e, 'right'), left: mobArmPose(e, 'left') };
+	a.armPose = pose;
+	const first = TWO_HANDED.has(pose[other]) ? main : other;
+	const second = first === 'right' ? 'left' : 'right';
+	poseArm(p, e, first, pose[first]);
+	if (!affectsOffhand(pose[first])) poseArm(p, e, second, pose[second]);
+}
+
 /**
  * HumanoidModel.setupAnim for players and mannequins: the arm of the item in use (or the off hand, unless the main
  * hand holds with both) is posed first, and the other only if that pose leaves it; then setupAttackAnimation's
@@ -441,13 +479,63 @@ const ANIMS = {
 		zombieArms(p, a, e, !!(e.d && e.d.aggressive));
 	},
 	skeleton(p, a, e) {
+		// the bow drawn while aggressive is the arm pose of humanoid (mobArmPose)
 		humanoid(p, a, e);
-		// SkeletonRenderer.getArmPose: BOW_AND_ARROW only while aggressive; otherwise the bow is just held
-		if (e.hand && /(^|:)bow$/.test(e.hand) && e.d && e.d.aggressive) {
-			// HumanoidModel.poseRightArm / poseLeftArm, BOW_AND_ARROW
-			if (p.right_arm && p.head) { p.right_arm.yRot = -0.1 + p.head.yRot; p.right_arm.xRot = -PI / 2 + p.head.xRot; }
-			if (p.left_arm && p.head) { p.left_arm.yRot = 0.1 + p.head.yRot + 0.4; p.left_arm.xRot = -PI / 2 + p.head.xRot; }
+		// SkeletonModel.setupAnim: an aggressive skeleton without a bow raises its arms
+		const R = p.right_arm, L = p.left_arm;
+		if (e.d && e.d.aggressive && !/(^|:)bow$/.test(e.hand || '') && R && L) {
+			const swing2 = sin(a.attack * PI), swing = sin((1 - (1 - a.attack) * (1 - a.attack)) * PI);
+			R.zRot = 0; L.zRot = 0;
+			R.yRot = -(0.1 - swing2 * 0.6); L.yRot = 0.1 - swing2 * 0.6;
+			R.xRot = -PI / 2 - (swing2 * 1.2 - swing * 0.4);
+			L.xRot = -PI / 2 - (swing2 * 1.2 - swing * 0.4);
+			bobArms(p, a.age);
 		}
+	},
+	/** PiglinModel.setupAnim: the ears (AbstractPiglinModel) and the arms of the piglin's own pose (Piglin.getArmPose) */
+	piglin(p, a, e) {
+		humanoid(p, a, e);
+		piglinEars(p, a, e);
+		const pose = e.d && e.d.armPose;
+		const right = e.mainArm !== 'left';
+		const R = p.right_arm, L = p.left_arm, head = p.head;
+		if (!R || !L || !head) return;
+		if (pose === 'dancing') {
+			const t = a.age / 60;
+			if (p.right_ear) p.right_ear.zRot = PI / 6 + DEG * sin(t * 30) * 10;
+			if (p.left_ear) p.left_ear.zRot = -PI / 6 - DEG * cos(t * 30) * 10;
+			head.x += sin(t * 10);
+			head.y += sin(t * 40) + 0.4;
+			R.zRot = DEG * (70 + cos(t * 40) * 10);
+			L.zRot = -R.zRot;
+			R.y += sin(t * 40) * 0.5 - 0.5;
+			L.y += sin(t * 40) * 0.5 + 0.5;
+			if (p.body) p.body.y += sin(t * 40) * 0.35;
+		} else if (pose === 'attacking_with_melee_weapon') {
+			// setupAttackAnimation: the weapon swung down (the arms bob once more after it), else held high
+			if (a.attack > 0) {
+				swingWeaponDown(p, right ? 1 : -1, a.attack, a.age);
+				bobArms(p, a.age);
+			} else {
+				(right ? R : L).xRot = -1.8;
+			}
+		} else if (pose === 'crossbow_hold') {
+			crossbowHold(p, right);
+		} else if (pose === 'crossbow_charge') {
+			crossbowCharge(p, Number(e.chargeTicks) || 25, Number(e.useTicks) || 0, right);
+		} else if (pose === 'admiring_item') {
+			head.xRot = 0.5;
+			head.yRot = 0;
+			const arm = right ? L : R;
+			arm.yRot = right ? 0.5 : -0.5;
+			arm.xRot = -0.9;
+		}
+	},
+	/** ZombifiedPiglinModel: a zombie's arms (setupAttackAnimation) and a piglin's ears */
+	zombifiedPiglin(p, a, e) {
+		humanoid(p, a, e);
+		zombieArms(p, a, e, !!(e.d && e.d.aggressive));
+		piglinEars(p, a, e);
 	},
 	/** VillagerModel.setupAnim: an unhappy villager (one just refused a trade) shakes its head */
 	villager(p, a, e) {
@@ -1979,11 +2067,11 @@ function energySwirl(xOffset) {
 }
 
 const MOBS = {
-	allay: { layer: 'allay#main', texture: 'allay/allay', shadow: 0.4, anim: 'allay', cull: false },
+	allay: { layer: 'allay#main', texture: 'allay/allay', shadow: 0.4, anim: 'allay' },
 	armadillo: { layer: e => (e.baby ? 'armadillo_baby#main' : 'armadillo#main'), texture: e => 'armadillo/armadillo' + baby(e), shadow: 0.4, anim: 'armadillo' },
 	armor_stand: { layer: e => (e.d && e.d.small ? 'armor_stand_small#main' : 'armor_stand#main'), texture: 'armorstand/armorstand', shadow: 0, anim: 'armorStand', armor: 'armor_stand' },
 	axolotl: { layer: e => (e.baby ? 'axolotl_baby#main' : 'axolotl#main'), texture: e => 'axolotl/axolotl_' + variant(e, 'lucy') + baby(e), shadow: 0.5, anim: 'axolotl' },
-	bat: { layer: 'bat#main', texture: 'bat/bat', shadow: 0.25, anim: 'bat' },
+	bat: { layer: 'bat#main', texture: 'bat/bat', shadow: 0.25, anim: 'bat', cull: true },
 	bee: {
 		layer: e => (e.baby ? 'bee_baby#main' : 'bee#main'),
 		texture: e => 'bee/bee' + (e.d && e.d.angry ? '_angry' : '') + (e.d && e.d.nectar ? '_nectar' : '') + baby(e),
@@ -2095,8 +2183,8 @@ const MOBS = {
 		layer: e => (e.baby ? 'pig_baby#main' : variant(e, 'temperate') === 'cold' ? 'cold_pig#main' : 'pig#main'),
 		texture: e => 'pig/pig_' + variant(e, 'temperate') + baby(e), shadow: 0.7, anim: 'quadruped', saddle: ['pig#saddle', 'equipment/pig_saddle/saddle'],
 	},
-	piglin: { layer: e => (e.baby ? 'piglin_baby#main' : 'piglin#main'), texture: e => 'piglin/piglin' + baby(e), shadow: 0.5, anim: 'humanoid', armor: 'piglin' },
-	piglin_brute: { layer: 'piglin_brute#main', texture: 'piglin/piglin_brute', shadow: 0.5, anim: 'humanoid', armor: 'piglin_brute' },
+	piglin: { layer: e => (e.baby ? 'piglin_baby#main' : 'piglin#main'), texture: e => 'piglin/piglin' + baby(e), shadow: 0.5, anim: 'piglin', armor: 'piglin' },
+	piglin_brute: { layer: 'piglin_brute#main', texture: 'piglin/piglin_brute', shadow: 0.5, anim: 'piglin', armor: 'piglin_brute' },
 	pillager: { layer: 'pillager#main', texture: 'illager/pillager', shadow: 0.5, anim: 'illager' },
 	player: { player: true, shadow: 0.5, anim: 'humanoid', armor: 'player' },
 	// Mannequin: an AvatarRenderer like players, with the skin of its profile
@@ -2148,7 +2236,7 @@ const MOBS = {
 	sulfur_cube: { sulfur: true, shadow: cubeShadow, anim: 'none', slime: true },
 	tadpole: { layer: 'tadpole#main', texture: 'tadpole/tadpole', shadow: 0.14, anim: 'fish' },
 	tropical_fish: { tropical: true, shadow: 0.15, anim: 'fish', fish: true },
-	turtle: { layer: e => (e.baby ? 'turtle_baby#main' : 'turtle#main'), texture: e => 'turtle/turtle' + baby(e), shadow: 0.7, anim: 'turtle' },
+	turtle: { layer: e => (e.baby ? 'turtle_baby#main' : 'turtle#main'), texture: e => 'turtle/turtle' + baby(e), shadow: 0.7, anim: 'turtle', cull: e => !!e.baby },
 	vex: { layer: 'vex#main', texture: e => (e.d && e.d.charging ? 'illager/vex_charging' : 'illager/vex'), shadow: 0.3, anim: 'vex', fullBright: true },
 	villager: { villager: 'villager', shadow: 0.5, anim: 'villager', crossedItem: true },
 	vindicator: { layer: 'vindicator#main', texture: 'illager/vindicator', shadow: 0.5, anim: 'illager' },
@@ -2173,7 +2261,7 @@ const MOBS = {
 		// WitherArmorLayer: at half health or less (WitherBoss.isPowered)
 		layers: [{ layer: 'wither#armor', texture: 'wither/wither_armor', when: e => e.d && e.d.powered, ...energySwirl(t => Math.cos(t * 0.02) * 3) }],
 	},
-	wither_skeleton: { layer: 'wither_skeleton#main', texture: 'skeleton/wither_skeleton', shadow: 0.7, anim: 'skeleton', armor: 'wither_skeleton' },
+	wither_skeleton: { layer: 'wither_skeleton#main', texture: 'skeleton/wither_skeleton', shadow: 0.5, anim: 'skeleton', armor: 'wither_skeleton' },
 	wolf: {
 		layer: e => (e.baby ? 'wolf_baby#main' : 'wolf#main'),
 		texture: e => {
@@ -2195,7 +2283,7 @@ const MOBS = {
 		body: e => (e.baby ? [] : bodyLayers(e, 'nautilus_body', 'nautilus_armor#main')), saddle: ['nautilus#saddle', 'equipment/nautilus_saddle/saddle'],
 	},
 	zombie_villager: { villager: 'zombie_villager', shadow: 0.5, anim: 'zombie', armor: 'zombie_villager' },
-	zombified_piglin: { layer: e => (e.baby ? 'zombified_piglin_baby#main' : 'zombified_piglin#main'), texture: e => 'piglin/zombified_piglin' + baby(e), shadow: 0.5, anim: 'zombie', armor: 'zombified_piglin' },
+	zombified_piglin: { layer: e => (e.baby ? 'zombified_piglin_baby#main' : 'zombified_piglin#main'), texture: e => 'piglin/zombified_piglin' + baby(e), shadow: 0.5, anim: 'zombifiedPiglin', armor: 'zombified_piglin' },
 };
 
 function pandaGene(e) {
@@ -2342,7 +2430,7 @@ export function describeMob(e) {
 	if (!def || def.special) return def ? { def, special: def.special } : null;
 	const value = (v, fallback) => (typeof v === 'function' ? v(e) : v ?? fallback);
 	const out = [];
-	const add = (layer, texture, extra = {}) => out.push({ layer: 'minecraft:' + layer, texture, mode: extra.mode || 'cutout', color: extra.color || null,
+	const add = (layer, texture, extra = {}) => out.push({ layer: 'minecraft:' + layer, texture, mode: extra.mode || 'cutout_nocull', color: extra.color || null,
 		swirl: extra.swirl || null, alpha: extra.alpha || null });
 
 	if (def.player) {
@@ -2382,7 +2470,10 @@ export function describeMob(e) {
 		add(shape + '#main', isLarge ? 'fish/tropical_b' : 'fish/tropical_a', { color: dyeRgb((e.d && e.d.baseColor) || 'white') });
 		add(shape + '#pattern', (isLarge ? 'fish/tropical_b_pattern_' : 'fish/tropical_a_pattern_') + n, { color: dyeRgb((e.d && e.d.patternColor) || 'white') });
 	} else {
-		add(value(def.layer), value(def.texture), { mode: def.cull === false ? 'cutout_nocull' : 'cutout' });
+		// EntityModel's render type is entityCutout, drawn from both sides in 26.x (RenderPipelines.ENTITY_CUTOUT has no
+		// culling): a thin chicken leg on the back of a box shows through its clear front. A few models cull
+		// (entityCutoutCull: BatModel, BabyTurtleModel).
+		add(value(def.layer), value(def.texture), { mode: value(def.cull) ? 'cutout' : 'cutout_nocull' });
 	}
 
 	for (const extra of def.layers || []) {

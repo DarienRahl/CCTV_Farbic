@@ -1247,7 +1247,9 @@ export class EntityRenderer {
 				...eb,
 				x: lerp(ea.x, eb.x, t), y: lerp(ea.y, eb.y, t), z: lerp(ea.z, eb.z, t),
 				yaw: angle('yaw'), pitch: lerp(ea.pitch, eb.pitch, t), body: angle('body'), head: angle('head'),
-				walk: num('walk'), walkSpeed: num('walkSpeed'), age: num('age'), deathTime: num('deathTime'),
+				// frozen (/tick freeze): the game draws an entity at the partial tick 1 (DeltaTracker), players excepted
+				walk: num('walk'), walkSpeed: num('walkSpeed'), age: num('age') + (this.frozen && eb.type !== 'minecraft:player' ? 1 : 0),
+				deathTime: num('deathTime'),
 				swimAmount: num('swimAmount'), flyingTicks: num('flyingTicks'),
 				rowL: num('rowL'), rowR: num('rowR'), hurtTime: num('hurtTime'), damage: num('damage'), bubble: num('bubble'),
 				rail: ea.rail && eb.rail ? [lerp(ea.rail[0], eb.rail[0], t), lerp(ea.rail[1], eb.rail[1], t), lerp(ea.rail[2], eb.rail[2], t),
@@ -1291,7 +1293,8 @@ export class EntityRenderer {
 			}
 			if (!queue.length) this.events.delete(e.id);
 		}
-		if (client.tick) {
+		// no client tick while the world is frozen (ClientLevel.tickEntities skips frozen entities)
+		if (client.tick && !this.frozen) {
 			if (states.lastTick === null || tick < states.lastTick || tick - states.lastTick > 40) states.lastTick = tick - 1;
 			while (states.lastTick < tick) client.tick(e, states, ++states.lastTick);
 		}
@@ -1921,7 +1924,8 @@ export class EntityRenderer {
 				translate(lm, layer.offset[0], layer.offset[1], layer.offset[2]);
 			}
 			emitModel(this.sink, model, lm, { ...layerStyle, color });
-			const mode = MODES[layer.mode] ?? MODE_CUTOUT;
+			// render layers draw with entityCutout too: both sides
+			const mode = MODES[layer.mode] ?? MODE_NOCULL;
 			const glint = layer.foil && (e.foil & layer.foil) ? GLINT_ARMOR : 0;
 			// EnergySwirlLayer: the texture offset by xOffset(ageInTicks) % 1 and ageInTicks * 0.01 % 1
 			const uv = layer.swirl ? [layer.swirl(age) % 1, age * 0.01 % 1] : null;
@@ -2780,7 +2784,7 @@ export class EntityRenderer {
 
 	/** Items without a usable definition: the item's own sprite, special model or block model. */
 	legacyItemMesh(itemId, picked = null) {
-		const key = picked ? itemId + '|' + JSON.stringify(picked.model) : itemId;
+		const key = picked ? itemId + '|' + JSON.stringify(picked.model) + JSON.stringify(picked.transforms || '') : itemId;
 		let mesh = this.itemMeshes.get(key);
 		if (mesh !== undefined) return mesh;
 		mesh = null;
@@ -2903,7 +2907,10 @@ export class EntityRenderer {
 	 */
 	drawSpecialItem(spec, m, style, patterns) {
 		const model = spec.model || {};
-		const lm = spec.transformation ? mul(m, transformationMatrix(spec.transformation)) : Float32Array.from(m);
+		// the transformations of the definition's nodes above the special model (ClientAssets / ItemDefinitions), then its own
+		let lm = Float32Array.from(m);
+		for (const t of spec.transforms || []) lm = mul(lm, transformationMatrix(t));
+		if (spec.transformation) lm = mul(lm, transformationMatrix(spec.transformation));
 		const emit = (layer, texturePath, pose = null, color = null, mode = MODE_CUTOUT) => {
 			const entityModel = this.library.get(layer);
 			const texture = this.texture(texturePath);

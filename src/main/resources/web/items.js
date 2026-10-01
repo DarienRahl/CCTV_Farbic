@@ -34,26 +34,35 @@ export class ItemDefinitions {
 		const root = this.definitions[ns(id)];
 		if (!root) return null;
 		const out = [];
-		this.walk(root, props || {}, ctx, out, 0);
+		this.walk(root, props || {}, ctx, out, 0, []);
 		return out;
 	}
 
-	walk(node, p, ctx, out, depth) {
+	/**
+	 * transforms: the transformations of the nodes above (a select or condition can move everything it picks: the
+	 * trident's and the copper golem statue's flip), outermost first; a special model gets them as "transforms".
+	 */
+	walk(node, p, ctx, out, depth, transforms) {
 		if (!node || typeof node !== 'object' || depth > 24) return;
-		switch (strip(node.type)) {
+		const type = strip(node.type);
+		if (node.transformation && type !== 'special' && type !== 'composite' && type !== 'model') {
+			transforms = [...transforms, node.transformation];
+		}
+		const walk = child => this.walk(child, p, ctx, out, depth + 1, transforms);
+		switch (type) {
 			case 'model':
 				if (node.model) out.push({ model: ns(node.model), tints: (node.tints || []).map(t => this.tint(t, p, ctx)) });
 				break;
 			case 'composite':
-				for (const child of node.models || []) this.walk(child, p, ctx, out, depth + 1);
+				for (const child of node.models || []) walk(child);
 				break;
 			case 'condition':
-				this.walk(this.condition(node, p, ctx) ? node.on_true : node.on_false, p, ctx, out, depth + 1);
+				walk(this.condition(node, p, ctx) ? node.on_true : node.on_false);
 				break;
 			case 'select': {
 				const value = this.select(node, p, ctx);
 				const hit = (node.cases || []).find(c => (Array.isArray(c.when) ? c.when : [c.when]).some(w => same(w, value)));
-				this.walk(hit ? hit.model : node.fallback, p, ctx, out, depth + 1);
+				walk(hit ? hit.model : node.fallback);
 				break;
 			}
 			case 'range_dispatch': {
@@ -62,11 +71,11 @@ export class ItemDefinitions {
 				let pick = null;
 				const entries = [...(node.entries || [])].sort((a, b) => a.threshold - b.threshold);
 				for (const entry of entries) if (value >= entry.threshold) pick = entry.model;
-				this.walk(pick || node.fallback, p, ctx, out, depth + 1);
+				walk(pick || node.fallback);
 				break;
 			}
 			case 'special':
-				out.push({ special: node });
+				out.push({ special: transforms.length ? { ...node, transforms } : node });
 				break;
 			default:
 				// empty, bundle/selected_item: nothing to draw

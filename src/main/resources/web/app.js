@@ -655,13 +655,16 @@ function frame(now) {
 		return;
 	}
 
-	// Game ticks drive texture animations, torch flicker and flashes, like the client.
+	// Game ticks drive texture animations, torch flicker and flashes, like the client. While the server's ticks are
+	// frozen (/tick freeze) the client ticks no entity, particle, block animation or texture (Minecraft.tick).
 	const tick = Math.floor(now / 50);
+	const frozen = !!(environment.current && environment.current.frozen);
+	entities.frozen = frozen;
 	let deltaTicks = 0;
 	if (tick !== state.gameTick) {
 		deltaTicks = Math.min(20, tick - state.gameTick);
 		for (let i = 0; i < Math.min(deltaTicks, 4); i++) environment.tick();
-		if (state.camera) {
+		if (state.camera && !frozen) {
 			const c0 = state.camera;
 			const gameTime = Math.floor(environment.gameTime(now));
 			const eye = world.entryAt(Math.floor(c0.x), Math.floor(c0.y), Math.floor(c0.z));
@@ -673,7 +676,7 @@ function frame(now) {
 			}
 		}
 		state.gameTick = tick;
-		if (state.assets) state.assets.tick(tick);
+		if (state.assets && !frozen) state.assets.tick(tick);
 	}
 
 	const o = world.origin;
