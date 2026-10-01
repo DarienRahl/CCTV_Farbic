@@ -14,9 +14,10 @@ import net.fabricmc.loader.api.FabricLoader;
 
 /**
  * Reference renders for CI: builds small scenes in a single player world (flat, time and weather stopped) and, for
- * each shot (day, night, mobs, a room, under water, dusk, rain, the Nether and the End), takes the game's picture from
- * a spectator's eyes with the GUI hidden, moves a CCTV camera to the same eyes and waits while CI takes the viewer's
- * picture of that camera (.github/e2e/reference.mjs), so both can be compared (compare_reference.py).
+ * each shot (day, night, mobs, a room, under water, dusk, rain, snow, a cave, the Nether and the End), takes the
+ * game's picture from a spectator's eyes with the GUI hidden, moves a CCTV camera to the same eyes and waits while CI
+ * takes the viewer's picture of that camera (.github/e2e/reference.mjs), so both can be compared
+ * (compare_reference.py).
  *
  * <p>Hand-off through files in {@code <game dir>/reference}: {@code ready-<shot>.json} when the game's picture of a
  * shot is taken, {@code done-<shot>} from the viewer's side, and {@code finished} after the last shot.
@@ -113,8 +114,8 @@ public class ReferenceRenders implements FabricClientGameTest {
 
 	/**
 	 * A picture: the commands that set it up, where the eyes are (x y z yaw pitch of the spectator's feet) and how
-	 * many ticks to wait there before it is taken; in another dimension, the commands that build its scene once the
-	 * spectator is there (its chunks are only loaded then).
+	 * many ticks to wait there before it is taken; for a scene away from the others or in another dimension, the
+	 * commands that build it once the spectator is there (its chunks are only loaded then).
 	 */
 	private record Shot(String name, String[] commands, String eyes, int settle, String dimension, String[] build) {
 		Shot(String name, String[] commands, String eyes) {
@@ -125,6 +126,52 @@ public class ReferenceRenders implements FabricClientGameTest {
 			this(name, commands, eyes, settle, "minecraft:overworld", new String[0]);
 		}
 	}
+
+	/** A snowy plain: a frozen pond, an igloo of snow blocks, powder snow, a spruce, a snow golem and a polar bear. */
+	private static final String[] SNOW = {
+		"fillbiome 80 -64 -48 111 -40 -9 minecraft:snowy_plains",
+		"fill 80 -60 -48 111 -60 -9 minecraft:snow[layers=1]",
+		"fill 88 -61 -26 94 -61 -20 minecraft:ice",
+		"fill 90 -61 -24 92 -61 -22 minecraft:packed_ice",
+		"fill 88 -60 -26 94 -60 -20 minecraft:air",
+		"fill 100 -60 -32 104 -58 -28 minecraft:snow_block hollow",
+		"fill 98 -61 -22 100 -61 -20 minecraft:powder_snow",
+		"fill 98 -60 -22 100 -60 -20 minecraft:air",
+		"fill 96 -60 -16 96 -54 -16 minecraft:spruce_log",
+		"fill 94 -56 -18 98 -53 -14 minecraft:spruce_leaves[persistent=true] replace air",
+		"summon minecraft:snow_golem 97.5 -60 -26.5 {NoAI:1b,Rotation:[180f,0f]}",
+		"summon minecraft:polar_bear 90.5 -60 -30.5 {NoAI:1b,PersistenceRequired:1b,Rotation:[160f,0f]}",
+	};
+
+	/**
+	 * A cave: a closed room of stone (no sky light) lit by a torch, a lantern, glow lichen and amethyst, with ores,
+	 * dripstone, moss, sculk, copper, a resting bat and a spider whose eyes glow.
+	 */
+	private static final String[] CAVE = {
+		"fill 40 -61 -24 63 -50 -1 minecraft:stone hollow",
+		"fill 44 -61 -20 50 -61 -14 minecraft:deepslate",
+		"setblock 63 -57 -12 minecraft:diamond_ore",
+		"setblock 63 -55 -8 minecraft:iron_ore",
+		"setblock 63 -58 -16 minecraft:coal_ore",
+		"setblock 63 -54 -14 minecraft:copper_ore",
+		"setblock 48 -60 -10 minecraft:torch",
+		"setblock 56 -58 -23 minecraft:wall_torch[facing=south]",
+		"setblock 57 -60 -12 minecraft:lantern",
+		"setblock 62 -56 -18 minecraft:glow_lichen[east=true]",
+		"setblock 62 -57 -19 minecraft:glow_lichen[east=true]",
+		"fill 58 -61 -6 60 -61 -4 minecraft:amethyst_block",
+		"setblock 59 -60 -5 minecraft:amethyst_cluster[facing=up]",
+		"setblock 60 -51 -8 minecraft:pointed_dripstone[vertical_direction=down,thickness=tip]",
+		"setblock 61 -60 -10 minecraft:pointed_dripstone[vertical_direction=up,thickness=tip]",
+		"fill 50 -61 -6 54 -61 -3 minecraft:moss_block",
+		"setblock 52 -60 -5 minecraft:moss_carpet",
+		"fill 56 -61 -21 58 -61 -18 minecraft:sculk",
+		"setblock 60 -60 -20 minecraft:oxidized_copper",
+		"setblock 61 -60 -20 minecraft:weathered_copper",
+		"setblock 62 -60 -20 minecraft:exposed_copper",
+		"summon minecraft:bat 60.5 -51.9 -12.5 {NoAI:1b,PersistenceRequired:1b,BatFlags:1b}",
+		"summon minecraft:spider 53.5 -60 -14.5 {NoAI:1b,PersistenceRequired:1b,Rotation:[90f,0f]}",
+	};
 
 	/** A room in the Nether: lava, magma and glowstone light, soul sand with nether wart, both nylium forests, a portal. */
 	private static final String[] NETHER = {
@@ -193,8 +240,12 @@ public class ReferenceRenders implements FabricClientGameTest {
 		new Shot("dusk", new String[] {"gamemode spectator @a", "time set 12600"}, "0.5 -58.5 -6.5 90 -5"),
 		// the day view once the rain has set in (the rain level grows by 0.01 a tick): the rain and the darker sky
 		new Shot("rain", new String[] {"time set noon", "weather rain"}, "0.5 -58.5 -6.5 -20 18", 160),
+		// the same weather where it is cold enough to snow: snowfall, a snowy biome's colours
+		new Shot("snow", new String[0], "95.5 -58.5 -37.5 0 12", 40, "minecraft:overworld", SNOW),
+		// a cave lit only by blocks: the lightmap without sky light, smooth lighting in the dark, emissive spider eyes
+		new Shot("cave", new String[] {"weather clear"}, "42.5 -59.62 -12.5 -90 10", 40, "minecraft:overworld", CAVE),
 		// the Nether's thick fog, its ambient light and its own lightmap
-		new Shot("nether", new String[] {"weather clear"}, "3.5 61.5 16.5 -90 10", 40, "minecraft:the_nether", NETHER),
+		new Shot("nether", new String[0], "3.5 61.5 16.5 -90 10", 40, "minecraft:the_nether", NETHER),
 		// the End's sky (and its flashes) and fog
 		new Shot("end", new String[0], "592.5 61 -10.5 -40 5", 40, "minecraft:the_end", END),
 	};
@@ -232,7 +283,7 @@ public class ReferenceRenders implements FabricClientGameTest {
 				}
 				server.runCommand("execute in " + shot.dimension() + " run tp @a " + shot.eyes());
 				if (shot.build().length > 0) {
-					// the dimension's chunks around the spectator are loaded now: build its scene
+					// the chunks around the spectator are loaded now: build its scene
 					context.waitTicks(40);
 					singleplayer.getConnection().waitForChunksRender(CHUNK_TICKS);
 					for (String command : shot.build()) {

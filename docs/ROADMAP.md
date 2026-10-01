@@ -344,11 +344,13 @@ to the milestone it belongs to. The roadmap on the README page is drawn from thi
 
 ## 1.14 — the judge everywhere
 
-- [ ] **Four more reference shots**: dusk towards the setting sun (the sunset colours in the sky and the fog), the day
-      view in the rain (the rain, the darker sky and fog), a room in the Nether (its thick fog and ambient light, lava,
-      magma and glowstone light, a portal, a piglin and a strider) and a platform in the End (its sky, flashes and fog,
-      an end portal, purpur and chorus, a shulker); the scenes keep still (no mob spawning, no random ticks, time and
-      weather stopped)
+- [ ] **Six more reference shots**: dusk towards the setting sun (the sunset colours in the sky and the fog), the day
+      view in the rain (the rain, the darker sky and fog), a snowy plain while it snows (snowfall, a cold biome's
+      colours, ice and powder snow, a snow golem and a polar bear), a cave lit only by blocks (the lightmap without
+      sky light, glow lichen, amethyst, a spider's glowing eyes), a room in the Nether (its thick fog and ambient
+      light, lava, magma and glowstone light, a portal, a piglin and a strider) and a platform in the End (its sky,
+      flashes and fog, an end portal, purpur, a shulker); the scenes keep still (no mob spawning, no random ticks,
+      time and weather stopped)
 - [ ] Bounds for the new shots, then close the gaps they show
 
 ## Later
