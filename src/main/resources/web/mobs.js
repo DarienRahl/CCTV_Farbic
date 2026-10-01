@@ -442,8 +442,9 @@ const ANIMS = {
 	},
 	skeleton(p, a, e) {
 		humanoid(p, a, e);
-		if (e.hand && /bow$/.test(e.hand)) {
-			// Holding a bow up like AnimationUtils.animateCrossbowHold / bow aiming.
+		// SkeletonRenderer.getArmPose: BOW_AND_ARROW only while aggressive; otherwise the bow is just held
+		if (e.hand && /(^|:)bow$/.test(e.hand) && e.d && e.d.aggressive) {
+			// HumanoidModel.poseRightArm / poseLeftArm, BOW_AND_ARROW
 			if (p.right_arm && p.head) { p.right_arm.yRot = -0.1 + p.head.yRot; p.right_arm.xRot = -PI / 2 + p.head.xRot; }
 			if (p.left_arm && p.head) { p.left_arm.yRot = 0.1 + p.head.yRot + 0.4; p.left_arm.xRot = -PI / 2 + p.head.xRot; }
 		}

@@ -106,8 +106,14 @@ public class ReferenceRenders implements FabricClientGameTest {
 		"setblock -17 -62 -16 minecraft:prismarine",
 	};
 
-	/** A picture: the commands that set it up, then where the eyes are (x y z yaw pitch of the spectator's feet). */
-	private record Shot(String name, String[] commands, String eyes) {
+	/**
+	 * A picture: the commands that set it up, where the eyes are (x y z yaw pitch of the spectator's feet) and how
+	 * many ticks to wait there before it is taken.
+	 */
+	private record Shot(String name, String[] commands, String eyes, int settle) {
+		Shot(String name, String[] commands, String eyes) {
+			this(name, commands, eyes, 40);
+		}
 	}
 
 	private static final Shot[] SHOTS = {
@@ -117,8 +123,9 @@ public class ReferenceRenders implements FabricClientGameTest {
 		new Shot("mobs", new String[] {"time set noon"}, "18.5 -59.2 -3.5 0 14"),
 		// inside the house: smooth lighting by the torch and the windows, block entities and an item frame
 		new Shot("room", new String[0], "3.5 -59.65 7.3 -45 22"),
-		// under water: the water fog and the underwater overlay (which the game draws for players, not spectators)
-		new Shot("water", new String[] {"gamemode creative @a"}, "-16.5 -61.5 -24.5 0 6"),
+		// under water: the water fog and the underwater overlay (which the game draws for players, not spectators),
+		// after 600 ticks in the water, when the player sees as far as a camera always does (Player.getWaterVision)
+		new Shot("water", new String[] {"gamemode creative @a"}, "-16.5 -61.5 -24.5 0 6", 640),
 	};
 	/** Chunks render slowly on CI's software renderer: up to five minutes. */
 	private static final int CHUNK_TICKS = 20 * 60 * 5;
@@ -162,7 +169,7 @@ public class ReferenceRenders implements FabricClientGameTest {
 					// F1: no hotbar, crosshair or chat in the picture
 					context.getInput().pressKey(options -> options.keyToggleGui);
 				}
-				context.waitTicks(40);
+				context.waitTicks(shot.settle());
 				Path game = context.takeScreenshot(TestScreenshotOptions.of("reference-" + shot.name()).withSize(WIDTH, HEIGHT).disableCounterPrefix());
 				// where the viewer has to see the camera before it takes its picture
 				String eye = context.computeOnClient(client -> {
