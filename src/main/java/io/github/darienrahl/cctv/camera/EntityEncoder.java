@@ -238,6 +238,11 @@ final class EntityEncoder {
 			{"isStanding", "standing", "minecraft:polar_bear"},
 			// TurtleModel: the egg belly and faster flippers while digging
 			{"hasEgg", "hasEgg", "minecraft:turtle"},
+			// WitherSkullRenderer: the blue skull; FireworkEntityRenderer: a rocket shot at an angle lies along its flight
+			{"isDangerous", "dangerous", "minecraft:wither_skull"},
+			{"isShotAtAngle", "angled", "minecraft:firework_rocket"},
+			// EndCrystalModel: the base under the crystal
+			{"showsBottom", "bottom", "minecraft:end_crystal"},
 			{"isLayingEgg", "layingEgg", "minecraft:turtle"},
 	};
 

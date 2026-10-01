@@ -292,12 +292,17 @@ function skinnedGeometry(model) {
 	return model.skinned;
 }
 
+/**
+ * Quads of 4 vertices (x, y, z, u, v) moved by m; each lit by the normal of its face, or by style.normal turned by m
+ * (the normal a renderer gives its vertices, like a sprite's (0, 1, 0)).
+ */
 export function emitQuads(sink, q, m, style) {
 	const out = sink.data;
 	const [r, g, b, a] = style.color;
 	const [lb, ls] = style.light;
 	const [or, ow] = style.overlay;
 	const flip = style.flipUv;
+	const fixed = style.normal;
 	for (let i = 0; i < q.length; i += 20) {
 		for (let k = 0; k < 4; k++) {
 			const x = q[i + k * 5], y = q[i + k * 5 + 1], z = q[i + k * 5 + 2];
@@ -316,6 +321,14 @@ export function emitQuads(sink, q, m, style) {
 			len = Math.hypot(nx, ny, nz) || 1;
 		}
 		nx /= len; ny /= len; nz /= len;
+		if (fixed) {
+			// the quad's own normal (VertexConsumer.setNormal(pose, ...)), turned by the pose
+			nx = m[0] * fixed[0] + m[4] * fixed[1] + m[8] * fixed[2];
+			ny = m[1] * fixed[0] + m[5] * fixed[1] + m[9] * fixed[2];
+			nz = m[2] * fixed[0] + m[6] * fixed[1] + m[10] * fixed[2];
+			const n = Math.hypot(nx, ny, nz) || 1;
+			nx /= n; ny /= n; nz /= n;
+		}
 		for (const k of [0, 1, 2, 0, 2, 3]) {
 			const o = sink.count++ * FLOATS;
 			out[o] = tmp[k * 3]; out[o + 1] = tmp[k * 3 + 1]; out[o + 2] = tmp[k * 3 + 2];

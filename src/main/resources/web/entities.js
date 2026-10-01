@@ -664,6 +664,29 @@ function normalizeSkin(image) {
 const DEFAULT_SKINS = ['alex', 'ari', 'efe', 'kai', 'makena', 'noor', 'steve', 'sunny', 'zuri'];
 /** Util.NIL_UUID: the id of the empty profile (a mannequin's default), whose default skin is the slim Alex. */
 const NIL_UUID = '00000000-0000-0000-0000-000000000000';
+/** 3 by 3 rotation matrices (rows) for ModelPart.rotateBy: about y, about a unit axis, and their product. */
+function rotationY3(angle) {
+	const c = Math.cos(angle), s = Math.sin(angle);
+	return [[c, 0, s], [0, 1, 0], [-s, 0, c]];
+}
+
+function rotationAxis3(angle, x, y, z) {
+	const c = Math.cos(angle), s = Math.sin(angle), k = 1 - c;
+	return [[c + x * x * k, x * y * k - z * s, x * z * k + y * s], [y * x * k + z * s, c + y * y * k, y * z * k - x * s],
+		[z * x * k - y * s, z * y * k + x * s, c + z * z * k]];
+}
+
+function mul3(A, B) {
+	return A.map(row => [0, 1, 2].map(c => row[0] * B[0][c] + row[1] * B[1][c] + row[2] * B[2][c]));
+}
+
+/** ModelPart.rotateBy on a part at rest: its rotation becomes the matrix's Z*Y*X angles (Matrix3f.getEulerAnglesZYX). */
+function setPartRotation(part, M) {
+	part.xRot = Math.atan2(M[2][1], M[2][2]);
+	part.yRot = Math.atan2(-M[2][0], Math.sqrt(Math.max(0, 1 - M[2][0] * M[2][0])));
+	part.zRot = Math.atan2(M[1][0], M[0][0]);
+}
+
 /** TntRenderer.getSwellAmount: how much a block about to explode swells in its last 10 ticks. */
 function tntSwell(fuse) {
 	const g = Math.min(1, Math.max(0, 1 - fuse / 10)) ** 4;
@@ -767,13 +790,15 @@ function defaultSkin(uuid) {
 	return { path: 'player/' + (slim ? 'slim/' : 'wide/') + DEFAULT_SKINS[index % DEFAULT_SKINS.length], slim };
 }
 
-// Thrown items drawn as sprites (ThrownItemRenderer) and what item they show.
+// Thrown items (ThrownItemRenderer, FireworkEntityRenderer) and the item they show when the server sends none.
 const THROWN = {
 	snowball: 'snowball', egg: 'egg', blue_egg: 'blue_egg', brown_egg: 'brown_egg', ender_pearl: 'ender_pearl', potion: 'splash_potion',
 	splash_potion: 'splash_potion', lingering_potion: 'lingering_potion', experience_bottle: 'experience_bottle',
 	eye_of_ender: 'ender_eye', fireball: 'fire_charge', small_fireball: 'fire_charge', firework_rocket: 'firework_rocket',
-	wind_charge: 'wind_charge', breeze_wind_charge: 'wind_charge',
 };
+// EntityRenderers: the ThrownItemRenderers made bigger or smaller, and the ones lit like block light 15
+const THROWN_SCALE = { fireball: 3, small_fireball: 0.75 };
+const THROWN_BRIGHT = new Set(['eye_of_ender', 'fireball', 'small_fireball']);
 
 export class EntityRenderer {
 	constructor(renderer) {
@@ -1730,26 +1755,27 @@ export class EntityRenderer {
 			case 'ominous_item_spawner': return this.drawOminousItem(e, pos, style);
 			case 'cushion': return this.drawCushion(e, pos, style);
 			case 'dragon_fireball': return this.drawDragonFireball(pos, style);
-			case 'experience_orb': return this.drawOrb(e, pos, style, now);
+			case 'experience_orb': return this.drawOrb(e, pos, style);
 			case 'arrow': case 'spectral_arrow': return this.drawProjectile(e, pos, style, 'arrow#main', type === 'spectral_arrow' ? 'projectiles/arrow_spectral' : 'projectiles/arrow', -90, 0);
 			case 'trident': return this.drawProjectile(e, pos, style, 'trident#main', 'trident/trident', -90, 90);
-			case 'tnt': return this.drawBlockEntity(e, pos, style, 'minecraft:tnt', 1);
+			case 'tnt': return this.drawPrimedTnt(e, pos, style);
 			case 'falling_block': return this.drawFallingBlock(e, pos, style, world);
 			case 'block_display': case 'item_display': case 'text_display': return this.drawDisplay(e, type, pos, style, world);
 			case 'painting': return this.drawPainting(e, pos, style, world);
 			case 'item_frame': case 'glow_item_frame': return this.drawItemFrame(e, type, pos, style);
 			case 'leash_knot': return this.drawSimple(pos, style, 'leash_knot#main', 'lead_knot/lead_knot', 0);
 			case 'end_crystal': return this.drawEndCrystal(e, pos, style);
-			case 'wither_skull': return this.drawSimple(pos, style, 'wither_skull#main', 'wither/wither', e.yaw);
-			case 'shulker_bullet': return this.drawSimple(pos, { ...style, light: [240, 240] }, 'shulker_bullet#main', 'shulker/spark', now / 50 * 9);
-			case 'llama_spit': return this.drawSimple(pos, style, 'llama_spit#main', 'llama/llama_spit', e.yaw);
+			case 'wither_skull': return this.drawWitherSkull(e, pos, style);
+			case 'shulker_bullet': return this.drawShulkerBullet(e, pos, style);
+			case 'llama_spit': return this.drawLlamaSpit(e, pos, style);
+			case 'wind_charge': case 'breeze_wind_charge': return this.drawWindCharge(e, pos, style);
 			case 'fishing_bobber': return this.drawFishingHook(e, pos, style);
 			case 'evoker_fangs': return this.drawEvokerFangs(e, pos, style, now);
 			// NoopRenderer: only the particles of its client tick (particles.js)
 			case 'area_effect_cloud': return;
 			default: break;
 		}
-		if (THROWN[type]) return this.drawThrown(pos, style, THROWN[type]);
+		if (THROWN[type]) return this.drawThrown(e, type, pos, style);
 		if (type.endsWith('_boat') || type.endsWith('_raft')) return this.drawBoat(e, type, pos, style);
 		if (type === 'minecart' || type.endsWith('_minecart')) return this.drawMinecart(e, type, pos, style);
 
@@ -2479,6 +2505,92 @@ export class EntityRenderer {
 		this.batch(texture, MODE_CUTOUT, start);
 	}
 
+	/** WitherSkullRenderer: the skull upside down, its head turned by the skull's yaw and pitch, blue when dangerous, at full light. */
+	drawWitherSkull(e, pos, style) {
+		const model = this.library.get('minecraft:wither_skull#main');
+		const texture = this.texture(e.d && e.d.dangerous ? 'wither/wither_invulnerable' : 'wither/wither');
+		if (!model || !texture) return;
+		model.reset();
+		const head = model.parts.head;
+		if (head) {
+			head.yRot = (e.yaw || 0) * DEG;
+			head.xRot = (e.pitch || 0) * DEG;
+		}
+		const m = mat4();
+		translate(m, pos[0], pos[1], pos[2]);
+		scale(m, -1, -1, 1);
+		const start = this.sink.mark();
+		emitModel(this.sink, model, m, { ...style, light: [240, style.light[1]] });
+		this.batch(texture, MODE_NOCULL, start, false);
+	}
+
+	/**
+	 * ShulkerBulletRenderer: the spark tumbling with its age at full light, half a block big, inside a translucent
+	 * copy of itself half as big again.
+	 */
+	drawShulkerBullet(e, pos, style) {
+		const model = this.library.get('minecraft:shulker_bullet#main');
+		const texture = this.texture('shulker/spark');
+		if (!model || !texture) return;
+		model.reset();
+		// ShulkerBulletModel.setupAnim: turned by the bullet's own yaw and pitch too
+		if (model.parts.main) {
+			model.parts.main.yRot = (e.yaw || 0) * DEG;
+			model.parts.main.xRot = (e.pitch || 0) * DEG;
+		}
+		const t = e.age || 0;
+		const m = mat4();
+		translate(m, pos[0], pos[1] + 0.15, pos[2]);
+		rotate(m, 1, Math.sin(t * 0.1) * 180 * DEG);
+		rotate(m, 0, Math.cos(t * 0.1) * 180 * DEG);
+		rotate(m, 2, Math.sin(t * 0.15) * 360 * DEG);
+		scale(m, -0.5, -0.5, 0.5);
+		const bulletStyle = { ...style, light: [240, style.light[1]] };
+		let start = this.sink.mark();
+		emitModel(this.sink, model, m, bulletStyle);
+		this.batch(texture, MODE_NOCULL, start, false);
+		scale(m, 1.5);
+		start = this.sink.mark();
+		// colour 654311423: white at alpha 0x26
+		emitModel(this.sink, model, m, { ...bulletStyle, color: [1, 1, 1, 0x26 / 255] });
+		this.batch(texture, MODE_TRANSLUCENT, start, false);
+	}
+
+	/**
+	 * WindChargeRenderer: WindChargeModel at the charge's position, its core and its wind turning opposite ways by 16°
+	 * a tick, drawn like the breeze's wind (RenderTypes.breezeWind) with the texture drifting by xOffset(age) % 1.
+	 */
+	drawWindCharge(e, pos, style) {
+		const model = this.library.get('minecraft:wind_charge#main');
+		const texture = this.texture('projectiles/wind_charge');
+		if (!model || !texture) return this.drawBox(e, pos, style);
+		model.reset();
+		const age = e.age || 0;
+		const p = model.parts;
+		if (p.wind_charge) p.wind_charge.yRot = -age * 16 * DEG;
+		if (p.wind) p.wind.yRot = age * 16 * DEG;
+		const m = mat4();
+		translate(m, pos[0], pos[1], pos[2]);
+		const start = this.sink.mark();
+		emitModel(this.sink, model, m, style);
+		this.batch(texture, MODE_BREEZE_WIND, start, false, 0, [age * 0.03 % 1, 0]);
+	}
+
+	/** LlamaSpitRenderer: the spit's cubes a little above its position, turned by its yaw (less 90°) and pitch. */
+	drawLlamaSpit(e, pos, style) {
+		const model = this.library.get('minecraft:llama_spit#main');
+		const texture = this.texture('llama/llama_spit');
+		if (!model || !texture) return;
+		model.reset();
+		const m = mat4();
+		translate(m, pos[0], pos[1] + 0.15, pos[2]);
+		rotate(m, 1, ((e.yaw || 0) - 90) * DEG);
+		rotate(m, 2, (e.pitch || 0) * DEG);
+		const start = this.sink.mark();
+		emitModel(this.sink, model, m, style);
+		this.batch(texture, MODE_NOCULL, start, false);
+	}
+
 	drawProjectile(e, pos, style, layer, texturePath, yawOffset, pitchOffset) {
 		const model = this.library.get('minecraft:' + layer);
 		const texture = this.texture(texturePath);
@@ -2572,8 +2684,8 @@ export class EntityRenderer {
 			rotate(b, 1, 90 * DEG);
 			let blockStyle = style;
 			if (type === 'tnt_minecart') {
-				// MinecartTntRenderState.fuseRemainingInTicks: getFuse() + 1 while primed, else -1
-				const fuse = e.d && typeof e.d.fuse === 'number' && e.d.fuse > -1 ? e.d.fuse + 1 : -1;
+				// MinecartTntRenderState.fuseRemainingInTicks: getFuse() - partialTick + 1 while primed, else -1
+				const fuse = e.d && typeof e.d.fuse === 'number' && e.d.fuse > -1 ? e.d.fuse + (this.frozen ? 0 : 1) : -1;
 				if (fuse > -1 && fuse < 10) {
 					const swell = tntSwell(fuse);
 					translate(b, -swell * 0.5, 0, -swell * 0.5);
@@ -2593,27 +2705,35 @@ export class EntityRenderer {
 		this.shadowFor(e, pos, 0.7, this.world);
 	}
 
+	/**
+	 * EndCrystalRenderer: EndCrystalModel twice as big, its glass bobbing (getY) and spinning 3° a tick, each cube
+	 * tilted 60° about the diagonal (sin 45°, 0, sin 45°) (EndCrystalModel.setupAnim), the base shown or not.
+	 */
 	drawEndCrystal(e, pos, style) {
 		const model = this.library.get('minecraft:end_crystal#main');
 		const texture = this.texture('end_crystal/end_crystal');
 		if (!model || !texture) return this.drawBox(e, pos, style);
 		model.reset();
-		const t = (e.age || 0);
+		const age = e.age || 0;
 		const p = model.parts;
-		const spin = t * 3 * DEG;
-		const bob = Math.sin(t * 0.2) / 2 + 0.5;
-		const y = (bob * bob + bob) * 0.4 - 1.4;
-		if (p.outer_glass) { p.outer_glass.y += y * 16 * -1; p.outer_glass.yRot = spin; }
-		if (p.inner_glass) { p.inner_glass.yRot = spin; }
-		if (p.cube) { p.cube.yRot = spin; }
+		if (p.base) p.base.visible = !(e.d && e.d.bottom === false);
+		const bob = Math.sin(age * 0.2) / 2 + 0.5;
+		const crystalY = ((bob * bob + bob) * 0.4 - 1.4) * 16;
+		const spin = rotationY3(age * 3 * DEG), tilt = rotationAxis3(Math.PI / 3, Math.SQRT1_2, 0, Math.SQRT1_2);
+		if (p.outer_glass) {
+			p.outer_glass.y += crystalY / 2;
+			setPartRotation(p.outer_glass, mul3(spin, tilt));
+		}
+		if (p.inner_glass) setPartRotation(p.inner_glass, mul3(tilt, spin));
+		if (p.cube) setPartRotation(p.cube, mul3(tilt, spin));
 		const m = mat4();
 		translate(m, pos[0], pos[1], pos[2]);
 		scale(m, 2);
 		translate(m, 0, -0.5, 0);
-		scale(m, -1, -1, 1);
 		const start = this.sink.mark();
-		emitModel(this.sink, model, m, { ...style, light: [240, 240] });
+		emitModel(this.sink, model, m, style);
 		this.batch(texture, MODE_NOCULL, start, false);
+		this.shadowFor(e, pos, 0.5, this.world);
 	}
 
 	/**
@@ -3210,16 +3330,40 @@ export class EntityRenderer {
 		this.drawGroundItem(e.handModel || e.hand, im, style, e.handP);
 	}
 
-	drawThrown(pos, style, item) {
-		const mesh = this.itemMesh('minecraft:' + item);
-		if (!mesh) return;
+	/**
+	 * The camera's orientation (CameraRenderState.orientation) as a matrix: what sprites are turned by to face the
+	 * screen, all the same way whereever they are in the picture.
+	 */
+	cameraOrientation() {
+		const v = this.frame && this.frame.viewRotation;
+		return v ? new Float32Array([v[0], v[4], v[8], 0, v[1], v[5], v[9], 0, v[2], v[6], v[10], 0, 0, 0, 0, 1]) : null;
+	}
+
+	/**
+	 * ThrownItemRenderer / FireworkEntityRenderer: the entity's item as it is drawn on the ground (ItemDisplayContext.GROUND),
+	 * scaled per type, turned like the camera; a firework shot at an angle lies along its flight instead.
+	 */
+	drawThrown(e, type, pos, style) {
+		const item = e.item || 'minecraft:' + THROWN[type];
+		const mesh = this.itemMesh(e.itemModel || item, e.itemP, 'ground');
+		const orientation = this.cameraOrientation();
+		if (!mesh || !orientation) return;
 		const m = mat4();
 		translate(m, pos[0], pos[1], pos[2]);
-		// Face the camera like ThrownItemRenderer (camera is at the origin of this space).
-		rotate(m, 1, Math.atan2(-pos[0], -pos[2]));
-		scale(m, 0.5);
-		translate(m, -0.5, -0.25, -0.5);
-		this.emitItem(mesh, m, style);
+		scale(m, THROWN_SCALE[type] || 1);
+		m.set(mul(m, orientation));
+		if (type === 'firework_rocket' && e.d && e.d.angled) {
+			rotate(m, 2, Math.PI);
+			rotate(m, 1, Math.PI);
+			rotate(m, 0, Math.PI / 2);
+		}
+		const fallback = mesh.kind === 'block'
+			? { translation: [0, 3, 0], scale: [0.25, 0.25, 0.25] }
+			: { translation: [0, 2, 0], scale: [0.5, 0.5, 0.5] };
+		this.applyDisplay(m, this.displayTransform(item, 'ground', fallback, mesh.modelId), false);
+		const itemStyle = THROWN_BRIGHT.has(type) ? { ...style, light: [240, style.light[1]] } : { ...style };
+		if (e.foil & FOIL_ITEM) itemStyle.glint = GLINT_ITEM;
+		this.emitItem(mesh, m, itemStyle, e.itemPatterns);
 	}
 
 	/** CushionRenderer: the cushion model in its colour, turned to the nearest side, upside down about x. */
@@ -3243,37 +3387,42 @@ export class EntityRenderer {
 	/** DragonFireballRenderer: its texture on a quad twice a block wide facing the camera, lit like block light 15. */
 	drawDragonFireball(pos, style) {
 		const texture = this.texture('enderdragon/dragon_fireball');
-		const v = this.frame && this.frame.viewRotation;
-		if (!texture || !v) return;
+		const orientation = this.cameraOrientation();
+		if (!texture || !orientation) return;
 		const m = mat4();
 		translate(m, pos[0], pos[1], pos[2]);
 		scale(m, 2);
-		// camera.orientation
-		m.set(mul(m, new Float32Array([v[0], v[4], v[8], 0, v[1], v[5], v[9], 0, v[2], v[6], v[10], 0, 0, 0, 0, 1])));
+		m.set(mul(m, orientation));
 		const q = new Float32Array([-0.5, -0.25, 0, 0, 1, 0.5, -0.25, 0, 1, 1, 0.5, 0.75, 0, 1, 0, -0.5, 0.75, 0, 0, 0]);
 		const start = this.sink.mark();
 		this.sink.ensure(6);
-		emitQuads(this.sink, q, m, { ...style, light: [240, style.light[1]] });
+		emitQuads(this.sink, q, m, { ...style, light: [240, style.light[1]], normal: [0, 1, 0] });
 		this.batch(texture, MODE_CUTOUT, start, false);
 	}
 
-	drawOrb(e, pos, style, now) {
+	/**
+	 * ExperienceOrbRenderer: its icon on a translucent quad turned like the camera, its colour going from green to
+	 * yellow with its age, lit 7 brighter than its block.
+	 */
+	drawOrb(e, pos, style) {
 		const texture = this.texture('experience/experience_orb');
-		if (!texture) return;
+		const orientation = this.cameraOrientation();
+		if (!texture || !orientation) return;
 		const icon = Number(e.d && e.d.icon) || 0;
 		const u0 = (icon % 4 * 16) / 64, v0 = (Math.floor(icon / 4) * 16) / 64, u1 = u0 + 16 / 64, v1 = v0 + 16 / 64;
 		const t = (e.age || 0) / 2;
-		const r = (Math.sin(t) + 1) * 0.5, b = (Math.sin(t + 4.1887903) + 1) * 0.1;
+		const r = Math.trunc((Math.sin(t) + 1) * 0.5 * 255) / 255, b = Math.trunc((Math.sin(t + Math.PI * 4 / 3) + 1) * 0.1 * 255) / 255;
 		const m = mat4();
 		translate(m, pos[0], pos[1] + 0.1, pos[2]);
-		rotate(m, 1, Math.atan2(-pos[0], -pos[2]));
+		m.set(mul(m, orientation));
 		scale(m, 0.3);
 		const q = new Float32Array([-0.5, -0.25, 0, u0, v1, 0.5, -0.25, 0, u1, v1, 0.5, 0.75, 0, u1, v0, -0.5, 0.75, 0, u0, v0]);
 		const start = this.sink.mark();
 		this.sink.ensure(6);
-		emitQuads(this.sink, q, m, { ...style, light: [240, style.light[1]], color: [r, 1, b, 0.5] });
-		this.batch(texture, MODE_NOCULL, start, false);
-		void now;
+		const light = [Math.min(240, (style.light[0] || 0) + 112), style.light[1]];
+		emitQuads(this.sink, q, m, { ...style, light, color: [r, 1, b, 128 / 255], normal: [0, 1, 0] });
+		this.batch(texture, MODE_TRANSLUCENT, start, false);
+		this.shadowFor(e, pos, 0.15, this.world, 0.75);
 	}
 
 	/** An item model's display transform ("ground", "thirdperson_righthand"...) from its parent chain. */
@@ -3515,14 +3664,19 @@ export class EntityRenderer {
 		if (mesh) this.emitItem(mesh, m, style);
 	}
 
-	drawBlockEntity(e, pos, style, name, size) {
+	/**
+	 * TntRenderer: the block swelling about its middle in the last ten ticks of its fuse, flashing white every five
+	 * ticks (fuseRemainingInTicks = getFuse() - partialTick + 1: the fuse interpolated here, at the partial tick 1 when
+	 * the world is frozen).
+	 */
+	drawPrimedTnt(e, pos, style) {
 		const m = mat4();
-		translate(m, pos[0] - 0.5 * size, pos[1], pos[2] - 0.5 * size);
-		scale(m, size);
-		// TntRenderer: fuseRemainingInTicks = getFuse() + 1 (at the tick)
-		const fuse = typeof (e.d && e.d.fuse) === 'number' ? e.d.fuse + 1 : 80;
+		translate(m, pos[0], pos[1] + 0.5, pos[2]);
+		const fuse = typeof (e.d && e.d.fuse) === 'number' ? e.d.fuse + (this.frozen ? 0 : 1) : 80;
 		if (fuse < 10) scale(m, 1 + tntSwell(fuse));
-		this.emitBlock(name, m, { ...style, overlay: [0, tntLit(fuse) ? 1 : 0] });
+		translate(m, -0.5, -0.5, -0.5);
+		this.emitBlock('minecraft:tnt', m, { ...style, overlay: [0, tntLit(fuse) ? 1 : 0] });
+		this.shadowFor(e, pos, 0.5, this.world);
 	}
 
 	/**
@@ -3678,12 +3832,14 @@ export class EntityRenderer {
 		}
 	}
 
+	/** FallingBlockRenderer: the block's model from its corner at the entity's position less half a block, and a shadow. */
 	drawFallingBlock(e, pos, style, world) {
 		const m = mat4();
 		translate(m, pos[0] - 0.5, pos[1], pos[2] - 0.5);
 		const mesh = this.blockStateMesh(e.d && e.d.block, world);
-		if (mesh) return this.emitItem(mesh, m, style);
-		return this.drawBox(e, pos, style);
+		if (!mesh) return this.drawBox(e, pos, style);
+		this.emitItem(mesh, m, style);
+		this.shadowFor(e, pos, 0.5, world);
 	}
 
 	// --- block entities (chests, shulker boxes, heads, banners, bells, pots) ---------------------------
