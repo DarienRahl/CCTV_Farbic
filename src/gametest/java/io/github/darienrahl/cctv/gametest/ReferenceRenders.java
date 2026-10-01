@@ -511,6 +511,12 @@ public class ReferenceRenders implements FabricClientGameTest {
 		"setblock 90 -60 -138 minecraft:pearlescent_froglight",
 	};
 
+	/** The biomes of {@link #biomes()}: the far row, then the near row (before SHOTS, which builds from it). */
+	private static final String[] BIOMES = {
+		"plains", "swamp", "jungle", "dark_forest", "cherry_grove",
+		"badlands", "mangrove_swamp", "pale_garden", "snowy_taiga", "savanna",
+	};
+
 	private static final Shot[] SHOTS = {
 		new Shot("day", new String[] {"time set noon"}, "0.5 -58.5 -6.5 -20 18"),
 		// the same view at night: the lightmap, block light of the torch and the lantern, the moon and the stars
@@ -598,12 +604,6 @@ public class ReferenceRenders implements FabricClientGameTest {
 				-99.5 + distance);
 		return new Shot(name, new String[0], eyes, 40, "minecraft:overworld", build);
 	}
-	/** The biomes of {@link #biomes()}: the far row, then the near row. */
-	private static final String[] BIOMES = {
-		"plains", "swamp", "jungle", "dark_forest", "cherry_grove",
-		"badlands", "mangrove_swamp", "pale_garden", "snowy_taiga", "savanna",
-	};
-
 	/**
 	 * Biome colours: ten patches of 8 by 8 blocks (aligned to the 4 by 4 cells biomes are stored in), two rows of five,
 	 * each a biome of its own with grass, a pool of water with a lily pad, sugar cane, a block of oak leaves with vines,
