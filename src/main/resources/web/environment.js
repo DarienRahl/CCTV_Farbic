@@ -126,7 +126,9 @@ export class Environment {
 		// EndFlashState (ticked on the default clock).
 		this.flash = { intensity: 0, xAngle: 0, yAngle: 0 };
 		if (this.dim.endFlashes && Array.isArray(v.flash)) {
-			const clock = (this.b ? this.b.clock : 0) + this.elapsedTicks(now);
+			// the clock runs on between samples only while it runs on the server (advance_time can stop it)
+			const running = this.a && this.a.clock !== this.b.clock;
+			const clock = (this.b ? this.b.clock : 0) + (running ? this.elapsedTicks(now) : 0);
 			const period = Math.floor(clock / 600);
 			const f = v.flash.find(p => p[0] === period);
 			if (f) {

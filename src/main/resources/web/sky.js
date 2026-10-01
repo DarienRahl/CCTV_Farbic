@@ -26,6 +26,10 @@ void main() {
 	vCyl = max(length(aPos.xz), abs(aPos.y));
 	vColor = aColor;
 	vUv = aUv;
+	// A vertex exactly beside the camera (w = 0: the ends of the sunrise fan when the camera looks along an axis, a
+	// corner of the End sky box) makes some GPUs (SwiftShader) drop its triangles instead of clipping them; a
+	// thousandth of a block in front of or behind the camera is clipped like the game's.
+	if (abs(p.w) < 1e-3) p.w = p.w < 0.0 ? -1e-3 : 1e-3;
 	gl_Position = p;
 }`;
 

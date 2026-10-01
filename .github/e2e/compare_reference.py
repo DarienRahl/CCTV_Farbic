@@ -17,10 +17,12 @@ import sys
 
 from PIL import Image, ImageChops, ImageFilter
 
-# Coarse difference (%) above which a shot counts as a regression: about three times what each shot scored in 1.13
-# (day 0.10, night 0.06, mobs 0.10, room 0.20, water 0.36-0.45), so a change that moves the picture away from the
-# game's shows up, while the game's own random particles (bubbles, smoke) stay under.
-BOUNDS = {"day": 0.4, "night": 0.3, "mobs": 0.4, "room": 0.6, "water": 1.2}
+# Coarse difference (%) above which a shot counts as a regression: about three times what each shot scored when it
+# was added (1.13: day 0.10, night 0.06, mobs 0.10, room 0.20, water 0.36-0.45; 1.14: nether 0.08, end 0.14), so a
+# change that moves the picture away from the game's shows up, while the game's own random particles (bubbles, smoke)
+# stay under. The rain's streaks fall at random places in both pictures, so its bound leaves room for them (0.8).
+BOUNDS = {"day": 0.4, "night": 0.3, "mobs": 0.4, "room": 0.6, "water": 1.2, "dusk": 0.6, "rain": 2.0, "nether": 0.3,
+          "end": 0.5}
 DEFAULT_BOUND = 2.0
 
 
