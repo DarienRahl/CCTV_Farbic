@@ -330,6 +330,15 @@ to the milestone it belongs to. The roadmap on the README page is drawn from thi
       stands, items held even without arms
 - [x] Armour stands wiggle when hit (ArmorStandRenderer.setupRotations, entity event 32)
 
+## 1.13 — the game as the judge
+
+- [ ] **Reference renders of five shots**: the game (a client game test) and the viewer take pictures of the same
+      scenes from the same eyes — day, night (the lightmap, torches, lanterns, the moon and stars), a row of mobs
+      with their equipment, a room with block entities and smooth lighting, and under water — scored side by side
+      in every CI run
+- [ ] Bounds for every shot, so a change (or a new Minecraft version) that moves the viewer away from the game shows
+      up in CI; then close the gaps the new shots show
+
 ## Later
 
 - [x] **Recording and timelapse** of a camera in the browser: a video with the game's sounds, or one picture

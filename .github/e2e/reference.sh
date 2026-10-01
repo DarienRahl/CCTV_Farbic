@@ -1,6 +1,7 @@
 #!/bin/bash
 # CI reference renders: runs the client game test (src/gametest) under a virtual display while reference.mjs takes
-# the viewer's picture. Stops early when the game cannot open a window, and never waits longer than 25 minutes.
+# the viewer's pictures of every shot. Stops early when the game cannot open a window, and never waits longer than
+# 45 minutes.
 set -u
 run=build/run/clientGameTest
 screen="${REFERENCE_SCREEN:--screen 0 1280x720x24}"
@@ -11,14 +12,14 @@ xvfb-run -a -s "$screen" bash -c 'glxinfo 2>/dev/null | grep -cE "^0x[0-9a-f]+ 3
 xvfb-run -a -s "$screen" vulkaninfo --summary 2>&1 | grep -E "deviceName|driverName|apiVersion|VK_KHR_(xlib|xcb)_surface|ERROR" | head -n 20 || true
 echo "::endgroup::"
 
-(cd .github/e2e && exec timeout 1500 node reference.mjs "../../$run/reference") > reference-viewer.log 2>&1 &
+(cd .github/e2e && exec timeout 2700 node reference.mjs "../../$run/reference") > reference-viewer.log 2>&1 &
 viewer=$!
 
 xvfb-run -a -s "$screen" ./gradlew runClientGameTest --no-daemon --no-configuration-cache > game.log 2>&1 &
 game=$!
 
 status=0
-for second in $(seq 1 1500); do
+for second in $(seq 1 2700); do
 	if ! kill -0 $game 2>/dev/null; then
 		wait $game
 		status=$?

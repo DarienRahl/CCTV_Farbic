@@ -97,13 +97,13 @@ jobs:
             server.log
             .github/e2e/*.png
 
-  # Reference renders: the game itself (a Fabric client game test under a virtual display) and the viewer take a
-  # picture of the same scene from the same eyes; both go into the job summary and the "reference-renders" artifact
-  # side by side with a difference score. Informational while it settles in.
+  # Reference renders: the game itself (a Fabric client game test under a virtual display) and the viewer take
+  # pictures of the same scenes from the same eyes (day, night, mobs, a room, under water); the scores go into the
+  # job summary and the pictures into the "reference-renders" artifact side by side. Informational while it settles in.
   reference-renders:
     needs: build
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 70
     continue-on-error: true
     steps:
       - name: checkout repository
@@ -125,8 +125,8 @@ jobs:
         run: |
           npm install --no-save --no-package-lock playwright@1 > /dev/null
           npx playwright install --with-deps chromium > /dev/null 2>&1
-      - name: the game's and the viewer's picture
-        timeout-minutes: 30
+      - name: the game's and the viewer's pictures
+        timeout-minutes: 50
         run: |
           chmod +x ./gradlew
           .github/e2e/reference.sh
