@@ -379,6 +379,15 @@ to the milestone it belongs to. The roadmap on the README page is drawn from thi
       (placed ones were missing, ones in frames upside down) and a frozen world that reaches the viewer before
       anything spawned in it — every row within 0.3 % of the game
 
+## 1.17 — every block and every biome
+
+- [ ] **Blocks and biomes in the reference renders**: shapes of blocks (doors, trapdoors, stairs that meet, fences,
+      walls, rails, a hanging sign, scaffolding, a cauldron of water, a chiseled bookshelf, a crafter, a shelf...),
+      plants (crops in each age, flowers moved about by their offset, double plants, leaves of every kind with the
+      poplar's, vines, petals, leaf litter), lights at night (every kind of light block on a white floor) and the
+      colours of ten biomes side by side (grass, foliage, dry foliage, water and their blending)
+- [ ] Bounds for the new shots, then close the gaps they show
+
 ## Later
 
 - [x] **Recording and timelapse** of a camera in the browser: a video with the game's sounds, or one picture

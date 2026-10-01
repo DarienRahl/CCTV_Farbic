@@ -1,6 +1,7 @@
 """CI reference renders: the game's picture next to the viewer's picture of the same camera, with difference scores,
 for every shot of the client game test (day, night, mobs, a room, under water, dusk, rain, snow, a cave, the Nether,
-the End, glass, decorations, redstone and thirteen rows of mobs up close in a frozen world).
+the End, glass, decorations, redstone, shapes of blocks, plants, lights at night, biome colours and thirteen rows of
+mobs up close in a frozen world).
 
 usage: python3 compare_reference.py <game dir>/reference
 

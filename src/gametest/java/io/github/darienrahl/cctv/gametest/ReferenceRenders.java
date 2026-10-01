@@ -15,9 +15,9 @@ import net.fabricmc.loader.api.FabricLoader;
 /**
  * Reference renders for CI: builds small scenes in a single player world (flat, time and weather stopped) and, for
  * each shot (day, night, mobs, a room, under water, dusk, rain, snow, a cave, the Nether, the End, glass, decorations,
- * redstone and rows of every kind of mob up close), takes the game's picture from a spectator's eyes with the GUI
- * hidden, moves a CCTV camera to the same eyes and waits while CI takes the viewer's picture of that camera
- * (.github/e2e/reference.mjs), so both can be compared (compare_reference.py).
+ * redstone, shapes of blocks, plants, lights at night, biome colours and rows of every kind of mob up close), takes the
+ * game's picture from a spectator's eyes with the GUI hidden, moves a CCTV camera to the same eyes and waits while CI
+ * takes the viewer's picture of that camera (.github/e2e/reference.mjs), so both can be compared (compare_reference.py).
  *
  * <p>Hand-off through files in {@code <game dir>/reference}: {@code ready-<shot>.json} when the game's picture of a
  * shot is taken, {@code done-<shot>} from the viewer's side, and {@code finished} after the last shot.
@@ -320,6 +320,197 @@ public class ReferenceRenders implements FabricClientGameTest {
 		"summon minecraft:shulker 604 60 -1 {NoAI:1b,PersistenceRequired:1b}",
 	};
 
+	/**
+	 * Shapes of blocks before a wall: doors, trapdoors, a ladder, a hanging sign, scaffolding, an anvil, a grindstone, a
+	 * cauldron of water, a brewing stand, a hopper, a composter, a chiseled bookshelf, a crafter, rods and a shelf; then
+	 * stairs that meet, slabs, a fence with a gate, walls, bars and a chain; in front rails, a button, a lever, a
+	 * pressure plate, a carpet, snow, candles, a pot, turtle eggs, a heavy core and a sulfur spike. Shapes that join
+	 * their neighbours (stairs, fences, walls, rails) are placed normally, the others exactly as given (strict).
+	 */
+	private static final String[] SHAPES = {
+		"fill -12 -60 -145 12 -57 -145 minecraft:stone_bricks",
+		"setblock -11 -60 -144 minecraft:oak_door[facing=south,half=lower] strict",
+		"setblock -11 -59 -144 minecraft:oak_door[facing=south,half=upper] strict",
+		"setblock -10 -60 -144 minecraft:iron_door[facing=south,half=lower,open=true,hinge=right] strict",
+		"setblock -10 -59 -144 minecraft:iron_door[facing=south,half=upper,open=true,hinge=right] strict",
+		"setblock -8 -60 -144 minecraft:spruce_trapdoor[facing=south,half=bottom] strict",
+		"setblock -7 -60 -144 minecraft:iron_trapdoor[facing=north,open=true] strict",
+		"setblock -6 -59 -144 minecraft:poplar_trapdoor[facing=south,half=top] strict",
+		"fill -4 -60 -144 -4 -58 -144 minecraft:ladder[facing=south] strict",
+		"setblock -2 -57 -144 minecraft:stone_bricks",
+		"setblock -2 -58 -144 minecraft:oak_hanging_sign[rotation=0]{front_text:{messages:[\"\",\"CCTV\",\"hangs\",\"\"]}} strict",
+		"fill 0 -60 -144 0 -59 -144 minecraft:scaffolding[distance=0,bottom=false] strict",
+		"setblock 1 -60 -144 minecraft:anvil[facing=east]",
+		"setblock 2 -60 -144 minecraft:grindstone[face=floor,facing=north]",
+		"setblock 3 -60 -144 minecraft:water_cauldron[level=3]",
+		"setblock 4 -60 -144 minecraft:brewing_stand[has_bottle_0=true,has_bottle_2=true]",
+		"setblock 5 -60 -144 minecraft:hopper[facing=down]",
+		"setblock 6 -60 -144 minecraft:composter[level=5]",
+		"setblock 7 -60 -144 minecraft:chiseled_bookshelf[facing=south,slot_0_occupied=true,slot_1_occupied=true,"
+				+ "slot_3_occupied=true,slot_5_occupied=true]",
+		"setblock 8 -60 -144 minecraft:crafter[orientation=south_up]",
+		"setblock 9 -60 -144 minecraft:end_rod[facing=up]",
+		"setblock 10 -60 -144 minecraft:lightning_rod[facing=up]",
+		"setblock 11 -58 -144 minecraft:poplar_shelf[facing=south]{Items:[{Slot:0b,id:\"minecraft:apple\",count:1},"
+				+ "{Slot:2b,id:\"minecraft:diamond\",count:1}]}",
+		"fill -11 -60 -142 -10 -60 -142 minecraft:stone_brick_stairs[facing=north]",
+		"setblock -11 -60 -141 minecraft:stone_brick_stairs[facing=west]",
+		"setblock -8 -60 -141 minecraft:oak_slab[type=bottom]",
+		"setblock -7 -60 -141 minecraft:oak_slab[type=top]",
+		"setblock -6 -60 -141 minecraft:sulfur_slab[type=double]",
+		"fill -4 -60 -141 -2 -60 -141 minecraft:poplar_fence",
+		"setblock -1 -60 -141 minecraft:poplar_fence_gate[facing=north,open=true]",
+		"setblock 0 -60 -141 minecraft:poplar_fence",
+		"fill 2 -60 -141 4 -60 -141 minecraft:cobblestone_wall",
+		"setblock 4 -59 -141 minecraft:mossy_cobblestone_wall",
+		"fill 6 -60 -141 7 -60 -141 minecraft:iron_bars",
+		"setblock 8 -60 -141 minecraft:copper_bars",
+		"fill 9 -60 -141 9 -59 -141 minecraft:iron_chain[axis=y]",
+		"setblock 10 -60 -141 minecraft:copper_lantern",
+		"fill -8 -60 -137 -6 -60 -137 minecraft:rail",
+		"setblock -8 -60 -136 minecraft:rail",
+		"setblock -4 -60 -137 minecraft:powered_rail[shape=east_west]",
+		"setblock -2 -60 -137 minecraft:stone_button[face=floor,facing=north] strict",
+		"setblock -1 -60 -137 minecraft:lever[face=floor,facing=north] strict",
+		"setblock 0 -60 -137 minecraft:heavy_weighted_pressure_plate",
+		"setblock 1 -60 -137 minecraft:white_carpet",
+		"setblock 2 -60 -137 minecraft:snow[layers=3]",
+		"setblock 3 -60 -137 minecraft:snow[layers=6]",
+		"setblock 4 -60 -137 minecraft:red_candle[candles=4]",
+		"setblock 5 -60 -137 minecraft:potted_cactus",
+		"setblock 6 -60 -137 minecraft:turtle_egg[eggs=3] strict",
+		"setblock 7 -60 -137 minecraft:heavy_core",
+		"setblock 8 -60 -137 minecraft:sulfur_spike[vertical_direction=up,thickness=tip] strict",
+	};
+
+	/**
+	 * Plants (placed exactly as given, strict, so none breaks off): leaves of every kind in a row, crops in each age on
+	 * farmland, a melon stem, sugar cane by water, a cactus with its flower, bamboo, berries, a big dripleaf, cocoa;
+	 * flowers (moved about in their block by the game's offset), double plants, petals, wildflowers, leaf litter and
+	 * dry grass; grass, a fern, a dead bush, mushrooms, a shelf mushroom, vines, glow lichen, moss, azaleas, a small
+	 * dripleaf, a lily pad and a mangrove propagule.
+	 */
+	private static final String[] PLANTS = {
+		"setblock 29 -60 -147 minecraft:oak_leaves[persistent=true] strict",
+		"setblock 30 -60 -147 minecraft:spruce_leaves[persistent=true] strict",
+		"setblock 31 -60 -147 minecraft:birch_leaves[persistent=true] strict",
+		"setblock 32 -60 -147 minecraft:jungle_leaves[persistent=true] strict",
+		"setblock 33 -60 -147 minecraft:acacia_leaves[persistent=true] strict",
+		"setblock 34 -60 -147 minecraft:dark_oak_leaves[persistent=true] strict",
+		"setblock 35 -60 -147 minecraft:mangrove_leaves[persistent=true] strict",
+		"setblock 36 -60 -147 minecraft:cherry_leaves[persistent=true] strict",
+		"setblock 37 -60 -147 minecraft:azalea_leaves[persistent=true] strict",
+		"setblock 38 -60 -147 minecraft:flowering_azalea_leaves[persistent=true] strict",
+		"setblock 39 -60 -147 minecraft:pale_oak_leaves[persistent=true] strict",
+		"setblock 40 -60 -147 minecraft:orange_poplar_leaves strict",
+		"setblock 41 -60 -147 minecraft:red_poplar_leaves strict",
+		"setblock 42 -60 -147 minecraft:yellow_poplar_leaves strict",
+		"fill 29 -61 -144 39 -61 -144 minecraft:farmland[moisture=7] strict",
+		"setblock 29 -60 -144 minecraft:wheat[age=0] strict",
+		"setblock 30 -60 -144 minecraft:wheat[age=3] strict",
+		"setblock 31 -60 -144 minecraft:wheat[age=5] strict",
+		"setblock 32 -60 -144 minecraft:wheat[age=7] strict",
+		"setblock 33 -60 -144 minecraft:carrots[age=7] strict",
+		"setblock 34 -60 -144 minecraft:potatoes[age=7] strict",
+		"setblock 35 -60 -144 minecraft:beetroots[age=3] strict",
+		"setblock 36 -60 -144 minecraft:torchflower_crop[age=1] strict",
+		"setblock 37 -60 -144 minecraft:attached_melon_stem[facing=east] strict",
+		"setblock 38 -60 -144 minecraft:melon strict",
+		"setblock 39 -60 -144 minecraft:pumpkin_stem[age=4] strict",
+		"setblock 41 -61 -144 minecraft:water strict",
+		"fill 40 -60 -144 40 -59 -144 minecraft:sugar_cane strict",
+		"fill 42 -60 -144 42 -58 -144 minecraft:sugar_cane strict",
+		"setblock 44 -61 -144 minecraft:sand strict",
+		"fill 44 -60 -144 44 -59 -144 minecraft:cactus strict",
+		"setblock 44 -58 -144 minecraft:cactus_flower strict",
+		"fill 46 -60 -144 46 -59 -144 minecraft:bamboo[age=1,leaves=none] strict",
+		"setblock 46 -58 -144 minecraft:bamboo[age=1,leaves=small] strict",
+		"setblock 46 -57 -144 minecraft:bamboo[age=1,leaves=large] strict",
+		"setblock 48 -60 -144 minecraft:sweet_berry_bush[age=3] strict",
+		"setblock 50 -60 -144 minecraft:big_dripleaf[facing=south] strict",
+		"fill 52 -60 -144 52 -58 -144 minecraft:jungle_log strict",
+		"setblock 51 -59 -144 minecraft:cocoa[age=2,facing=east] strict",
+		"setblock 29 -60 -141 minecraft:poppy strict",
+		"setblock 30 -60 -141 minecraft:golden_dandelion strict",
+		"setblock 31 -60 -141 minecraft:torchflower strict",
+		"setblock 32 -60 -141 minecraft:lily_of_the_valley strict",
+		"setblock 33 -60 -141 minecraft:cornflower strict",
+		"setblock 34 -60 -141 minecraft:blue_orchid strict",
+		"setblock 35 -60 -141 minecraft:allium strict",
+		"setblock 36 -60 -141 minecraft:azure_bluet strict",
+		"setblock 37 -60 -141 minecraft:oxeye_daisy strict",
+		"setblock 38 -60 -141 minecraft:red_tulip strict",
+		"setblock 40 -60 -141 minecraft:sunflower[half=lower] strict",
+		"setblock 40 -59 -141 minecraft:sunflower[half=upper] strict",
+		"setblock 41 -60 -141 minecraft:lilac[half=lower] strict",
+		"setblock 41 -59 -141 minecraft:lilac[half=upper] strict",
+		"setblock 42 -60 -141 minecraft:rose_bush[half=lower] strict",
+		"setblock 42 -59 -141 minecraft:rose_bush[half=upper] strict",
+		"setblock 43 -60 -141 minecraft:peony[half=lower] strict",
+		"setblock 43 -59 -141 minecraft:peony[half=upper] strict",
+		"setblock 44 -60 -141 minecraft:tall_grass[half=lower] strict",
+		"setblock 44 -59 -141 minecraft:tall_grass[half=upper] strict",
+		"setblock 45 -60 -141 minecraft:large_fern[half=lower] strict",
+		"setblock 45 -59 -141 minecraft:large_fern[half=upper] strict",
+		"setblock 46 -60 -141 minecraft:pitcher_plant[half=lower] strict",
+		"setblock 46 -59 -141 minecraft:pitcher_plant[half=upper] strict",
+		"setblock 48 -60 -141 minecraft:pink_petals[flower_amount=4,facing=north] strict",
+		"setblock 49 -60 -141 minecraft:wildflowers[flower_amount=3,facing=east] strict",
+		"setblock 50 -60 -141 minecraft:leaf_litter[segment_amount=4,facing=north] strict",
+		"setblock 51 -60 -141 minecraft:short_dry_grass strict",
+		"setblock 52 -60 -141 minecraft:tall_dry_grass strict",
+		"setblock 30 -60 -137 minecraft:short_grass strict",
+		"setblock 31 -60 -137 minecraft:fern strict",
+		"setblock 32 -60 -137 minecraft:dead_bush strict",
+		"setblock 33 -60 -137 minecraft:brown_mushroom strict",
+		"setblock 34 -60 -137 minecraft:red_mushroom strict",
+		"setblock 35 -60 -137 minecraft:bush strict",
+		"fill 37 -60 -138 37 -59 -138 minecraft:oak_log strict",
+		"setblock 37 -59 -137 minecraft:shelf_mushroom[age=1,facing=south] strict",
+		"fill 39 -60 -138 41 -59 -138 minecraft:stone strict",
+		"fill 39 -60 -137 39 -59 -137 minecraft:vine[north=true] strict",
+		"setblock 41 -60 -137 minecraft:glow_lichen[north=true] strict",
+		"setblock 43 -60 -137 minecraft:moss_carpet strict",
+		"setblock 44 -60 -137 minecraft:pale_moss_carpet strict",
+		"setblock 45 -60 -137 minecraft:azalea strict",
+		"setblock 46 -60 -137 minecraft:flowering_azalea strict",
+		"setblock 48 -61 -137 minecraft:moss_block strict",
+		"setblock 48 -60 -137 minecraft:small_dripleaf[facing=south,half=lower] strict",
+		"setblock 48 -59 -137 minecraft:small_dripleaf[facing=south,half=upper] strict",
+		"setblock 50 -61 -137 minecraft:water strict",
+		"setblock 50 -60 -137 minecraft:lily_pad strict",
+		"setblock 52 -58 -137 minecraft:mangrove_leaves[persistent=true] strict",
+		"setblock 52 -59 -137 minecraft:mangrove_propagule[hanging=true,age=4] strict",
+	};
+
+	/**
+	 * At night on a floor of white concrete: lights of every kind in three rows (glowstone, a sea lantern, a
+	 * shroomlight, a jack o'lantern, froglights; lanterns, a powered redstone lamp, an end rod, an invisible light
+	 * block; torches and lit candles), so their light falls off on the floor like the game's block light.
+	 */
+	private static final String[] LIGHTS = {
+		"fill 66 -61 -150 94 -61 -134 minecraft:white_concrete",
+		"setblock 70 -60 -146 minecraft:glowstone",
+		"setblock 74 -60 -146 minecraft:sea_lantern",
+		"setblock 78 -60 -146 minecraft:shroomlight",
+		"setblock 82 -60 -146 minecraft:jack_o_lantern[facing=south]",
+		"setblock 86 -60 -146 minecraft:ochre_froglight",
+		"setblock 90 -60 -146 minecraft:verdant_froglight",
+		"setblock 70 -60 -142 minecraft:lantern",
+		"setblock 74 -60 -142 minecraft:soul_lantern",
+		"setblock 78 -60 -142 minecraft:copper_lantern",
+		"setblock 82 -61 -142 minecraft:redstone_block",
+		"setblock 82 -60 -142 minecraft:redstone_lamp",
+		"setblock 86 -60 -142 minecraft:end_rod[facing=up]",
+		"setblock 90 -60 -142 minecraft:light[level=15]",
+		"setblock 70 -60 -138 minecraft:torch",
+		"setblock 74 -60 -138 minecraft:soul_torch",
+		"setblock 78 -60 -138 minecraft:redstone_torch",
+		"setblock 82 -60 -138 minecraft:copper_torch",
+		"setblock 86 -60 -138 minecraft:red_candle[candles=4,lit=true]",
+		"setblock 90 -60 -138 minecraft:pearlescent_froglight",
+	};
+
 	private static final Shot[] SHOTS = {
 		new Shot("day", new String[] {"time set noon"}, "0.5 -58.5 -6.5 -20 18"),
 		// the same view at night: the lightmap, block light of the torch and the lantern, the moon and the stars
@@ -346,6 +537,11 @@ public class ReferenceRenders implements FabricClientGameTest {
 		new Shot("glass", new String[0], "0.5 -58.5 -38.5 180 10", 100, "minecraft:overworld", GLASS),
 		new Shot("decor", new String[0], "30.5 -58.5 -45.5 180 8", 40, "minecraft:overworld", DECOR),
 		new Shot("redstone", new String[0], "57.5 -57.5 -40.5 180 30", 40, "minecraft:overworld", REDSTONE),
+		// shapes of blocks, plants, lights at night and biome colours, each in a scene of its own
+		new Shot("shapes", new String[0], "0.5 -56.5 -129.5 180 25", 40, "minecraft:overworld", SHAPES),
+		new Shot("plants", new String[0], "40.5 -56.5 -129.5 180 25", 40, "minecraft:overworld", PLANTS),
+		new Shot("lights", new String[] {"time set midnight"}, "80.5 -56.5 -129.5 180 25", 40, "minecraft:overworld", LIGHTS),
+		new Shot("biomes", new String[] {"time set noon"}, "140.0 -46 -120.0 180 32", 40, "minecraft:overworld", biomes()),
 		// every kind of mob up close, in rows; the world stands still from here on (see zoo)
 		zoo("zoo-farm", 0, 2.5, 7, 0, "minecraft:cow", "minecraft:pig", "minecraft:sheep Color:3b", "minecraft:chicken",
 				"minecraft:rabbit RabbitType:0", "minecraft:mooshroom Type:\"brown\""),
@@ -402,6 +598,42 @@ public class ReferenceRenders implements FabricClientGameTest {
 				-99.5 + distance);
 		return new Shot(name, new String[0], eyes, 40, "minecraft:overworld", build);
 	}
+	/** The biomes of {@link #biomes()}: the far row, then the near row. */
+	private static final String[] BIOMES = {
+		"plains", "swamp", "jungle", "dark_forest", "cherry_grove",
+		"badlands", "mangrove_swamp", "pale_garden", "snowy_taiga", "savanna",
+	};
+
+	/**
+	 * Biome colours: ten patches of 8 by 8 blocks (aligned to the 4 by 4 cells biomes are stored in), two rows of five,
+	 * each a biome of its own with grass, a pool of water with a lily pad, sugar cane, a block of oak leaves with vines,
+	 * grass, a fern, a bush and leaf litter, so the grass, foliage, dry foliage and water colours and their blending
+	 * across the patches' edges show.
+	 */
+	private static String[] biomes() {
+		java.util.List<String> build = new java.util.ArrayList<>();
+		for (int i = 0; i < BIOMES.length; i++) {
+			int x = 120 + (i % 5) * 8, z = i < 5 ? -152 : -144;
+			build.add(String.format(java.util.Locale.ROOT, "fillbiome %d -64 %d %d -48 %d minecraft:%s", x, z, x + 7, z + 7, BIOMES[i]));
+		}
+		for (int i = 0; i < BIOMES.length; i++) {
+			int x = 120 + (i % 5) * 8, z = i < 5 ? -152 : -144;
+			build.add(String.format(java.util.Locale.ROOT, "fill %d -61 %d %d -61 %d minecraft:water strict", x + 1, z + 1, x + 3, z + 3));
+			build.add(String.format(java.util.Locale.ROOT, "setblock %d -60 %d minecraft:lily_pad strict", x + 2, z + 2));
+			build.add(String.format(java.util.Locale.ROOT, "fill %d -60 %d %d -59 %d minecraft:sugar_cane strict", x + 4, z + 2, x + 4, z + 2));
+			build.add(String.format(java.util.Locale.ROOT, "fill %d -60 %d %d -59 %d minecraft:oak_leaves[persistent=true] strict",
+					x + 5, z + 1, x + 6, z + 2));
+			build.add(String.format(java.util.Locale.ROOT, "fill %d -60 %d %d -59 %d minecraft:vine[north=true] strict", x + 5, z + 3, x + 6, z + 3));
+			build.add(String.format(java.util.Locale.ROOT, "setblock %d -60 %d minecraft:short_grass strict", x + 1, z + 5));
+			build.add(String.format(java.util.Locale.ROOT, "setblock %d -60 %d minecraft:short_grass strict", x + 3, z + 6));
+			build.add(String.format(java.util.Locale.ROOT, "setblock %d -60 %d minecraft:fern strict", x + 2, z + 6));
+			build.add(String.format(java.util.Locale.ROOT, "setblock %d -60 %d minecraft:bush strict", x + 5, z + 5));
+			build.add(String.format(java.util.Locale.ROOT, "setblock %d -60 %d minecraft:leaf_litter[segment_amount=4,facing=north] strict",
+					x + 6, z + 6));
+		}
+		return build.toArray(new String[0]);
+	}
+
 	/** Chunks render slowly on CI's software renderer: up to five minutes. */
 	private static final int CHUNK_TICKS = 20 * 60 * 5;
 

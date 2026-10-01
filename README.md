@@ -10,7 +10,7 @@
   <a href="https://github.com/DarienRahl/CCTV_Farbic/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/DarienRahl/CCTV_Farbic?style=for-the-badge&amp;label=release&amp;color=5d8c3e"></a>
   <img alt="Minecraft 26.3" src="https://img.shields.io/badge/minecraft-26.3-866043?style=for-the-badge">
   <img alt="Fabric, server side only" src="https://img.shields.io/badge/fabric-server%20side%20only-8b8b8b?style=for-the-badge">
-  <a href="#roadmap"><img alt="Roadmap" src="https://img.shields.io/badge/roadmap-118%2F119%20done-80ff20?style=for-the-badge"></a>
+  <a href="#roadmap"><img alt="Roadmap" src="https://img.shields.io/badge/roadmap-118%2F121%20done-80ff20?style=for-the-badge"></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-555555?style=for-the-badge"></a>
 </p>
 <!-- badges:end -->
@@ -205,7 +205,7 @@ at once as a video wall.
 ## Roadmap
 
 <!-- roadmap:start -->
-<p align="center"><img src="docs/images/roadmap/banner.svg" width="100%" alt="CCTV roadmap: 118 of 119 done"></p>
+<p align="center"><img src="docs/images/roadmap/banner.svg" width="100%" alt="CCTV roadmap: 118 of 121 done"></p>
 
 What is done and what comes next, milestone by milestone (the full plan with its principles is in
 [docs/ROADMAP.md](docs/ROADMAP.md)).
@@ -453,6 +453,16 @@ What is done and what comes next, milestone by milestone (the full plan with its
 
 - [x] **Every kind of mob in the reference renders, up close**: thirteen rows of mobs (farm animals, pets, the undead, illagers, the Nether's, small ones, flyers, fish and squid, big ones, mounts, rare ones, sea creatures and ghasts) seen from a few blocks, with the world frozen (/tick freeze) so the game and the viewer show the same pose
 - [x] Bounds for the rows, then close the gaps they show in models, textures and poses: models drawn from both sides (entityCutout has no culling in 26.x), held items in the arm pose the game gives mobs, piglins' ears and poses, a drowned's trident in its hand (an item definition's transformation above a special model), glowing eyes blended like RenderPipelines.EYES, the breeze's wind, guardians' spikes drawn in, copper golem statues (placed ones were missing, ones in frames upside down) and a frozen world that reaches the viewer before anything spawned in it — every row within 0.3 % of the game
+
+</details>
+
+<img src="docs/images/roadmap/1-17.svg" width="100%" alt="1.17 — every block and every biome: planned, 0 of 2 done">
+
+<details>
+<summary><b>1.17 — every block and every biome</b> · planned · 0 of 2 done</summary>
+
+- [ ] **Blocks and biomes in the reference renders**: shapes of blocks (doors, trapdoors, stairs that meet, fences, walls, rails, a hanging sign, scaffolding, a cauldron of water, a chiseled bookshelf, a crafter, a shelf...), plants (crops in each age, flowers moved about by their offset, double plants, leaves of every kind with the poplar's, vines, petals, leaf litter), lights at night (every kind of light block on a white floor) and the colours of ten biomes side by side (grass, foliage, dry foliage, water and their blending)
+- [ ] Bounds for the new shots, then close the gaps they show
 
 </details>
 
