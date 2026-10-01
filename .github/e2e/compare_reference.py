@@ -21,15 +21,16 @@ from PIL import Image, ImageChops, ImageFilter
 
 # Coarse difference (%) above which a shot counts as a regression: about three times what each shot scored when it
 # was added (1.13: day 0.10, night 0.06, mobs 0.10, room 0.20, water 0.36-0.45; 1.14: dusk 0.06, nether 0.08-0.10,
-# end 0.11-0.21, cave 0.14-0.34; 1.15: glass 0.14, decor 0.13, redstone 0.12; 1.16: the rows of mobs 0.06-0.14), so a
-# change that moves the picture away from the game's shows up, while the game's own random particles (bubbles, smoke,
-# torch and candle flames) and what moves with the time (a beacon's beam, banners) stay under. Rain and snow fall at random places in both pictures, so
+# end 0.11-0.21, cave 0.14-0.34; 1.15: glass 0.14, decor 0.13, redstone 0.12; 1.16: the rows of mobs 0.06-0.14; 1.17:
+# shapes 0.11-0.16, plants 0.10, lights 0.15-0.25, biomes 0.08-0.10, workshop 0.11), so a change that moves the picture
+# away from the game's shows up, while the game's own random particles (bubbles, smoke, torch and candle flames) and
+# what moves with the time (a beacon's beam, banners, an enchanting table's book) stay under. Rain and snow fall at random places in both pictures, so
 # their bounds leave room for that (0.8-0.9).
 BOUNDS = {"day": 0.4, "night": 0.3, "mobs": 0.4, "room": 0.6, "water": 1.2, "dusk": 0.3, "rain": 2.0, "snow": 2.0,
           "cave": 1.0, "nether": 0.3, "end": 0.6, "glass": 0.5, "decor": 0.5, "redstone": 0.4,
           "zoo-farm": 0.3, "zoo-pets": 0.3, "zoo-undead": 0.3, "zoo-illagers": 0.3, "zoo-nether": 0.4, "zoo-small": 0.3,
           "zoo-flyers": 0.4, "zoo-water": 0.3, "zoo-big": 0.3, "zoo-ride": 0.3, "zoo-rare": 0.3, "zoo-sea": 0.4,
-          "zoo-ghasts": 0.3}
+          "zoo-ghasts": 0.3, "shapes": 0.5, "plants": 0.3, "lights": 0.7, "biomes": 0.3, "workshop": 0.4}
 DEFAULT_BOUND = 2.0
 
 
