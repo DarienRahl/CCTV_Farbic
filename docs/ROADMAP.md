@@ -390,6 +390,19 @@ to the milestone it belongs to. The roadmap on the README page is drawn from thi
 - [x] Bounds for the new shots, then close the gaps they show: a model face may name its texture slot without the
       '#' (the heavy core was drawn with the missing texture) — every new shot within 0.25 % of the game
 
+## 1.18 — everything that moves or floats (released: 1.18.0)
+
+- [x] **Fluids, display entities, mannequins, vehicles and projectiles in the reference renders**: a waterfall and a
+      lava fall, water and lava flowing down trenches, blocks full of water; block, item and text displays; mannequins
+      in their profiles' skins, crouching, left-handed, in armour, with hidden layers and an elytra; boats, a raft and
+      every kind of minecart; arrows, a trident, thrown items, fireworks, potions and wind charges; fireballs, the
+      dragon's, wither skulls, a shulker bullet, llama spit and experience orbs; primed TNT and falling blocks
+- [x] Bounds for the new shots, then close the gaps they show: thrown items, wind charges, shulker bullets, wither
+      skulls, llama spit, experience orbs, end crystals, primed TNT and arrows like their renderers; block displays
+      with special models and tints; text displays only from the front; displays and mannequins that have not ticked
+      yet (a frozen world) like the game; camera markers, empty since 26.3, show their observer again — every new
+      shot within 0.2 % of the game
+
 ## Later
 
 - [x] **Recording and timelapse** of a camera in the browser: a video with the game's sounds, or one picture
