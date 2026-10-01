@@ -45,6 +45,10 @@ net/minecraft/client/renderer/entity/TntRenderer
 net/minecraft/client/renderer/entity/FallingBlockRenderer
 net/minecraft/client/renderer/entity/EndCrystalRenderer
 net/minecraft/client/model/object/crystal/EndCrystalModel
+net/minecraft/client/renderer/entity/ArrowRenderer
+net/minecraft/client/model/object/projectile/ArrowModel
+net/minecraft/client/renderer/block/BlockModelResolver
+net/minecraft/client/color/block/BlockTintSources
 net/minecraft/client/renderer/feature/FlameFeatureRenderer
 net/minecraft/client/renderer/feature/ShadowFeatureRenderer
 net/minecraft/client/renderer/feature/ItemFeatureRenderer

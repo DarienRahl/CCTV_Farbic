@@ -9,6 +9,7 @@ import {
 import { describeMob, isKnownMob, blockEntityModel, dyeRgb, CLIENT, equipmentPose, setEquipment, setAutoMobResolver, isAvatar } from './mobs.js';
 import { Animator, AnimationStates } from './keyframes.js';
 import { collectParts } from './models.js';
+import { tintInHand } from './mesher.js';
 import { ItemDefinitions } from './items.js';
 import { JavaRandom } from './rng.js';
 import { program, FOG_GLSL, setFog, Target, FULLSCREEN_VS } from './gl.js';
@@ -796,6 +797,8 @@ const THROWN = {
 	splash_potion: 'splash_potion', lingering_potion: 'lingering_potion', experience_bottle: 'experience_bottle',
 	eye_of_ender: 'ender_eye', fireball: 'fire_charge', small_fireball: 'fire_charge', firework_rocket: 'firework_rocket',
 };
+// Blocks drawn by their special model (SpecialBlockModelRenderer) where a block, not a block entity, is shown
+const SPECIAL_BLOCKS = new Set(['chest', 'shulker_box', 'head', 'banner', 'statue']);
 // EntityRenderers: the ThrownItemRenderers made bigger or smaller, and the ones lit like block light 15
 const THROWN_SCALE = { fireball: 3, small_fireball: 0.75 };
 const THROWN_BRIGHT = new Set(['eye_of_ender', 'fireball', 'small_fireball']);
@@ -2090,7 +2093,7 @@ export class EntityRenderer {
 				scale(pm, 0.625, -0.625, -0.625);
 				translate(pm, -0.5, -0.5, -0.5);
 				// Blocks.CARVED_PUMPKIN.defaultBlockState(): its face to the north, the way the golem looks
-				this.emitBlock('minecraft:carved_pumpkin', pm, style, false, false, { facing: 'north' });
+				this.emitBlock('minecraft:carved_pumpkin', pm, style, false, { facing: 'north' });
 			}
 		}
 		// CrossedArmsItemLayer (villagers, wandering traders) and WitchItemLayer: the main hand's item held in the
@@ -2299,8 +2302,17 @@ export class EntityRenderer {
 			const random = new JavaRandom();
 			random.setSeedNumber(42);
 			collectParts(dispatch, random, parts);
+			// tinted like away from the world (BlockTintSource.color)
+			const grass = this.assets.colormap ? this.assets.colormap('grass', 0.5, 1, 0x7cbd6b) : 0x7cbd6b;
 			const quads = [];
-			for (const part of parts) for (const list of part.quads) for (const q of list) quads.push({ q, tint: [1, 1, 1] });
+			for (const part of parts) {
+				for (const list of part.quads) {
+					for (const q of list) {
+						const c = q.tint >= 0 ? tintInHand(info, q.tint, grass) : -1;
+						quads.push({ q, tint: c < 0 ? [1, 1, 1] : [(c >> 16 & 255) / 255, (c >> 8 & 255) / 255, (c & 255) / 255] });
+					}
+				}
+			}
 			if (quads.length) mesh = { kind: 'block', quads: this.blockQuads(quads) };
 		}
 		this.itemMeshes.set(key, mesh);
@@ -2702,9 +2714,8 @@ export class EntityRenderer {
 				blockStyle = { ...style, overlay: [0, fuse > -1 && tntLit(fuse) ? 1 : 0] };
 			}
 			const mesh = this.blockStateMesh(e.db, this.world);
-			const info = this.world && this.world.infos[e.db];
 			if (mesh) this.emitItem(mesh, b, blockStyle);
-			else if (info && info.name.endsWith('chest')) this.emitBlock(null, b, blockStyle, true);
+			this.drawSpecialBlock(e.db, b, blockStyle, this.world);
 		}
 		scale(m, -1, -1, 1);
 		const start = this.sink.mark();
@@ -3542,7 +3553,7 @@ export class EntityRenderer {
 		if (!e.invisible) {
 			const frame = new Float32Array(m);
 			translate(frame, -0.5, -0.5, -0.5);
-			this.emitBlock(glow ? 'minecraft:glow_item_frame' : 'minecraft:item_frame', frame, style, false, hasMap ? 'map' : true);
+			this.emitBlock(glow ? 'minecraft:glow_item_frame' : 'minecraft:item_frame', frame, style, hasMap ? 'map' : true);
 		}
 		translate(m, 0, 0, e.invisible ? 0.5 : 0.4375);
 		const rotation = Number(d.rotation) || 0;
@@ -3637,21 +3648,8 @@ export class EntityRenderer {
 	 * Emits a block model with the atlas texture: the block's state given as properties (the game's defaultBlockState(),
 	 * which its blockstates file does not name), else its first variant.
 	 */
-	emitBlock(name, m, style, chestFallback = false, frameModel = false, state = null) {
-		if (!this.assets) return;
-		if (!name) {
-			if (chestFallback) {
-				const model = this.library.get('minecraft:chest#main');
-				const texture = this.texture('chest/normal');
-				if (model && texture) {
-					model.reset();
-					const start = this.sink.mark();
-					emitModel(this.sink, model, m, style);
-					this.batch(texture, MODE_CUTOUT, start);
-				}
-			}
-			return;
-		}
+	emitBlock(name, m, style, frameModel = false, state = null) {
+		if (!this.assets || !name) return;
 		const key = 'block:' + name + (frameModel ? ':frame' + (frameModel === 'map' ? ':map' : '') : '') + (state ? JSON.stringify(state) : '');
 		let mesh = this.itemMeshes.get(key);
 		if (mesh === undefined) {
@@ -3670,6 +3668,16 @@ export class EntityRenderer {
 			this.itemMeshes.set(key, mesh);
 		}
 		if (mesh) this.emitItem(mesh, m, style);
+	}
+
+	/**
+	 * BlockModelResolver: a block whose look is a special model (chests, shulker boxes, heads, banners, copper golem
+	 * statues) is drawn with that model from the block's corner at m, at rest.
+	 */
+	drawSpecialBlock(id, m, style, world) {
+		const info = id !== undefined && world ? world.infos[id] : null;
+		const def = info ? blockEntityModel(info) : null;
+		if (def && SPECIAL_BLOCKS.has(def.kind)) this.drawBlockEntityModel(def, m, style);
 	}
 
 	/**
@@ -3726,6 +3734,7 @@ export class EntityRenderer {
 		if (type === 'block_display') {
 			const mesh = d.b !== undefined ? this.blockStateMesh(d.b, world) : null;
 			if (mesh) this.emitItem(mesh, m, displayStyle);
+			this.drawSpecialBlock(d.b, m, displayStyle, world);
 		} else if (type === 'item_display') {
 			if (!e.item) return;
 			rotate(m, 1, Math.PI);
@@ -3813,6 +3822,11 @@ export class EntityRenderer {
 		scale(m, -0.025, -0.025, -0.025);
 		translate(m, 1 - width / 2, -height, 0);
 		const transform = matrixTransform(m);
+		// the text pipelines cull back faces: from behind (the text read mirrored) neither text nor background shows
+		const o = transform(0, 0), ax = transform(1, 0), ay = transform(0, 1);
+		const px = [ax[0] - o[0], ax[1] - o[1], ax[2] - o[2]], py = [ay[0] - o[0], ay[1] - o[1], ay[2] - o[2]];
+		const facing = (px[1] * py[2] - px[2] * py[1]) * o[0] + (px[2] * py[0] - px[0] * py[2]) * o[1] + (px[0] * py[1] - px[1] * py[0]) * o[2];
+		if (facing <= 0) return;
 		const progress = s.progress ?? 1;
 		// Font: text whose alpha has none of its top six bits set is drawn opaque
 		let alpha = Math.round(lerp(s.opacity[0], s.opacity[1], progress)) & 255;
@@ -4631,9 +4645,15 @@ export class EntityRenderer {
 	 * @param data what the server sent for this block entity (banner patterns, pot sherds, head owner) or null
 	 * @param pos  its block position
 	 */
+	/**
+	 * A block entity's model (chests, shulker boxes, heads, banners, bells, statues, pots) at a block position p, or
+	 * from a matrix p (16 numbers) where the game draws a block's special model instead of its block model
+	 * (block displays, minecarts' blocks).
+	 */
 	drawBlockEntityModel(def, p, style, data = null, pos = null) {
 		const m = mat4();
-		translate(m, p[0], p[1], p[2]);
+		if (p.length === 16) m.set(p);
+		else translate(m, p[0], p[1], p[2]);
 		const emit = (layer, texturePath, matrix, color, mode = MODE_CUTOUT, pose = null) => {
 			const model = this.library.get(layer);
 			const texture = typeof texturePath === 'object' && texturePath ? texturePath.texture : this.texture(texturePath);

@@ -136,6 +136,30 @@ export function tintSourceOf(name) {
 	return sources && sources[0] && sources[0][0] !== TINT_NONE ? sources[0] : null;
 }
 
+/**
+ * BlockTintSource.color: the tint of a block's tint index away from the world (block displays, minecarts' blocks):
+ * the default grass colour (GrassColor.getDefaultColor, given), the default foliage and dry foliage colours, a lily
+ * pad's colour in hand, the redstone wire's and stems' colours of the state; -1 (none) for water and sugar cane.
+ */
+export function tintInHand(info, index, grassDefault) {
+	const sources = info.tints;
+	if (!sources || index >= sources.length) return -1;
+	const source = sources[index];
+	switch (source[0]) {
+		case TINT_GRASS: return info.name === 'minecraft:sugar_cane' ? -1 : grassDefault;
+		case TINT_DOUBLE_GRASS: return grassDefault;
+		case TINT_FOLIAGE: return -12012264 & 0xffffff;
+		case TINT_DRY_FOLIAGE: return -10732494 & 0xffffff;
+		case TINT_CONSTANT: return info.name === 'minecraft:lily_pad' ? 7455580 : source[1];
+		case TINT_REDSTONE: return redstoneColor(Number(info.props.power || 0));
+		case TINT_STEM: {
+			const age = Number(info.props.age || 0);
+			return (age * 32 & 255) << 16 | (255 - age * 8 & 255) << 8 | (age * 4 & 255);
+		}
+		default: return -1;
+	}
+}
+
 /** RedstoneWireBlock.getColorForPower */
 function redstoneColor(power) {
 	const f = power / 15;
