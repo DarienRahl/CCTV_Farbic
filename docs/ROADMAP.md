@@ -413,6 +413,15 @@ to the milestone it belongs to. The roadmap on the README page is drawn from thi
       banners swaying by the game time (still in a frozen world), entities that have not ticked yet turned and
       dressed like the game makes them — every new shot within 0.25 % of the game
 
+## 1.20 — every kind of mob (released: 1.20.0)
+
+- [x] **Young mobs and the kinds of mobs in the reference renders**: the young of the farm, the wild, the folk
+      (villagers, zombies, piglins, hoglins...) and the mobs one rides; every wolf; frogs, chickens, pigs and cows of
+      each climate; villagers of each biome, profession and level; horses of each colour and markings, llamas
+- [x] Bounds for the new shots, then close the gaps they show: villagers wear their biome's hat or their
+      profession's like VillagerProfessionLayer (from the textures' metadata, which the server now serves) and horse
+      markings blend like the game's — every new shot within 0.1 % of the game
+
 ## Later
 
 - [x] **Recording and timelapse** of a camera in the browser: a video with the game's sounds, or one picture

@@ -2,7 +2,8 @@
 for every shot of the client game test (day, night, mobs, a room, under water, dusk, rain, snow, a cave, the Nether,
 the End, glass, decorations, redstone, shapes of blocks, plants, lights at night, biome colours, blocks of work,
 flowing water and lava, display entities, mannequins, thirteen rows of mobs up close in a frozen world, vehicles,
-projectiles, fireballs, blocks that are entities, signs, chests, heads and banners, and armour stands at night).
+projectiles, fireballs, blocks that are entities, signs, chests, heads and banners, armour stands at night, young mobs
+and the kinds of wolves, farm animals, villagers and horses).
 
 usage: python3 compare_reference.py <game dir>/reference
 
@@ -25,8 +26,8 @@ from PIL import Image, ImageChops, ImageFilter
 # end 0.11-0.21, cave 0.14-0.34; 1.15: glass 0.14, decor 0.13, redstone 0.12; 1.16: the rows of mobs 0.06-0.14; 1.17:
 # shapes 0.11-0.16, plants 0.10, lights 0.15-0.25, biomes 0.08-0.10, workshop 0.11; 1.18: fluids 0.14, displays 0.20,
 # mannequins 0.11, vehicles 0.06, projectiles 0.07, fireballs 0.06, blocks 0.14; 1.19: signs 0.19, chests 0.06, heads
-# 0.10, stands 0.22), so a change that moves the picture
-# away from the game's shows up, while the game's own random particles (bubbles, smoke, torch and candle flames) and
+# 0.10, stands 0.22; 1.20: babies 0.06-0.08, wolves 0.08, climates 0.07, villagers 0.07, horses 0.07), so a change that
+# moves the picture away from the game's shows up, while the game's own random particles (bubbles, smoke, torch and candle flames) and
 # what moves with the time (a beacon's beam, banners, an enchanting table's book) stay under. Rain and snow fall at random places in both pictures, so
 # their bounds leave room for that (0.8-0.9).
 BOUNDS = {"day": 0.4, "night": 0.3, "mobs": 0.4, "room": 0.6, "water": 1.2, "dusk": 0.3, "rain": 2.0, "snow": 2.0,
@@ -35,7 +36,9 @@ BOUNDS = {"day": 0.4, "night": 0.3, "mobs": 0.4, "room": 0.6, "water": 1.2, "dus
           "zoo-flyers": 0.4, "zoo-water": 0.3, "zoo-big": 0.3, "zoo-ride": 0.3, "zoo-rare": 0.3, "zoo-sea": 0.4,
           "zoo-ghasts": 0.3, "shapes": 0.5, "plants": 0.3, "lights": 0.7, "biomes": 0.3, "workshop": 0.4,
           "fluids": 0.4, "displays": 0.6, "mannequins": 0.4, "vehicles": 0.3, "projectiles": 0.3, "fireballs": 0.3,
-          "blocks": 0.4, "signs": 0.5, "chests": 0.3, "heads": 0.3, "stands": 0.6}
+          "blocks": 0.4, "signs": 0.5, "chests": 0.3, "heads": 0.3, "stands": 0.6, "babies-farm": 0.3,
+          "babies-wild": 0.3, "babies-folk": 0.3, "babies-ride": 0.3, "wolves": 0.3, "climates": 0.3, "villagers": 0.3,
+          "horses": 0.3}
 DEFAULT_BOUND = 2.0
 
 
