@@ -422,6 +422,18 @@ to the milestone it belongs to. The roadmap on the README page is drawn from thi
       profession's like VillagerProfessionLayer (from the textures' metadata, which the server now serves) and horse
       markings blend like the game's — every new shot within 0.1 % of the game
 
+## 1.21 — mobs dressed up (released: 1.21.0)
+
+- [x] **Mobs in armour and tack and in their moods in the reference renders**: armour of every material with trims
+      and dyes, items in hand; horses in their armour with saddles, chests and carpets; the other saddled mounts and
+      happy ghasts in harnesses; tamed wolves and cats with collars, sitting and in armour, foxes asleep; parrots,
+      tropical fish and axolotls of their colours; a shorn sheep, a charged creeper, a goat with one horn, a cracked
+      iron golem, Dinnerbone and Toast, shulkers; pandas of every gene
+- [x] Bounds for the new shots, then close the gaps they show: harness goggles and the squeezed body, goat horns,
+      the shorn sheep's undercoat, baby armour, energy swirls, skeletons' and babies' items, faces seen from behind
+      lit from the other side (PER_FACE_LIGHTING), an armoured zombie nautilus's corals — every new shot within
+      0.11 % of the game
+
 ## Later
 
 - [x] **Recording and timelapse** of a camera in the browser: a video with the game's sounds, or one picture

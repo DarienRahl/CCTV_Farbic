@@ -1598,6 +1598,15 @@ const headTo = (p, a, part = 'head') => {
 /** Uses the simple animation when the game's keyframes are not available (older server, extraction failed). */
 const keyframed = (probe, fallback, setup) => (p, a, e) => (a.k && a.k.has(probe) ? setup(p, a, e, a.k) : ANIMS[fallback](p, a, e));
 
+/** NautilusModel.setupAnim: the body turned a little after the head, swimming all the time. */
+const NAUTILUS_SWIM = keyframed('NautilusAnimation.SWIMMING', 'none', (p, a, e, k) => {
+	if (p.body) {
+		p.body.yRot = clamp(a.netHeadYaw, -10, 10) * DEG;
+		p.body.xRot = clamp(a.headPitch, -10, 10) * DEG;
+	}
+	k.walk('NautilusAnimation.SWIMMING', a.walk + a.age / 5, a.walkSpeed + 0.2, 2, 3);
+});
+
 const KEYFRAME_ANIMS = {
 	/** WardenModel.setupAnim */
 	warden: keyframed('WardenAnimation.WARDEN_ROAR', 'generic', (p, a, e, k) => {
@@ -1739,15 +1748,11 @@ const KEYFRAME_ANIMS = {
 		k.state('CopperGolemAnimation.COPPER_GOLEM_CHEST_INTERACTION_ITEM_NODROP', 'interactionDropNoItemAnimationState');
 	}),
 	/** NautilusModel.setupAnim */
-	nautilus: keyframed('NautilusAnimation.SWIMMING', 'none', (p, a, e, k) => {
-		if (p.body) {
-			p.body.yRot = clamp(a.netHeadYaw, -10, 10) * DEG;
-			p.body.xRot = clamp(a.headPitch, -10, 10) * DEG;
-		}
-		k.walk('NautilusAnimation.SWIMMING', a.walk + a.age / 5, a.walkSpeed + 0.2, 2, 3);
+	nautilus: (p, a, e) => {
+		NAUTILUS_SWIM(p, a, e);
 		// ZombieNautilusCoralModel.setupAnim: the corals stay off a warm zombie nautilus that wears armour
 		if (p.corals) p.corals.visible = !((e.eq && e.eq[4]) || e.bodyArmor);
-	}),
+	},
 	/** AdultAxolotlModel keeps the simple animation; BabyAxolotlModel.setupAnim plays keyframes. */
 	axolotl: (p, a, e) => {
 		if (!e.baby || !a.k || !a.k.has('BabyAxolotlAnimation.BABY_AXOLOTL_SWIM')) return ANIMS.quadruped(p, a, e);
