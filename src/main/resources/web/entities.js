@@ -826,8 +826,8 @@ export class EntityRenderer {
 		this.blockAnims = new Map();
 		/** Display entities' interpolation (transformation, text opacity and background, teleport): entity id -> state */
 		this.displays = new Map();
-		/** Mannequins seen while the world was not frozen: they have ticked and wear their profile's skin. */
-		this.tickedMannequins = new Set();
+		/** Entities seen while the world was not frozen: they have ticked (mannequins wear their skin, bodies turn). */
+		this.ticked = new Set();
 		/** Parrots dancing to a jukebox: entity id -> the jukebox's position (Parrot.jukebox) */
 		this.partyParrots = new Map();
 		this.breaking = [];
@@ -1075,8 +1075,7 @@ export class EntityRenderer {
 	mannequinSkin(e) {
 		// ClientMannequin.tick takes the skin its profile's lookup found: until a mannequin has ticked (one that
 		// appeared while the world is frozen) it wears DEFAULT_SKIN, the empty profile's
-		if (!this.frozen) this.tickedMannequins.add(e.id);
-		const profile = this.tickedMannequins.has(e.id) ? e.profile || {} : {};
+		const profile = this.ticked.has(e.id) ? e.profile || {} : {};
 		const key = profile.id || (profile.name ? 'name:' + profile.name : NIL_UUID);
 		const skin = this.skin(key, profile.name || '');
 		e.uuid = key;
@@ -1308,6 +1307,13 @@ export class EntityRenderer {
 		for (const [id, eb] of b.map) {
 			if (!a.map.has(id) && t > 0) result.push(eb);
 		}
+		// LivingEntity.recreateFromPacket: a client starts an entity's body turned like its head and turns it as it
+		// ticks; one that has not ticked yet (it appeared while the world is frozen) keeps that
+		for (let i = 0; i < result.length; i++) {
+			const e = result[i];
+			if (!this.frozen) this.ticked.add(e.id);
+			else if (e.head !== undefined && e.body !== e.head && !this.ticked.has(e.id)) result[i] = { ...e, body: e.head };
+		}
 		return result;
 	}
 
@@ -1351,7 +1357,7 @@ export class EntityRenderer {
 
 	cleanupStates(now) {
 		for (const [id, state] of this.displays) if (this.tick - state.seen > 100) this.displays.delete(id);
-		if (this.tickedMannequins.size > 64 && this.byId) for (const id of this.tickedMannequins) if (!this.byId.has(id)) this.tickedMannequins.delete(id);
+		if (this.ticked.size > 1024 && this.byId) for (const id of this.ticked) if (!this.byId.has(id)) this.ticked.delete(id);
 		for (const [id, queue] of this.events) if (!queue.length || this.tick - queue[queue.length - 1].t > 200) this.events.delete(id);
 		for (const [key, b] of this.books) if (now - b.seen > 5000) this.books.delete(key);
 		if (this.states.size < 64) return;
@@ -4693,8 +4699,14 @@ export class EntityRenderer {
 			case 'shulker_box': {
 				translate(m, 0.5, 0.5, 0.5);
 				scale(m, 0.9995);
-				const f = { up: null, down: [0, 180], north: [0, 90], south: [0, -90], west: [2, -90], east: [2, 90] }[def.facing];
-				if (f) rotate(m, f[0], f[1] * DEG);
+				// Direction.getRotation: down rotationX(180°); the sides rotationXYZ(90°, 0, z) with z 180° (north), 0 (south),
+				// 90° (west) and -90° (east)
+				if (def.facing === 'down') rotate(m, 0, Math.PI);
+				else if (def.facing !== 'up') {
+					rotate(m, 0, Math.PI / 2);
+					const z = { north: 180, south: 0, west: 90, east: -90 }[def.facing] || 0;
+					if (z) rotate(m, 2, z * DEG);
+				}
 				scale(m, 1, -1, -1);
 				translate(m, 0, -1, 0);
 				// ShulkerBoxModel.setupAnim: the lid rises half a block and turns 270 degrees as it opens
@@ -4715,7 +4727,8 @@ export class EntityRenderer {
 					translate(m, 0.5, 0, 0.5);
 				}
 				scale(m, -1, -1, 1);
-				const yaw = def.wall ? { north: 180, south: 0, west: 270, east: 90 }[def.facing] ?? 0 : def.rotation * 22.5;
+				// SkullBlockRenderer: a wall head is turned by RotationSegment.convertToSegment(facing.getOpposite())
+				const yaw = def.wall ? { north: 0, south: 180, west: 270, east: 90 }[def.facing] ?? 0 : def.rotation * 22.5;
 				const model = this.library.get(def.layer);
 				// Player heads show their owner's skin (SkullBlockRenderer.resolveSkullRenderType).
 				const owner = data && data.k === 'head' && def.layer === 'minecraft:player_head#main' ? data : null;

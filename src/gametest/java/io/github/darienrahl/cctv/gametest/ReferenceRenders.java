@@ -230,8 +230,9 @@ public class ReferenceRenders implements FabricClientGameTest {
 				+ "components:{\"minecraft:trim\":{material:\"minecraft:gold\",pattern:\"minecraft:coast\"}}},"
 				+ "legs:{id:\"minecraft:diamond_leggings\",count:1,components:{\"minecraft:enchantments\":{\"minecraft:protection\":1}}},"
 				+ "mainhand:{id:\"minecraft:trident\",count:1}}}",
-		"setblock 23 -60 -51 minecraft:decorated_pot{sherds:[\"minecraft:angler_pottery_sherd\",\"minecraft:brick\","
-				+ "\"minecraft:heart_pottery_sherd\",\"minecraft:brick\"]}",
+		// 26.3's PotDecorations: the sherd (or brick) of each side, back, left, right and front
+		"setblock 23 -60 -51 minecraft:decorated_pot{sherds:{back:\"minecraft:angler_pottery_sherd\",left:\"minecraft:brick\","
+				+ "right:\"minecraft:heart_pottery_sherd\",front:\"minecraft:brick\"}}",
 		"setblock 25 -60 -51 minecraft:player_head[rotation=8]",
 		"setblock 27 -60 -51 minecraft:lectern[facing=south,has_book=true]",
 		"setblock 29 -60 -51 minecraft:potted_fern",
@@ -716,8 +717,8 @@ public class ReferenceRenders implements FabricClientGameTest {
 		"setblock 561 -60 -97 minecraft:piglin_head[rotation=12] strict",
 		"setblock 563 -60 -97 minecraft:dragon_head[rotation=1] strict",
 		"setblock 565 -60 -97 minecraft:player_head[rotation=0] strict",
-		"setblock 567 -60 -97 minecraft:decorated_pot[facing=south]{sherds:[\"minecraft:arms_up_pottery_sherd\",\"minecraft:brick\","
-				+ "\"minecraft:skull_pottery_sherd\",\"minecraft:prize_pottery_sherd\"]} strict",
+		"setblock 567 -60 -97 minecraft:decorated_pot[facing=south]{sherds:{back:\"minecraft:arms_up_pottery_sherd\","
+				+ "left:\"minecraft:brick\",right:\"minecraft:skull_pottery_sherd\",front:\"minecraft:prize_pottery_sherd\"}} strict",
 	};
 
 	/**
