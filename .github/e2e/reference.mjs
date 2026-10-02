@@ -66,7 +66,9 @@ try {
 			stats: window.cctv.renderer.stats,
 			entities: window.cctv.entities.visibleCount,
 			// what the viewer knows near the camera, to tell what a picture shows that the game's does not
-			near: (window.cctv.state.entityList || []).map(e => [e.type, +e.x.toFixed(1), +e.y.toFixed(1), +e.z.toFixed(1), ...(e.type === 'minecraft:item' ? [e.item || null, e.itemModel || null, e.age] : [])]).slice(0, 30),
+			near: (window.cctv.state.entityList || []).map(e => [e.type, +e.x.toFixed(1), +e.y.toFixed(1), +e.z.toFixed(1), ...(e.type === 'minecraft:item' ? [e.item || null, e.itemModel || null, e.age] : []),
+				// whether the server says it stands on the ground (a parrot flies otherwise)
+				...(e.d && e.d.onGround !== undefined ? ['onGround:' + e.d.onGround] : [])]).slice(0, 30),
 		})));
 		await page.screenshot({ path: path.join(dir, `viewer-${info.shot}.png`) });
 		await page.evaluate(() => { window.lastShotInit = window.cctv.state.init; });

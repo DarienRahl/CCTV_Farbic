@@ -54,6 +54,9 @@ net/minecraft/client/renderer/entity/layers/HorseMarkingLayer
 net/minecraft/client/renderer/entity/layers/SheepWoolUndercoatLayer
 net/minecraft/client/model/animal/ghast/HappyGhastHarnessModel
 net/minecraft/client/model/animal/parrot/ParrotModel
+net/minecraft/client/model/animal/ghast/HappyGhastModel
+net/minecraft/client/model/monster/skeleton/SkeletonModel
+net/minecraft/client/renderer/entity/layers/ItemInHandLayer
 net/minecraft/client/renderer/feature/FlameFeatureRenderer
 net/minecraft/client/renderer/feature/ShadowFeatureRenderer
 net/minecraft/client/renderer/feature/ItemFeatureRenderer

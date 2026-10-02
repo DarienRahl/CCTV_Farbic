@@ -1016,6 +1016,10 @@ const ANIMS = {
 			const t = p['tentacle' + i];
 			if (t) t.xRot = 0.2 * sin(a.age * 0.3 + i) + 0.4;
 		}
+		// HappyGhastModel.setupAnim: the body squeezed a little into the harness (anything in the body slot)
+		if (p.body && e.type === 'minecraft:happy_ghast' && ((e.eq && e.eq[4]) || e.bodyArmor)) {
+			p.body.xScale = p.body.yScale = p.body.zScale = 0.9375;
+		}
 		// HappyGhastHarnessModel.setupAnim: the goggles down over the eyes while ridden, pushed up otherwise
 		if (p.goggles) {
 			const ridden = !!(e.d && e.d.ridden);

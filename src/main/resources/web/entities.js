@@ -1328,14 +1328,11 @@ export class EntityRenderer {
 			if (!a.map.has(id) && t > 0) result.push(eb);
 		}
 		// An entity that has not ticked yet (it appeared while the world is frozen) is as the client made it:
-		// LivingEntity.recreateFromPacket turns its body like its head, its ElytraAnimationState is at rest at 0, and
-		// it is not on the ground (ClientboundAddEntityPacket has no such flag; ServerEntity only sends it once it changes)
+		// LivingEntity.recreateFromPacket turns its body like its head, its ElytraAnimationState is at rest at 0
 		for (let i = 0; i < result.length; i++) {
 			const e = result[i];
 			if (!this.frozen) this.ticked.add(e.id);
-			else if (!this.ticked.has(e.id)) {
-				result[i] = { ...e, body: e.head !== undefined ? e.head : e.body, unticked: true, d: e.d && e.d.onGround ? { ...e.d, onGround: false } : e.d };
-			}
+			else if (!this.ticked.has(e.id)) result[i] = { ...e, body: e.head !== undefined ? e.head : e.body, unticked: true };
 		}
 		return result;
 	}
@@ -2012,8 +2009,8 @@ export class EntityRenderer {
 			const glint = layer.foil && (e.foil & layer.foil) ? GLINT_ARMOR : 0;
 			// EnergySwirlLayer: the texture offset by xOffset(ageInTicks) % 1 and ageInTicks * 0.01 % 1; others scroll their own way
 			const uv = layer.swirl ? [layer.swirl(age) % 1, age * 0.01 % 1] : layer.scroll ? layer.scroll(age) : null;
-			this.batch(texture, mode, start, mode !== MODE_NOCULL && mode !== MODE_TRANSLUCENT && mode !== MODE_TRANSLUCENT_EMISSIVE && mode !== MODE_BREEZE_WIND,
-				glint, uv);
+			this.batch(texture, mode, start, mode !== MODE_NOCULL && mode !== MODE_TRANSLUCENT && mode !== MODE_TRANSLUCENT_EMISSIVE && mode !== MODE_BREEZE_WIND
+				&& mode !== MODE_ENERGY, glint, uv);
 		}
 		if (!base) return this.drawBox(e, pos, style);
 		// SulfurCubeInnerLayer: the block a sulfur cube holds, upside down inside it, white while the fuse is lit
@@ -2045,11 +2042,13 @@ export class EntityRenderer {
 		const [inRight, inLeft] = held;
 		// ArmorStandModel.translateToHand: an armour stand without arms still holds its items
 		const armsShown = side => base.parts[side] && (base.parts[side].visible || def.anim === 'armorStand');
+		// SkeletonModel.translateToHand: the item a pixel further out than the thin arm; ItemInHandLayer.useBabyOffset
+		const hand = { skeleton: def.anim === 'skeleton', baby: !!e.baby && def.anim !== 'armorStand' };
 		if (inRight.item && armsShown('right_arm')) {
-			this.drawHeld(base, m, 'right_arm', inRight.item, inRight.foil ? { ...style, glint: GLINT_ITEM } : style, 1, inRight.patterns, inRight.props, e.armR === 'block');
+			this.drawHeld(base, m, 'right_arm', inRight.item, inRight.foil ? { ...style, glint: GLINT_ITEM } : style, 1, inRight.patterns, inRight.props, e.armR === 'block', hand);
 		}
 		if (inLeft.item && armsShown('left_arm')) {
-			this.drawHeld(base, m, 'left_arm', inLeft.item, inLeft.foil ? { ...style, glint: GLINT_ITEM } : style, -1, inLeft.patterns, inLeft.props, e.armL === 'block');
+			this.drawHeld(base, m, 'left_arm', inLeft.item, inLeft.foil ? { ...style, glint: GLINT_ITEM } : style, -1, inLeft.patterns, inLeft.props, e.armL === 'block', hand);
 		}
 
 		// CarriedBlockLayer: the block an enderman holds in front of it
@@ -3505,17 +3504,21 @@ export class EntityRenderer {
 		translate(m, -0.5, -0.5, -0.5);
 	}
 
-	drawHeld(model, m, arm, item, style, side, patterns, props = null, blocking = false) {
+	drawHeld(model, m, arm, item, style, side, patterns, props = null, blocking = false, hand = {}) {
 		const shield = isShield(item);
 		const mesh = shield ? null : this.itemMesh(item, props, side > 0 ? 'thirdperson_righthand' : 'thirdperson_lefthand');
 		if (!mesh && !shield) return;
+		const part = model.parts[arm];
+		if (hand.skeleton && part) part.x += side;
 		const pm = partMatrix(model, arm, m);
+		if (hand.skeleton && part) part.x -= side;
 		if (!pm) return;
-		// ItemInHandLayer: from the arm (block units), rotate -90 X and 180 Y, move into the fist.
+		// ItemInHandLayer: from the arm (block units), rotate -90 X and 180 Y, move into the fist (a baby's is smaller)
 		scale(pm, 16);
 		rotate(pm, 0, -90 * DEG);
 		rotate(pm, 1, 180 * DEG);
-		translate(pm, side / 16, 0.125, -0.625);
+		if (hand.baby) translate(pm, 0, 1 / 16, -4.5 / 16);
+		else translate(pm, side / 16, 0.125, -0.625);
 		const slot = side > 0 ? 'thirdperson_righthand' : 'thirdperson_lefthand';
 		if (shield) return this.drawShield(pm, slot, style, patterns, blocking);
 		const fallback = mesh.kind === 'block'
@@ -4916,8 +4919,12 @@ export class EntityRenderer {
 		gl.depthMask(false);
 		drawBatches(b => b.mode === MODE_TRANSLUCENT || b.mode === MODE_TRANSLUCENT_EMISSIVE || b.mode === MODE_BREEZE_WIND);
 		drawBatches(b => b.mode === MODE_EYES);
+		// RenderPipelines.ENERGY_SWIRL: both sides, writing depth (DepthStencilState.DEFAULT), so a back face drawn
+		// before the front one in front of it adds to it as well
 		gl.blendFunc(gl.ONE, gl.ONE);
+		gl.depthMask(true);
 		drawBatches(b => b.mode === MODE_ENERGY);
+		gl.depthMask(false);
 		// RenderPipelines.CRUMBLING: multiplied into the block, pulled towards the camera (depth bias 1, 10)
 		gl.blendFuncSeparate(gl.DST_COLOR, gl.SRC_COLOR, gl.ONE, gl.ZERO);
 		gl.enable(gl.POLYGON_OFFSET_FILL);
