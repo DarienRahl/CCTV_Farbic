@@ -57,6 +57,9 @@ net/minecraft/client/model/animal/parrot/ParrotModel
 net/minecraft/client/model/animal/ghast/HappyGhastModel
 net/minecraft/client/model/monster/skeleton/SkeletonModel
 net/minecraft/client/renderer/entity/layers/ItemInHandLayer
+net/minecraft/client/model/monster/nautilus/ZombieNautilusCoralModel
+net/minecraft/client/model/EntityModel
+net/minecraft/client/renderer/RenderPipelines
 net/minecraft/client/renderer/feature/FlameFeatureRenderer
 net/minecraft/client/renderer/feature/ShadowFeatureRenderer
 net/minecraft/client/renderer/feature/ItemFeatureRenderer

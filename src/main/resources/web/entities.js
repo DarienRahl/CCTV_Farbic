@@ -155,6 +155,7 @@ uniform mat3 uGlintMatrix;
 out float vSph;
 out float vCyl;
 out vec4 vColor;
+out vec4 vColorBack;
 out vec4 vLightColor;
 out vec2 vUv;
 out vec2 vGlintUv;
@@ -179,6 +180,9 @@ void main() {
 	vec3 n = normalize(normal);
 	float light = min(1.0, (max(0.0, dot(uLight0, n)) + max(0.0, dot(uLight1, n))) * 0.6 + 0.4);
 	vColor = uMode >= 3 ? aColor : vec4(aColor.rgb * light, aColor.a);
+	// PER_FACE_LIGHTING (the entity pipelines that draw both sides): a face seen from behind is lit as if it faced away
+	float back = min(1.0, (max(0.0, -dot(uLight0, n)) + max(0.0, -dot(uLight1, n))) * 0.6 + 0.4);
+	vColorBack = uMode >= 3 ? aColor : vec4(aColor.rgb * back, aColor.a);
 	vLightColor = uMode == 3 || uMode == 5 ? vec4(1.0) : texture(uLightmap, clamp(aLight / 256.0 + 0.5 / 16.0, vec2(0.5 / 16.0), vec2(15.5 / 16.0)));
 	// RenderTypes.energySwirl: the texture scrolled by the layer's own offsets (TextureTransform translation)
 	vUv = aUv + uUvOffset;
@@ -197,6 +201,7 @@ const ENTITY_FS = `
 in float vSph;
 in float vCyl;
 in vec4 vColor;
+in vec4 vColorBack;
 in vec4 vLightColor;
 in vec2 vUv;
 in vec2 vGlintUv;
@@ -246,7 +251,7 @@ void main() {
 	}
 	if (uMode <= 1 && color.a < 0.1) discard;
 	if (uMode == 2 && color.a < 0.004) discard;
-	color *= vColor;
+	color *= gl_FrontFacing ? vColor : vColorBack;
 	if (uGlint > 0) color.a = max(color.a, uGlintAlpha);
 	if (uMode == 4) {
 		// RenderPipelines.ENERGY_SWIRL: added (ADDITIVE), fading into the fog

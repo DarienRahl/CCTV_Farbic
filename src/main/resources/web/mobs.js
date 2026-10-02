@@ -1745,6 +1745,8 @@ const KEYFRAME_ANIMS = {
 			p.body.xRot = clamp(a.headPitch, -10, 10) * DEG;
 		}
 		k.walk('NautilusAnimation.SWIMMING', a.walk + a.age / 5, a.walkSpeed + 0.2, 2, 3);
+		// ZombieNautilusCoralModel.setupAnim: the corals stay off a warm zombie nautilus that wears armour
+		if (p.corals) p.corals.visible = !((e.eq && e.eq[4]) || e.bodyArmor);
 	}),
 	/** AdultAxolotlModel keeps the simple animation; BabyAxolotlModel.setupAnim plays keyframes. */
 	axolotl: (p, a, e) => {
