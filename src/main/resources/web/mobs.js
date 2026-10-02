@@ -2148,8 +2148,9 @@ const MOBS = {
 		shadow: 0.75, anim: 'horse', saddle: ['horse#saddle', 'equipment/horse_saddle/saddle'],
 		layers: [
 			{
+				// HorseMarkingLayer: entityTranslucent (the markings' half clear pixels blend in)
 				layer: e => (e.baby ? 'horse_baby#main' : 'horse#main'), when: e => e.d && e.d.markings && e.d.markings !== 'none',
-				texture: e => 'horse/horse_markings_' + e.d.markings.replace(/_/g, '') + baby(e),
+				texture: e => 'horse/horse_markings_' + e.d.markings.replace(/_/g, '') + baby(e), mode: 'translucent',
 			},
 		],
 		body: e => (e.baby ? [] : bodyLayers(e, 'horse_body', 'horse_armor#main')),
@@ -2331,6 +2332,12 @@ const TROPICAL_LARGE = ['flopper', 'stripey', 'glitter', 'blockfish', 'betty', '
 const ARMOR_MATERIAL = { leather: 'leather', chainmail: 'chainmail', iron: 'iron', golden: 'gold', diamond: 'diamond', netherite: 'netherite', copper: 'copper', turtle: 'turtle_scute' };
 const ARMOR_SLOTS = ['helmet', 'chestplate', 'leggings', 'boots'];
 
+/** The hat of a villager texture's metadata ('none', 'partial', 'full') by its path below entity/, from the viewer. */
+let VILLAGER_HAT = () => 'none';
+export function setVillagerHats(lookup) {
+	VILLAGER_HAT = lookup;
+}
+
 /** equipment/*.json of the client (EquipmentClientInfo) by equipment asset id, from the asset bundle. */
 let EQUIPMENT = {};
 export function setEquipment(map) {
@@ -2453,7 +2460,12 @@ export function describeMob(e) {
 		const layer = folder + (e.baby ? '_baby' : '') + '#main';
 		const base = e.baby && !zombie ? 'villager/villager_baby' : (e.baby ? folder + '/' + folder + '_baby' : folder + '/' + folder);
 		add(layer, base);
-		add(layer, folder + (e.baby ? '/baby/' : '/type/') + vtype);
+		// VillagerProfessionLayer: the type's own hat shows unless the profession's hat covers it (the hats of the
+		// textures' villager metadata); then the type is drawn on the model without a hat
+		const typeHat = VILLAGER_HAT(folder + '/type/' + vtype);
+		const professionHat = VILLAGER_HAT(folder + '/profession/' + profession);
+		const typeHatVisible = professionHat === 'none' || (professionHat === 'partial' && typeHat !== 'full');
+		add(typeHatVisible ? layer : folder + (e.baby ? '_baby' : '') + '_no_hat#main', folder + (e.baby ? '/baby/' : '/type/') + vtype);
 		if (!e.baby && profession !== 'none') {
 			add(layer, folder + '/profession/' + profession);
 			const level = VILLAGER_LEVELS[Number(data.level) || 0];

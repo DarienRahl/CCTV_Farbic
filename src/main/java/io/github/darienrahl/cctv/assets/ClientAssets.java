@@ -212,6 +212,18 @@ public final class ClientAssets implements AutoCloseable {
 		return texture("entity", path);
 	}
 
+	/**
+	 * The metadata of an entity texture ({@code textures/entity/<path>.png.mcmeta}, e.g. a villager type's or
+	 * profession's hat), {@code {}} when the texture has none, null when there is no such texture.
+	 */
+	public byte @Nullable [] entityTextureMeta(String path) {
+		byte[] meta = textureFile("entity", path, ".png.mcmeta");
+		if (meta != null) {
+			return meta;
+		}
+		return entityTexture(path) != null ? "{}".getBytes(java.nio.charset.StandardCharsets.UTF_8) : null;
+	}
+
 	/** @param path path below {@code textures/misc/} without extension, e.g. {@code shadow} */
 	public byte[] miscTexture(String path) {
 		return texture("misc", path);
@@ -257,6 +269,10 @@ public final class ClientAssets implements AutoCloseable {
 
 	/** @param path {@code name} or {@code namespace:name} (textures of data and resource packs' own namespaces) */
 	private byte[] texture(String folder, String path) {
+		return textureFile(folder, path, ".png");
+	}
+
+	private byte[] textureFile(String folder, String path, String extension) {
 		String namespace = "minecraft";
 		int colon = path.indexOf(':');
 		if (colon > 0) {
@@ -266,7 +282,7 @@ public final class ClientAssets implements AutoCloseable {
 		if (state != State.READY || !NAMESPACE.matcher(namespace).matches() || !ENTITY_PATH.matcher(path).matches() || path.contains("..")) {
 			return null;
 		}
-		return read("assets/" + namespace + "/textures/" + folder + "/" + path + ".png");
+		return read("assets/" + namespace + "/textures/" + folder + "/" + path + extension);
 	}
 
 	/** A file of the packs or the client jar, the highest priority one (null when there is none). */

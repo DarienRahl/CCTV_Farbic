@@ -52,6 +52,7 @@ import io.github.darienrahl.cctv.assets.WebFont;
  * GET /assets/names.json         entity names in the configured language
  * GET /assets/entities.json      list of entity textures
  * GET /assets/entity/{path}.png  one entity texture
+ * GET /assets/entity/{path}.png.mcmeta  its metadata ({} when it has none), e.g. a villager type's hat
  * GET /assets/misc/{path}.png    one texture of textures/misc (entity shadow, enchantment glint)
  * GET /assets/font/{path}         the game's font (definitions .json, glyph sheets .png)
  * GET /assets/font/minecraft[-bold].ttf the game's font as a web font for the pages (built from the sheets)
@@ -513,6 +514,14 @@ public final class WebServer {
 			}
 			headers.add("Cache-Control", "max-age=86400");
 			sendBytes(exchange, 200, path.endsWith(".mcmeta") ? "application/json" : "image/png", data);
+		} else if (path.startsWith("entity/") && path.endsWith(".png.mcmeta")) {
+			byte[] meta = assets.entityTextureMeta(path.substring("entity/".length(), path.length() - ".png.mcmeta".length()));
+			if (meta == null) {
+				sendText(exchange, 404, "text/plain", "Not found");
+				return;
+			}
+			headers.add("Cache-Control", "max-age=86400");
+			sendBytes(exchange, 200, "application/json", meta);
 		} else if ((path.startsWith("entity/") || path.startsWith("painting/") || path.startsWith("misc/")) && path.endsWith(".png")) {
 			String name = path.substring(path.indexOf('/') + 1, path.length() - ".png".length());
 			byte[] png = path.startsWith("entity/") ? assets.entityTexture(name)

@@ -6,7 +6,7 @@
 import {
 	ModelLibrary, VertexSink, FLOATS, SKIN_FLOATS, BONES_PER_ROW, emitModel, emitQuads, partMatrix, mat4, mul, translate, rotate, scale, DEG,
 } from './entity-models.js';
-import { describeMob, isKnownMob, blockEntityModel, dyeRgb, CLIENT, equipmentPose, setEquipment, setAutoMobResolver, isAvatar } from './mobs.js';
+import { describeMob, isKnownMob, blockEntityModel, dyeRgb, CLIENT, equipmentPose, setEquipment, setAutoMobResolver, isAvatar, setVillagerHats } from './mobs.js';
 import { Animator, AnimationStates } from './keyframes.js';
 import { collectParts } from './models.js';
 import { tintInHand } from './mesher.js';
@@ -828,6 +828,9 @@ export class EntityRenderer {
 		this.displays = new Map();
 		/** Entities seen while the world was not frozen: they have ticked (mannequins wear their skin, bodies turn). */
 		this.ticked = new Set();
+		/** The villager metadata hats of textures by path below entity/ (null while it loads). */
+		this.hats = new Map();
+		setVillagerHats(path => this.villagerHat(path));
 		/** Parrots dancing to a jukebox: entity id -> the jukebox's position (Parrot.jukebox) */
 		this.partyParrots = new Map();
 		this.breaking = [];
@@ -932,6 +935,23 @@ export class EntityRenderer {
 	}
 
 	/** Texture below textures/entity (loaded once); null while loading or missing. */
+	/** VillagerMetadataSection.hat of an entity texture's .mcmeta ('none' while it loads or when it has none). */
+	villagerHat(path) {
+		let hat = this.hats.get(path);
+		if (hat === undefined) {
+			this.hats.set(path, hat = null);
+			if (this.entityList && this.entityList.size && !this.entityList.has(path)) {
+				this.hats.set(path, 'none');
+			} else {
+				fetch('/assets/entity/' + path + '.png.mcmeta' + tokenSuffix('?'), { credentials: 'same-origin' })
+					.then(r => (r.ok ? r.json() : {}))
+					.then(meta => this.hats.set(path, (meta && meta.villager && meta.villager.hat) || 'none'))
+					.catch(() => this.hats.set(path, 'none'));
+			}
+		}
+		return hat || 'none';
+	}
+
 	texture(path, folder = 'entity') {
 		if (!path) return null;
 		if (typeof path === 'object' && path.skin) return this.skin(path.skin).texture;
