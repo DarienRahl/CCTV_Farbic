@@ -17,8 +17,9 @@ import net.fabricmc.loader.api.FabricLoader;
  * each shot (day, night, mobs, a room, under water, dusk, rain, snow, a cave, the Nether, the End, glass, decorations,
  * redstone, shapes of blocks, plants, lights at night, biome colours, blocks of work, flowing water and lava, rows of
  * every kind of mob up close, display entities, mannequins, vehicles, projectiles, signs, chests, heads and banners,
- * armour stands and frames at night, young mobs and the kinds of wolves, farm animals, villagers and horses), takes the game's picture from a spectator's eyes with the GUI hidden, moves a CCTV camera to the same eyes
- * and waits while CI takes the viewer's picture of that camera (.github/e2e/reference.mjs), so both can be compared
+ * armour stands and frames at night, young mobs and the kinds of wolves, farm animals, villagers and horses, mobs in
+ * armour and tack, and mobs in their moods), takes the game's picture from a spectator's eyes with the GUI hidden, moves
+ * a CCTV camera to the same eyes and waits while CI takes the viewer's picture of that camera (.github/e2e/reference.mjs), so both can be compared
  * (compare_reference.py).
  *
  * <p>Hand-off through files in {@code <game dir>/reference}: {@code ready-<shot>.json} when the game's picture of a
@@ -760,6 +761,9 @@ public class ReferenceRenders implements FabricClientGameTest {
 		"badlands", "mangrove_swamp", "pale_garden", "snowy_taiga", "savanna",
 	};
 
+	/** A tamed animal's owner (no such player: tamed, sitting if told, with a collar). */
+	private static final String TAME = "Owner:[I;1,2,3,4]";
+
 	private static final Shot[] SHOTS = {
 		new Shot("day", new String[] {"time set noon"}, "0.5 -58.5 -6.5 -20 18"),
 		// the same view at night: the lightmap, block light of the torch and the lantern, the moon and the stars
@@ -903,7 +907,88 @@ public class ReferenceRenders implements FabricClientGameTest {
 		zoo("horses", 830, 2.3, 10, 0, "minecraft:horse Variant:0", "minecraft:horse Variant:257", "minecraft:horse Variant:514",
 				"minecraft:horse Variant:771", "minecraft:horse Variant:1028", "minecraft:horse Variant:6",
 				"minecraft:llama Variant:0", "minecraft:llama Variant:3", "minecraft:trader_llama Variant:1"),
+		// mobs in armour of every material, trimmed and dyed, holding things
+		zoo("armour", 860, 1.3, 6, 0, "minecraft:zombie equipment:{head:" + dyed("leather_helmet", 11546150) + ",chest:"
+						+ dyed("leather_chestplate", 3949738) + ",legs:" + item("leather_leggings", "") + ",feet:"
+						+ dyed("leather_boots", 16701501) + "}",
+				"minecraft:zombie " + armour("chainmail", "sentry", "lapis"), "minecraft:zombie " + armour("iron", "wayfinder", "iron"),
+				"minecraft:zombie " + armour("golden", "coast", "gold"), "minecraft:zombie " + armour("diamond", "silence", "amethyst"),
+				"minecraft:zombie " + armour("netherite", "rib", "netherite"), "minecraft:zombie " + armour("copper", "flow", "redstone"),
+				"minecraft:skeleton equipment:{head:" + item("turtle_helmet", "") + ",mainhand:" + item("iron_sword", "")
+						+ ",offhand:" + item("shield", "\"minecraft:base_color\":\"red\",\"minecraft:banner_patterns\":"
+						+ "[{pattern:\"minecraft:cross\",color:\"white\"}]") + "}",
+				"minecraft:zombie IsBaby:1b," + armour("diamond", "", ""),
+				"minecraft:piglin equipment:{head:" + item("golden_helmet", "") + ",chest:" + item("golden_chestplate", "")
+						+ ",mainhand:" + item("crossbow", "") + "}",
+				"minecraft:husk equipment:{head:" + item("carved_pumpkin", "") + ",mainhand:" + item("torch", "") + "}"),
+		// horses in their armour, saddled, with chests and carpets
+		zoo("tack", 890, 2.3, 10, 0, "minecraft:horse Variant:0,equipment:{body:" + dyed("leather_horse_armor", 11546150) + ",saddle:"
+						+ item("saddle", "") + "}",
+				"minecraft:horse Variant:1,equipment:{body:" + item("iron_horse_armor", "") + "}",
+				"minecraft:horse Variant:2,equipment:{body:" + item("golden_horse_armor", "") + ",saddle:" + item("saddle", "") + "}",
+				"minecraft:horse Variant:3,equipment:{body:" + item("diamond_horse_armor", "") + "}",
+				"minecraft:horse Variant:4,equipment:{body:" + item("copper_horse_armor", "") + ",saddle:" + item("saddle", "") + "}",
+				"minecraft:horse Variant:5,equipment:{body:" + item("netherite_horse_armor", "") + "}",
+				"minecraft:donkey ChestedHorse:1b,equipment:{saddle:" + item("saddle", "") + "}", "minecraft:mule ChestedHorse:1b",
+				"minecraft:llama Variant:0,ChestedHorse:1b,equipment:{body:" + item("red_carpet", "") + "}",
+				"minecraft:trader_llama Variant:2"),
+		// the other saddled mounts
+		zoo("saddles", 920, 2.5, 9, 0, "minecraft:pig equipment:{saddle:" + item("saddle", "") + "}",
+				"minecraft:strider equipment:{saddle:" + item("saddle", "") + "}",
+				"minecraft:camel equipment:{saddle:" + item("saddle", "") + "}",
+				"minecraft:camel_husk equipment:{saddle:" + item("saddle", "") + "}",
+				"minecraft:skeleton_horse equipment:{body:" + item("iron_horse_armor", "") + ",saddle:" + item("saddle", "") + "}",
+				"minecraft:zombie_horse equipment:{body:" + item("golden_horse_armor", "") + ",saddle:" + item("saddle", "") + "}",
+				"minecraft:nautilus equipment:{body:" + item("iron_nautilus_armor", "") + ",saddle:" + item("saddle", "") + "}",
+				"minecraft:zombie_nautilus equipment:{body:" + item("diamond_nautilus_armor", "") + "}"),
+		// happy ghasts in harnesses, and a young one
+		zoo("harness", 950, 7, 14, 2, "minecraft:happy_ghast equipment:{body:" + item("red_harness", "") + "}",
+				"minecraft:happy_ghast Age:-24000", "minecraft:happy_ghast equipment:{body:" + item("light_blue_harness", "") + "}"),
+		// tamed wolves and cats with collars, sitting, in armour (dyed, worn down), an angry wolf, foxes asleep and crouching
+		zoo("pets", 980, 1.4, 6, 0, "minecraft:wolf " + TAME + ",Sitting:1b,CollarColor:11b",
+				"minecraft:wolf " + TAME + ",equipment:{body:" + item("wolf_armor", "") + "}",
+				"minecraft:wolf " + TAME + ",CollarColor:5b,equipment:{body:" + item("wolf_armor",
+						"\"minecraft:dyed_color\":6192150,\"minecraft:damage\":50") + "}",
+				"minecraft:wolf AngerTime:1000000", "minecraft:cat " + TAME + ",Sitting:1b,CollarColor:14b,variant:\"minecraft:siamese\"",
+				"minecraft:cat " + TAME + ",CollarColor:4b,variant:\"minecraft:jellie\"", "minecraft:fox Sleeping:1b",
+				"minecraft:fox Sitting:1b,Type:\"snow\"", "minecraft:fox Crouching:1b"),
+		// parrots, tropical fish and axolotls of their colours
+		zoo("colours", 1010, 1.0, 5.5, 0, "minecraft:parrot Variant:0", "minecraft:parrot Variant:1", "minecraft:parrot Variant:3",
+				"minecraft:parrot Variant:4", "minecraft:tropical_fish Variant:65536", "minecraft:tropical_fish Variant:50790656",
+				"minecraft:tropical_fish Variant:101254400", "minecraft:tropical_fish Variant:117506305",
+				"minecraft:tropical_fish Variant:918529", "minecraft:axolotl Variant:0", "minecraft:axolotl Variant:2",
+				"minecraft:axolotl Variant:4"),
+		// a shorn sheep, a charged creeper, a goat with one horn, a snow golem without its pumpkin, a cracked iron golem,
+		// Dinnerbone and Toast, shulkers shut and peeking
+		zoo("moods", 1040, 2, 8, 0, "minecraft:sheep Sheared:1b,Color:14b", "minecraft:creeper powered:1b",
+				"minecraft:goat HasLeftHorn:0b", "minecraft:snow_golem Pumpkin:0b", "minecraft:iron_golem Health:20f",
+				"minecraft:cow CustomName:\"Dinnerbone\"", "minecraft:rabbit CustomName:\"Toast\"", "minecraft:shulker Color:4b",
+				"minecraft:shulker Color:11b,Peek:30b"),
+		// pandas of every gene (the recessive ones twice, so they show)
+		zoo("pandas", 1070, 2, 8, 0, "minecraft:panda MainGene:\"lazy\",HiddenGene:\"normal\"",
+				"minecraft:panda MainGene:\"worried\",HiddenGene:\"normal\"",
+				"minecraft:panda MainGene:\"aggressive\",HiddenGene:\"normal\"", "minecraft:panda MainGene:\"weak\",HiddenGene:\"weak\"",
+				"minecraft:panda MainGene:\"brown\",HiddenGene:\"brown\"", "minecraft:panda MainGene:\"normal\",HiddenGene:\"normal\"",
+				"minecraft:panda MainGene:\"brown\",HiddenGene:\"brown\",Age:-24000"),
 	};
+
+	/** An item stack's NBT: one of the item, with components (their SNBT, without the braces) or none. */
+	private static String item(String id, String components) {
+		return "{id:\"minecraft:" + id + "\",count:1" + (components.isEmpty() ? "" : ",components:{" + components + "}") + "}";
+	}
+
+	/** A dyed item (leather armour, wolf armour) of an RGB colour. */
+	private static String dyed(String id, int rgb) {
+		return item(id, "\"minecraft:dyed_color\":" + rgb);
+	}
+
+	/** A full set of armour of a material, each piece with a trim of a pattern and material (none if empty). */
+	private static String armour(String material, String pattern, String trim) {
+		String components = pattern.isEmpty() ? "" : "\"minecraft:trim\":{material:\"minecraft:" + trim + "\",pattern:\"minecraft:"
+				+ pattern + "\"}";
+		return "equipment:{head:" + item(material + "_helmet", components) + ",chest:" + item(material + "_chestplate", components)
+				+ ",legs:" + item(material + "_leggings", components) + ",feet:" + item(material + "_boots", components) + "}";
+	}
 
 	/** A villager of a biome's type and a profession at a level (its badge). */
 	private static String villager(String type, String profession, int level) {
