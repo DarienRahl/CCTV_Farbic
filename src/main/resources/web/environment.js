@@ -88,7 +88,9 @@ export class Environment {
 		return this.b ? Math.min(40, Math.max(0, (now - this.b.arrival) / 50)) : 0;
 	}
 
+	/** The level's game time at this moment; in a frozen world it stands still, at the partial tick 1 (DeltaTracker). */
 	gameTime(now) {
+		if (this.b && this.b.frozen) return this.b.gt + 1;
 		return (this.b ? this.b.gt : 0) + this.elapsedTicks(now);
 	}
 

@@ -4738,9 +4738,9 @@ export class EntityRenderer {
 				}
 				scale(m, 2 / 3, -2 / 3, -2 / 3);
 				const base = def.wall ? 'minecraft:wall_banner' : 'minecraft:standing_banner';
-				// BannerRenderer.extractRenderState phase and BannerFlagModel.setupAnim: the flag sways.
+				// BannerRenderer.extractRenderState phase (by the level's game time) and BannerFlagModel.setupAnim: the flag sways.
 				const b = pos || { x: 0, y: 0, z: 0 };
-				const ticks = performance.now() / 50;
+				const ticks = this.env ? this.env.gameTime(performance.now()) : performance.now() / 50;
 				const phase = ((((b.x * 7 + b.y * 9 + b.z * 13 + Math.floor(ticks)) % 100) + 100) % 100 + ticks % 1) / 100;
 				const sway = parts => { if (parts.flag) parts.flag.xRot = (-0.0125 + 0.01 * Math.cos(Math.PI * 2 * phase)) * Math.PI; };
 				emit(base + '#main', 'banner/banner_base', m);
