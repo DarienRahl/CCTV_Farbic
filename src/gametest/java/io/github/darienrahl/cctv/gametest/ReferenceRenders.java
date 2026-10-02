@@ -16,7 +16,8 @@ import net.fabricmc.loader.api.FabricLoader;
  * Reference renders for CI: builds small scenes in a single player world (flat, time and weather stopped) and, for
  * each shot (day, night, mobs, a room, under water, dusk, rain, snow, a cave, the Nether, the End, glass, decorations,
  * redstone, shapes of blocks, plants, lights at night, biome colours, blocks of work, flowing water and lava, rows of
- * every kind of mob up close, display entities, mannequins, vehicles and projectiles), takes the game's picture from a spectator's eyes with the GUI hidden, moves a CCTV camera to the same eyes
+ * every kind of mob up close, display entities, mannequins, vehicles, projectiles, signs, chests, heads and banners,
+ * armour stands and frames at night), takes the game's picture from a spectator's eyes with the GUI hidden, moves a CCTV camera to the same eyes
  * and waits while CI takes the viewer's picture of that camera (.github/e2e/reference.mjs), so both can be compared
  * (compare_reference.py).
  *
@@ -618,6 +619,140 @@ public class ReferenceRenders implements FabricClientGameTest {
 				+ "see_through:1b,default_background:1b,billboard:\"vertical\"}",
 	};
 
+	/**
+	 * Signs of every wood: on a wall, hanging from nothing (placed exactly as given) and standing turned three ways,
+	 * with coloured and glowing text.
+	 */
+	private static String[] signs() {
+		String[] woods = {"oak", "spruce", "birch", "jungle", "acacia", "dark_oak", "mangrove", "cherry", "bamboo", "crimson",
+			"warped", "pale_oak"};
+		String[] colors = {"black", "red", "blue", "white", "green", "purple"};
+		java.util.List<String> build = new java.util.ArrayList<>();
+		build.add("fill 492 -60 -103 508 -56 -103 minecraft:stone_bricks");
+		for (int i = 0; i < woods.length; i++) {
+			String text = String.format(java.util.Locale.ROOT, "{front_text:{color:\"%s\",has_glowing_text:%s,messages:[\"%s\","
+					+ "\"sign\",{text:\"line %d\",bold:true},\"\"]}}", colors[i % colors.length], i % 4 == 3 ? "1b" : "0b",
+					woods[i].replace('_', ' '), i + 1);
+			build.add(String.format(java.util.Locale.ROOT, "setblock %d -58 -102 minecraft:%s_wall_sign[facing=south]%s strict",
+					494 + i, woods[i], text));
+			if (i % 2 == 0) {
+				build.add(String.format(java.util.Locale.ROOT, "setblock %d -58 -100 minecraft:%s_hanging_sign[rotation=0,attached=false]%s strict",
+						494 + i, woods[i], text));
+			} else {
+				build.add(String.format(java.util.Locale.ROOT, "setblock %d -60 -98 minecraft:%s_sign[rotation=%d]%s strict",
+						494 + i, woods[i], new int[] {0, 2, 14}[i / 2 % 3], text));
+			}
+		}
+		return build.toArray(new String[0]);
+	}
+
+	/**
+	 * Chests: single and double (left and right halves), trapped ones, an ender chest and copper chests in each stage
+	 * of oxidation, then shulker boxes of the colours facing every way.
+	 */
+	private static final String[] CHESTS = {
+		"setblock 523 -60 -101 minecraft:chest[facing=south,type=single] strict",
+		"setblock 525 -60 -101 minecraft:chest[facing=south,type=right] strict",
+		"setblock 526 -60 -101 minecraft:chest[facing=south,type=left] strict",
+		"setblock 528 -60 -101 minecraft:trapped_chest[facing=south,type=single] strict",
+		"setblock 530 -60 -101 minecraft:trapped_chest[facing=east,type=single] strict",
+		"setblock 532 -60 -101 minecraft:ender_chest[facing=south] strict",
+		"setblock 534 -60 -101 minecraft:copper_chest[facing=south,type=single] strict",
+		"setblock 535 -60 -101 minecraft:exposed_copper_chest[facing=west,type=single] strict",
+		"setblock 536 -60 -101 minecraft:weathered_copper_chest[facing=south,type=right] strict",
+		"setblock 537 -60 -101 minecraft:weathered_copper_chest[facing=south,type=left] strict",
+		"setblock 539 -60 -101 minecraft:oxidized_copper_chest[facing=south,type=single] strict",
+		"setblock 524 -60 -98 minecraft:shulker_box[facing=up] strict",
+		"setblock 525 -60 -98 minecraft:white_shulker_box[facing=north] strict",
+		"setblock 526 -60 -98 minecraft:orange_shulker_box[facing=up] strict",
+		"setblock 527 -60 -98 minecraft:magenta_shulker_box[facing=east] strict",
+		"setblock 528 -60 -98 minecraft:light_blue_shulker_box[facing=up] strict",
+		"setblock 529 -60 -98 minecraft:yellow_shulker_box[facing=south] strict",
+		"setblock 530 -60 -98 minecraft:lime_shulker_box[facing=up] strict",
+		"setblock 531 -60 -98 minecraft:pink_shulker_box[facing=west] strict",
+		"setblock 532 -60 -98 minecraft:gray_shulker_box[facing=up] strict",
+		"setblock 533 -60 -98 minecraft:cyan_shulker_box[facing=down] strict",
+		"setblock 534 -60 -98 minecraft:purple_shulker_box[facing=up] strict",
+		"setblock 535 -60 -98 minecraft:blue_shulker_box[facing=north] strict",
+		"setblock 536 -60 -98 minecraft:red_shulker_box[facing=up] strict",
+		"setblock 537 -60 -98 minecraft:black_shulker_box[facing=up] strict",
+	};
+
+	/**
+	 * Heads on a wall and on the floor turned every way, wall banners and standing banners with patterns, beds, bells
+	 * on the floor and from the ceiling, decorated pots, an enchanting table and a conduit.
+	 */
+	private static final String[] HEADS = {
+		"fill 551 -60 -103 569 -55 -103 minecraft:stone_bricks",
+		"setblock 553 -58 -102 minecraft:skeleton_wall_skull[facing=south] strict",
+		"setblock 555 -58 -102 minecraft:wither_skeleton_wall_skull[facing=south] strict",
+		"setblock 557 -58 -102 minecraft:zombie_wall_head[facing=south] strict",
+		"setblock 559 -58 -102 minecraft:creeper_wall_head[facing=south] strict",
+		"setblock 561 -58 -102 minecraft:piglin_wall_head[facing=south] strict",
+		"setblock 563 -58 -102 minecraft:dragon_wall_head[facing=south] strict",
+		"setblock 565 -58 -102 minecraft:player_wall_head[facing=south] strict",
+		"setblock 554 -56 -102 minecraft:white_wall_banner[facing=south]{patterns:[{pattern:\"minecraft:stripe_top\",color:\"red\"},"
+				+ "{pattern:\"minecraft:cross\",color:\"blue\"}]} strict",
+		"setblock 558 -56 -102 minecraft:black_wall_banner[facing=south]{patterns:[{pattern:\"minecraft:skull\",color:\"white\"},"
+				+ "{pattern:\"minecraft:border\",color:\"gray\"}]} strict",
+		"setblock 562 -56 -102 minecraft:yellow_wall_banner[facing=south]{patterns:[{pattern:\"minecraft:flower\",color:\"orange\"},"
+				+ "{pattern:\"minecraft:gradient\",color:\"brown\"}]} strict",
+		"setblock 566 -56 -102 minecraft:light_blue_wall_banner[facing=south]{patterns:[{pattern:\"minecraft:globe\",color:\"lime\"}]} strict",
+		"setblock 553 -60 -100 minecraft:red_bed[facing=south,part=foot] strict",
+		"setblock 553 -60 -99 minecraft:red_bed[facing=south,part=head] strict",
+		"setblock 555 -60 -100 minecraft:light_blue_bed[facing=north,part=head] strict",
+		"setblock 555 -60 -99 minecraft:light_blue_bed[facing=north,part=foot] strict",
+		"setblock 557 -60 -100 minecraft:white_banner[rotation=0]{patterns:[{pattern:\"minecraft:rhombus\",color:\"cyan\"}]} strict",
+		"setblock 559 -60 -100 minecraft:enchanting_table strict",
+		"setblock 561 -60 -100 minecraft:bell[attachment=floor,facing=south] strict",
+		"setblock 563 -58 -100 minecraft:stone_bricks",
+		"setblock 563 -59 -100 minecraft:bell[attachment=ceiling,facing=east] strict",
+		"setblock 565 -60 -100 minecraft:magenta_banner[rotation=2]{patterns:[{pattern:\"minecraft:triangles_top\",color:\"yellow\"}]} strict",
+		"setblock 567 -60 -100 minecraft:conduit strict",
+		"setblock 553 -60 -97 minecraft:skeleton_skull[rotation=0] strict",
+		"setblock 555 -60 -97 minecraft:wither_skeleton_skull[rotation=2] strict",
+		"setblock 557 -60 -97 minecraft:zombie_head[rotation=14] strict",
+		"setblock 559 -60 -97 minecraft:creeper_head[rotation=4] strict",
+		"setblock 561 -60 -97 minecraft:piglin_head[rotation=12] strict",
+		"setblock 563 -60 -97 minecraft:dragon_head[rotation=1] strict",
+		"setblock 565 -60 -97 minecraft:player_head[rotation=0] strict",
+		"setblock 567 -60 -97 minecraft:decorated_pot[facing=south]{sherds:[\"minecraft:arms_up_pottery_sherd\",\"minecraft:brick\","
+				+ "\"minecraft:skull_pottery_sherd\",\"minecraft:prize_pottery_sherd\"]} strict",
+	};
+
+	/**
+	 * At night, by lanterns and torches: armour stands (plain, small, posed with arms, without a base plate, in armour),
+	 * paintings of a few sizes and item frames with items turned, invisible and glowing.
+	 */
+	private static final String[] STANDS = {
+		"fill 581 -60 -103 599 -55 -103 minecraft:stone_bricks",
+		"summon minecraft:painting 583 -58 -102 {facing:0b,variant:\"minecraft:wanderer\"}",
+		"summon minecraft:painting 586 -57 -102 {facing:0b,variant:\"minecraft:skeleton\"}",
+		"summon minecraft:painting 591 -57 -102 {facing:0b,variant:\"minecraft:sunset\"}",
+		"summon minecraft:item_frame 594 -58 -102 {Facing:3b,Fixed:1b,ItemRotation:1b,Item:{id:\"minecraft:iron_sword\",count:1}}",
+		"summon minecraft:item_frame 595 -58 -102 {Facing:3b,Fixed:1b,ItemRotation:2b,Item:{id:\"minecraft:shield\",count:1}}",
+		"summon minecraft:item_frame 596 -58 -102 {Facing:3b,Fixed:1b,Invisible:1b,Item:{id:\"minecraft:grass_block\",count:1}}",
+		"summon minecraft:glow_item_frame 597 -58 -102 {Facing:3b,Fixed:1b,Item:{id:\"minecraft:red_banner\",count:1}}",
+		"summon minecraft:item_frame 594 -57 -102 {Facing:3b,Fixed:1b,ItemRotation:5b,Item:{id:\"minecraft:bow\",count:1}}",
+		"summon minecraft:item_frame 596 -57 -102 {Facing:3b,Fixed:1b,Item:{id:\"minecraft:creeper_head\",count:1}}",
+		"setblock 589 -58 -102 minecraft:wall_torch[facing=south]",
+		"setblock 598 -58 -102 minecraft:soul_wall_torch[facing=south]",
+		"setblock 582 -60 -99 minecraft:lantern",
+		"setblock 592 -60 -97 minecraft:lantern",
+		"summon minecraft:armor_stand 583.5 -60 -98.5 {Rotation:[0f,0f]}",
+		"summon minecraft:armor_stand 585.5 -60 -98.5 {Rotation:[20f,0f],Small:1b,ShowArms:1b}",
+		"summon minecraft:armor_stand 587.5 -60 -98.5 {Rotation:[340f,0f],ShowArms:1b,Pose:{Head:[-15f,25f,0f],RightArm:[-100f,0f,0f],"
+				+ "LeftArm:[-30f,0f,-20f],RightLeg:[-20f,0f,0f],LeftLeg:[15f,0f,0f]},equipment:{mainhand:{id:\"minecraft:golden_sword\",count:1},"
+				+ "offhand:{id:\"minecraft:shield\",count:1}}}",
+		"summon minecraft:armor_stand 589.5 -60 -98.5 {Rotation:[0f,0f],NoBasePlate:1b,equipment:{head:{id:\"minecraft:netherite_helmet\",count:1},"
+				+ "chest:{id:\"minecraft:golden_chestplate\",count:1},legs:{id:\"minecraft:leather_leggings\",count:1},"
+				+ "feet:{id:\"minecraft:iron_boots\",count:1}}}",
+		"summon minecraft:armor_stand 591.5 -60 -98.5 {Rotation:[180f,0f],ShowArms:1b,equipment:{head:{id:\"minecraft:carved_pumpkin\",count:1},"
+				+ "chest:{id:\"minecraft:elytra\",count:1}}}",
+		"summon minecraft:armor_stand 594.5 -60 -98.5 {Rotation:[0f,0f],Small:1b,NoBasePlate:1b,ShowArms:1b,Pose:{Body:[0f,20f,0f],"
+				+ "Head:[20f,0f,0f],RightArm:[-60f,40f,0f],LeftArm:[-60f,-40f,0f]},equipment:{head:{id:\"minecraft:player_head\",count:1}}}",
+	};
+
 	/** The biomes of {@link #biomes()}: the far row, then the near row (before SHOTS, which builds from it). */
 	private static final String[] BIOMES = {
 		"plains", "swamp", "jungle", "dark_forest", "cherry_grove",
@@ -728,6 +863,12 @@ public class ReferenceRenders implements FabricClientGameTest {
 				"minecraft:falling_block BlockState:{id:\"minecraft:anvil\",properties:{facing:\"east\"}},NoGravity:1b",
 				"minecraft:falling_block BlockState:{id:\"minecraft:pointed_dripstone\",properties:{vertical_direction:\"down\"}},"
 						+ "NoGravity:1b"),
+		// block entities up close, still in the frozen world (no lid, bell or book moves, the banners stand still)
+		new Shot("signs", new String[0], "500.5 -58.4 -92.5 180 8", 40, "minecraft:overworld", signs()),
+		new Shot("chests", new String[0], "530.5 -57.5 -92.5 180 22", 40, "minecraft:overworld", CHESTS),
+		new Shot("heads", new String[0], "560.5 -58 -90 180 10", 40, "minecraft:overworld", HEADS),
+		// armour stands, paintings and frames at night, lit by their lanterns and torches
+		new Shot("stands", new String[] {"time set midnight"}, "590.5 -58.2 -92.5 180 6", 40, "minecraft:overworld", STANDS),
 	};
 
 	/**
