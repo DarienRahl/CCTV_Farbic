@@ -224,7 +224,8 @@ function capePose(cape, e, a) {
 function elytraPose(p, e, a) {
 	const m = avatarState(e, a);
 	const partial = a.age - Math.floor(a.age);
-	const [x, y, z] = m.elytra.map((v, k) => lerp(partial, m.elytraO[k], v));
+	// an entity that has not ticked yet: the state's rotations as they start, 0
+	const [x, y, z] = e.unticked ? [0, 0, 0] : m.elytra.map((v, k) => lerp(partial, m.elytraO[k], v));
 	const left = p.left_wing, right = p.right_wing;
 	left.y = e.sneak || e.pose === 'crouching' ? 3 : 0;
 	left.xRot = x; left.zRot = z; left.yRot = y;

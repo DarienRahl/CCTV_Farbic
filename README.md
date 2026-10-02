@@ -10,7 +10,7 @@
   <a href="https://github.com/DarienRahl/CCTV_Farbic/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/DarienRahl/CCTV_Farbic?style=for-the-badge&amp;label=release&amp;color=5d8c3e"></a>
   <img alt="Minecraft 26.3" src="https://img.shields.io/badge/minecraft-26.3-866043?style=for-the-badge">
   <img alt="Fabric, server side only" src="https://img.shields.io/badge/fabric-server%20side%20only-8b8b8b?style=for-the-badge">
-  <a href="#roadmap"><img alt="Roadmap" src="https://img.shields.io/badge/roadmap-122%2F123%20done-80ff20?style=for-the-badge"></a>
+  <a href="#roadmap"><img alt="Roadmap" src="https://img.shields.io/badge/roadmap-124%2F125%20done-80ff20?style=for-the-badge"></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-555555?style=for-the-badge"></a>
 </p>
 <!-- badges:end -->
@@ -205,7 +205,7 @@ at once as a video wall.
 ## Roadmap
 
 <!-- roadmap:start -->
-<p align="center"><img src="docs/images/roadmap/banner.svg" width="100%" alt="CCTV roadmap: 122 of 123 done"></p>
+<p align="center"><img src="docs/images/roadmap/banner.svg" width="100%" alt="CCTV roadmap: 124 of 125 done"></p>
 
 What is done and what comes next, milestone by milestone (the full plan with its principles is in
 [docs/ROADMAP.md](docs/ROADMAP.md)).
@@ -473,6 +473,16 @@ What is done and what comes next, milestone by milestone (the full plan with its
 
 - [x] **Fluids, display entities, mannequins, vehicles and projectiles in the reference renders**: a waterfall and a lava fall, water and lava flowing down trenches, blocks full of water; block, item and text displays; mannequins in their profiles' skins, crouching, left-handed, in armour, with hidden layers and an elytra; boats, a raft and every kind of minecart; arrows, a trident, thrown items, fireworks, potions and wind charges; fireballs, the dragon's, wither skulls, a shulker bullet, llama spit and experience orbs; primed TNT and falling blocks
 - [x] Bounds for the new shots, then close the gaps they show: thrown items, wind charges, shulker bullets, wither skulls, llama spit, experience orbs, end crystals, primed TNT and arrows like their renderers; block displays with special models and tints; text displays only from the front; displays and mannequins that have not ticked yet (a frozen world) like the game; camera markers, empty since 26.3, show their observer again — every new shot within 0.2 % of the game
+
+</details>
+
+<img src="docs/images/roadmap/1-19.svg" width="100%" alt="1.19 — block entities up close: released 1.19.0, 2 of 2 done">
+
+<details>
+<summary><b>1.19 — block entities up close</b> · released 1.19.0 · 2 of 2 done</summary>
+
+- [x] **Block entities and armour stands in the reference renders**: signs of every wood (on a wall, hanging, standing, with coloured, bold and glowing text), chests and copper chests, shulker boxes facing every way, heads on walls and floors, banners, beds, bells, an enchanting table, a conduit and a decorated pot; at night, armour stands posed and in armour, paintings and item frames by lanterns and torches
+- [x] Bounds for the new shots, then close the gaps they show: shulker boxes and wall heads turned like the game, banners swaying by the game time (still in a frozen world), entities that have not ticked yet turned and dressed like the game makes them — every new shot within 0.25 % of the game
 
 </details>
 

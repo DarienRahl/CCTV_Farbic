@@ -1307,12 +1307,12 @@ export class EntityRenderer {
 		for (const [id, eb] of b.map) {
 			if (!a.map.has(id) && t > 0) result.push(eb);
 		}
-		// LivingEntity.recreateFromPacket: a client starts an entity's body turned like its head and turns it as it
-		// ticks; one that has not ticked yet (it appeared while the world is frozen) keeps that
+		// An entity that has not ticked yet (it appeared while the world is frozen) is as the client made it:
+		// LivingEntity.recreateFromPacket turns its body like its head, its ElytraAnimationState is at rest at 0
 		for (let i = 0; i < result.length; i++) {
 			const e = result[i];
 			if (!this.frozen) this.ticked.add(e.id);
-			else if (e.head !== undefined && e.body !== e.head && !this.ticked.has(e.id)) result[i] = { ...e, body: e.head };
+			else if (!this.ticked.has(e.id)) result[i] = { ...e, body: e.head !== undefined ? e.head : e.body, unticked: true };
 		}
 		return result;
 	}

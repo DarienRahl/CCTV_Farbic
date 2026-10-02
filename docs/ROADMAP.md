@@ -403,6 +403,16 @@ to the milestone it belongs to. The roadmap on the README page is drawn from thi
       yet (a frozen world) like the game; camera markers, empty since 26.3, show their observer again — every new
       shot within 0.2 % of the game
 
+## 1.19 — block entities up close (released: 1.19.0)
+
+- [x] **Block entities and armour stands in the reference renders**: signs of every wood (on a wall, hanging,
+      standing, with coloured, bold and glowing text), chests and copper chests, shulker boxes facing every way,
+      heads on walls and floors, banners, beds, bells, an enchanting table, a conduit and a decorated pot; at night,
+      armour stands posed and in armour, paintings and item frames by lanterns and torches
+- [x] Bounds for the new shots, then close the gaps they show: shulker boxes and wall heads turned like the game,
+      banners swaying by the game time (still in a frozen world), entities that have not ticked yet turned and
+      dressed like the game makes them — every new shot within 0.25 % of the game
+
 ## Later
 
 - [x] **Recording and timelapse** of a camera in the browser: a video with the game's sounds, or one picture
