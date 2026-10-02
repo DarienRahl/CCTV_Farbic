@@ -1328,11 +1328,14 @@ export class EntityRenderer {
 			if (!a.map.has(id) && t > 0) result.push(eb);
 		}
 		// An entity that has not ticked yet (it appeared while the world is frozen) is as the client made it:
-		// LivingEntity.recreateFromPacket turns its body like its head, its ElytraAnimationState is at rest at 0
+		// LivingEntity.recreateFromPacket turns its body like its head, its ElytraAnimationState is at rest at 0, and
+		// it is not on the ground (ClientboundAddEntityPacket has no such flag; ServerEntity only sends it once it changes)
 		for (let i = 0; i < result.length; i++) {
 			const e = result[i];
 			if (!this.frozen) this.ticked.add(e.id);
-			else if (!this.ticked.has(e.id)) result[i] = { ...e, body: e.head !== undefined ? e.head : e.body, unticked: true };
+			else if (!this.ticked.has(e.id)) {
+				result[i] = { ...e, body: e.head !== undefined ? e.head : e.body, unticked: true, d: e.d && e.d.onGround ? { ...e.d, onGround: false } : e.d };
+			}
 		}
 		return result;
 	}

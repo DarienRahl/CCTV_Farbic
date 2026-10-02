@@ -61,12 +61,18 @@ export class Model {
 		this.root.resetAll();
 	}
 
-	/** Copies the live pose of parts with the same names (layers that follow their parent model). */
+	/**
+	 * Copies the live pose of parts with the same names (layers that follow their parent model). Positions move by
+	 * as much as the parent's parts moved from their bind pose: each layer model's setupAnim starts from its own
+	 * (baby armour's legs stand wider apart than a baby zombie's).
+	 */
 	copyPose(other) {
 		for (const [name, part] of Object.entries(this.parts)) {
 			const src = other.parts[name];
 			if (!src || name === 'root') continue;
-			part.x = src.x; part.y = src.y; part.z = src.z;
+			part.x = part.bind.x + src.x - src.bind.x;
+			part.y = part.bind.y + src.y - src.bind.y;
+			part.z = part.bind.z + src.z - src.bind.z;
 			part.xRot = src.xRot; part.yRot = src.yRot; part.zRot = src.zRot;
 			part.xScale = src.xScale; part.yScale = src.yScale; part.zScale = src.zScale;
 			// The skin layers a player turned off stay on armour (the game does not copy their visibility).

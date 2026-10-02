@@ -51,6 +51,9 @@ net/minecraft/client/renderer/block/BlockModelResolver
 net/minecraft/client/color/block/BlockTintSources
 net/minecraft/client/renderer/entity/layers/VillagerProfessionLayer
 net/minecraft/client/renderer/entity/layers/HorseMarkingLayer
+net/minecraft/client/renderer/entity/layers/SheepWoolUndercoatLayer
+net/minecraft/client/model/animal/ghast/HappyGhastHarnessModel
+net/minecraft/client/model/animal/parrot/ParrotModel
 net/minecraft/client/renderer/feature/FlameFeatureRenderer
 net/minecraft/client/renderer/feature/ShadowFeatureRenderer
 net/minecraft/client/renderer/feature/ItemFeatureRenderer

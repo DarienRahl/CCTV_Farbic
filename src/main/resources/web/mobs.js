@@ -1011,10 +1011,16 @@ const ANIMS = {
 		const relax = Number(d.relax) || 0;
 		if (relax > 0) head.xRot = rotLerp(relax, head.xRot, -0.58177644);
 	},
-	ghast(p, a) {
+	ghast(p, a, e) {
 		for (let i = 0; i < 9; i++) {
 			const t = p['tentacle' + i];
 			if (t) t.xRot = 0.2 * sin(a.age * 0.3 + i) + 0.4;
+		}
+		// HappyGhastHarnessModel.setupAnim: the goggles down over the eyes while ridden, pushed up otherwise
+		if (p.goggles) {
+			const ridden = !!(e.d && e.d.ridden);
+			p.goggles.xRot = ridden ? 0 : -0.7854;
+			p.goggles.y = ridden ? 14 : 9;
 		}
 	},
 	squid(p, a) {
@@ -1254,8 +1260,9 @@ const ANIMS = {
 		quadrupedLegs(p, a);
 		const d = e.d || {};
 		const head = p.head;
-		if (p.left_horn) p.left_horn.visible = d.leftHorn !== false;
-		if (p.right_horn) p.right_horn.visible = d.rightHorn !== false;
+		// sent only while true (a goat that lost a horn sends nothing for it)
+		if (p.left_horn) p.left_horn.visible = !!d.leftHorn;
+		if (p.right_horn) p.right_horn.visible = !!d.rightHorn;
 		const lower = a.memory.lowerHeadTick || 0;
 		if (head && lower > 0) head.xRot = lower / 20 * (e.baby ? 52.5 : 30) * DEG;
 		else if (head && e.baby) head.xRot = PI / 8; // BabyGoatModel.setupAnim
@@ -2218,7 +2225,8 @@ const MOBS = {
 	sheep: {
 		layer: e => (e.baby ? 'sheep_baby#main' : 'sheep#main'), texture: e => 'sheep/sheep' + baby(e), shadow: 0.7, anim: 'sheep',
 		layers: [
-			{ layer: 'sheep#wool_undercoat', texture: 'sheep/sheep_wool_undercoat', when: e => !e.baby && !(e.d && e.d.sheared), color: e => sheepColor(e) },
+			// SheepWoolUndercoatLayer: on adults of any colour but white (jeb_ too), shorn or not
+			{ layer: 'sheep#wool_undercoat', texture: 'sheep/sheep_wool_undercoat', when: e => !e.baby && (e.name === 'jeb_' || (strip(e.d && e.d.color) || 'white') !== 'white'), color: e => sheepColor(e) },
 			{ layer: e => (e.baby ? 'sheep_baby#wool' : 'sheep#wool'), texture: e => 'sheep/sheep_wool' + baby(e), when: e => !(e.d && e.d.sheared), color: e => sheepColor(e) },
 		],
 	},
