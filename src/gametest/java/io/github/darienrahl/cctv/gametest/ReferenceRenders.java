@@ -17,7 +17,7 @@ import net.fabricmc.loader.api.FabricLoader;
  * each shot (day, night, mobs, a room, under water, dusk, rain, snow, a cave, the Nether, the End, glass, decorations,
  * redstone, shapes of blocks, plants, lights at night, biome colours, blocks of work, flowing water and lava, rows of
  * every kind of mob up close, display entities, mannequins, vehicles, projectiles, signs, chests, heads and banners,
- * armour stands and frames at night), takes the game's picture from a spectator's eyes with the GUI hidden, moves a CCTV camera to the same eyes
+ * armour stands and frames at night, young mobs and the kinds of wolves, farm animals, villagers and horses), takes the game's picture from a spectator's eyes with the GUI hidden, moves a CCTV camera to the same eyes
  * and waits while CI takes the viewer's picture of that camera (.github/e2e/reference.mjs), so both can be compared
  * (compare_reference.py).
  *
@@ -870,7 +870,51 @@ public class ReferenceRenders implements FabricClientGameTest {
 		new Shot("heads", new String[0], "560.5 -58 -90 180 10", 40, "minecraft:overworld", HEADS),
 		// armour stands, paintings and frames at night, lit by their lanterns and torches
 		new Shot("stands", new String[] {"time set midnight"}, "590.5 -58.2 -92.5 180 6", 40, "minecraft:overworld", STANDS),
+		// young mobs and the kinds of mobs, back at noon
+		withCommands(zoo("babies-farm", 620, 1.5, 5, 0, "minecraft:cow Age:-24000", "minecraft:pig Age:-24000",
+				"minecraft:sheep Age:-24000,Color:14b", "minecraft:chicken Age:-24000", "minecraft:mooshroom Age:-24000",
+				"minecraft:rabbit Age:-24000,RabbitType:1", "minecraft:goat Age:-24000", "minecraft:llama Age:-24000,Variant:2",
+				"minecraft:turtle Age:-24000"), "time set noon"),
+		zoo("babies-wild", 650, 1.5, 5, 0, "minecraft:wolf Age:-24000", "minecraft:cat Age:-24000,variant:\"minecraft:tabby\"",
+				"minecraft:fox Age:-24000", "minecraft:ocelot Age:-24000", "minecraft:polar_bear Age:-24000",
+				"minecraft:panda Age:-24000", "minecraft:armadillo Age:-24000", "minecraft:bee Age:-24000",
+				"minecraft:axolotl Age:-24000,Variant:3"),
+		zoo("babies-folk", 680, 1.5, 5, 0, "minecraft:villager Age:-24000", "minecraft:zombie IsBaby:1b", "minecraft:husk IsBaby:1b",
+				"minecraft:drowned IsBaby:1b", "minecraft:zombie_villager IsBaby:1b", "minecraft:piglin IsBaby:1b",
+				"minecraft:zombified_piglin IsBaby:1b", "minecraft:hoglin Age:-24000", "minecraft:strider Age:-24000"),
+		zoo("babies-ride", 710, 2.5, 8, 0, "minecraft:horse Age:-24000,Variant:3", "minecraft:donkey Age:-24000",
+				"minecraft:mule Age:-24000", "minecraft:camel Age:-24000", "minecraft:sniffer Age:-24000",
+				"minecraft:skeleton_horse Age:-24000"),
+		zoo("wolves", 740, 1.4, 6, 0, "minecraft:wolf variant:\"minecraft:pale\"", "minecraft:wolf variant:\"minecraft:spotted\"",
+				"minecraft:wolf variant:\"minecraft:snowy\"", "minecraft:wolf variant:\"minecraft:black\"",
+				"minecraft:wolf variant:\"minecraft:ashen\"", "minecraft:wolf variant:\"minecraft:rusty\"",
+				"minecraft:wolf variant:\"minecraft:woods\"", "minecraft:wolf variant:\"minecraft:chestnut\"",
+				"minecraft:wolf variant:\"minecraft:striped\""),
+		zoo("climates", 770, 1.5, 8, 0, "minecraft:frog variant:\"minecraft:temperate\"", "minecraft:frog variant:\"minecraft:warm\"",
+				"minecraft:frog variant:\"minecraft:cold\"", "minecraft:chicken variant:\"minecraft:temperate\"",
+				"minecraft:chicken variant:\"minecraft:warm\"", "minecraft:chicken variant:\"minecraft:cold\"",
+				"minecraft:pig variant:\"minecraft:temperate\"", "minecraft:pig variant:\"minecraft:warm\"",
+				"minecraft:pig variant:\"minecraft:cold\"", "minecraft:cow variant:\"minecraft:temperate\"",
+				"minecraft:cow variant:\"minecraft:warm\"", "minecraft:cow variant:\"minecraft:cold\""),
+		zoo("villagers", 800, 1.3, 6, 0, villager("desert", "armorer", 1), villager("jungle", "butcher", 2),
+				villager("plains", "cartographer", 3), villager("savanna", "cleric", 4), villager("snow", "farmer", 5),
+				villager("swamp", "fisherman", 1), villager("taiga", "fletcher", 2), villager("plains", "nitwit", 1),
+				"minecraft:zombie_villager VillagerData:{type:\"minecraft:taiga\",profession:\"minecraft:librarian\",level:3}"),
+		zoo("horses", 830, 2.3, 10, 0, "minecraft:horse Variant:0", "minecraft:horse Variant:257", "minecraft:horse Variant:514",
+				"minecraft:horse Variant:771", "minecraft:horse Variant:1028", "minecraft:horse Variant:6",
+				"minecraft:llama Variant:0", "minecraft:llama Variant:3", "minecraft:trader_llama Variant:1"),
 	};
+
+	/** A villager of a biome's type and a profession at a level (its badge). */
+	private static String villager(String type, String profession, int level) {
+		return String.format(java.util.Locale.ROOT, "minecraft:villager VillagerData:{type:\"minecraft:%s\",profession:\"minecraft:%s\","
+				+ "level:%d}", type, profession, level);
+	}
+
+	/** The shot with commands run before it (the build of a row runs after them). */
+	private static Shot withCommands(Shot shot, String... commands) {
+		return new Shot(shot.name(), commands, shot.eyes(), shot.settle(), shot.dimension(), shot.build());
+	}
 
 	/**
 	 * A close look at a row of mobs (a type, then NBT of its own) standing {@code spacing} blocks apart at z -99.5 and
